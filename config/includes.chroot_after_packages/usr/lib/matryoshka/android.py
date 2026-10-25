@@ -19,6 +19,7 @@ class Android(QWidget):
         self.o = QTextEdit(readOnly=True); v.addWidget(self.o, 1)
     def log(self, s): self.o.append(s); QApplication.processEvents()
     def init(self):
+        if os.environ.get("XDG_SESSION_TYPE") != "wayland": self.log("Android (Waydroid) работает только в сеансе Plasma (Wayland). Выйдите из системы и на экране входа выберите сеанс «Plasma (Wayland)»."); return
         if not C.net_on(): self.log("Включите сеть."); return
         self.log("Скачиваю официальный образ Waydroid с Google-сервисами, 10–30 минут…"); r = C.root("android-stores"); self.log((r.stdout + r.stderr)[-2000:])
         subprocess.Popen(["waydroid", "show-full-ui"]); self.log("Android запущен.")

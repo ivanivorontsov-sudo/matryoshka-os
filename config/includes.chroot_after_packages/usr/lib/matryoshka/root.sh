@@ -53,8 +53,8 @@ case "$cmd" in
   waydroid-share)
     u="$H"; mkdir -p "$u/Общее" "$u/.local/share/waydroid/data/media/0/Общее"; chown "$U": "$u/Общее"
     mountpoint -q "$u/.local/share/waydroid/data/media/0/Общее" || mount --bind "$u/Общее" "$u/.local/share/waydroid/data/media/0/Общее" ;;
-  android-init) waydroid init -s GAPPS=no && systemctl enable --now waydroid-container ;;
-  android-stores) waydroid init -f -s GAPPS && systemctl enable --now waydroid-container && systemctl restart waydroid-container ;;
+  android-init) waydroid init -s VANILLA && { lspci | grep -qi nvidia && { grep -q swiftshader /var/lib/waydroid/waydroid_base.prop 2>/dev/null || printf 'ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n' >> /var/lib/waydroid/waydroid_base.prop; waydroid upgrade --offline; }; true; } && systemctl enable --now waydroid-container ;;
+  android-stores) waydroid init -f -s GAPPS && { lspci | grep -qi nvidia && { grep -q swiftshader /var/lib/waydroid/waydroid_base.prop 2>/dev/null || printf 'ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n' >> /var/lib/waydroid/waydroid_base.prop; waydroid upgrade --offline; }; true; } && systemctl enable --now waydroid-container && systemctl restart waydroid-container ;;
   android-id) waydroid shell -- sh -c "sqlite3 /data/data/com.google.android.gsf/databases/gservices.db \"select value from main where name='android_id';\"" ;;
   android-grant) waydroid shell -- appops set ru.vk.store REQUEST_INSTALL_PACKAGES allow; waydroid shell -- settings put secure install_non_market_apps 1; true ;;
   sandbox-grant)

@@ -5,3 +5,8 @@ Exec=sitebuilder
 Icon=applications-internet
 Categories=Development;
 Comment=Конструктор сайтов (Windows-программа через Wine)
+Actions=fix;
+
+[Desktop Action fix]
+Name=Если окно пустое: починить WebView2
+Exec=sitebuilder --fix

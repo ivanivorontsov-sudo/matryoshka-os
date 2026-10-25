@@ -148,7 +148,7 @@ class Bar(QWidget):
 def main():
     if "--exit" in sys.argv: stop_all(); return
     app = QApplication(sys.argv); C.qt_ru(app); app.setApplicationName("supersmart"); app.setDesktopFileName("supersmart")
-    if "--menu" not in sys.argv and ("--android" in sys.argv or C.settings().get("supersmart_android", True)) and android_ready():
+    if "--menu" not in sys.argv and ("--android" in sys.argv or C.settings().get("supersmart_android", True)) and android_ready() and os.environ.get("XDG_SESSION_TYPE") == "wayland":
         subprocess.Popen(["waydroid", "show-full-ui"]); w = Bar(); w.show()
         sys.exit(app.exec())
     w = Home("--home" in sys.argv); w.showFullScreen()

@@ -1,7 +1,7 @@
 #!/bin/sh
 python3 -c "import sys; sys.path.insert(0, \"/usr/lib/matryoshka\"); import common; common.prep_wine()"
 export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--no-sandbox"
-for e in msedgewebview2.exe; do wine reg add "HKCU\\Software\\Wine\\AppDefaults\\$e" /v Version /d win7 /f >/dev/null 2>&1; done
+for e in msedgewebview2.exe msedge.exe; do wine reg add "HKCU\\Software\\Wine\\AppDefaults\\$e" /v Version /d win7 /f >/dev/null 2>&1; done
 P="$HOME/.wine/drive_c/Program Files (x86)/Microsoft/EdgeWebView/Application"
 if ! ls "$P"/*/msedgewebview2.exe >/dev/null 2>&1; then
   if ! nmcli -t networking | grep -q enabled; then kdialog --title "Конструктор сайтов" --error "Для первого запуска нужен компонент Microsoft WebView2 (около 180 МБ, бесплатно с сайта Microsoft). Включите сеть и запустите конструктор ещё раз."; exit 1; fi
@@ -10,4 +10,18 @@ if ! ls "$P"/*/msedgewebview2.exe >/dev/null 2>&1; then
   curl -fL -o "$T/wv2.exe" "https://go.microsoft.com/fwlink/?linkid=2124701" && wine "$T/wv2.exe" /silent /install
   rm -rf "$T"
 fi
+FX="$HOME/.wine/drive_c/WebView2Fixed/Microsoft.WebView2.FixedVersionRuntime.109.0.1518.78.x64"
+if [ "$1" = "--fix" ]; then
+  shift
+  nmcli -t networking | grep -q enabled || { kdialog --title "Конструктор сайтов" --error "Включите сеть."; exit 1; }
+  kdialog --title "Конструктор сайтов" --passivepopup "Ставлю DXVK, d3dcompiler_47 и WebView2 109 (около 400 МБ)…" 15 &
+  WINEDEBUG=-all winetricks -q dxvk d3dcompiler_47 >/dev/null 2>&1
+  T=$(mktemp -d)
+  curl -fL -o "$T/f.cab" "https://github.com/westinyang/WebView2RuntimeArchive/releases/download/109.0.1518.78/Microsoft.WebView2.FixedVersionRuntime.109.0.1518.78.x64.cab" && echo "7622281cf83de1a35e3a471f432f7a897d65f0a7d3975df08512b7b253dd45c7  $T/f.cab" | sha256sum -c --quiet && mkdir -p "$HOME/.wine/drive_c/WebView2Fixed" && cabextract -q -d "$HOME/.wine/drive_c/WebView2Fixed" "$T/f.cab"
+  rm -rf "$T"
+  wine reg add "HKLM\\Software\\Policies\\Microsoft\\EdgeUpdate" /v UpdateDefault /t REG_DWORD /d 0 /f >/dev/null 2>&1
+  wine reg add "HKLM\\Software\\Policies\\Microsoft\\EdgeUpdate" /v AutoUpdateCheckPeriodMinutes /t REG_DWORD /d 0 /f >/dev/null 2>&1
+  [ -f "$FX/msedgewebview2.exe" ] && touch "$HOME/.config/matryoshka-sitebuilder-fixed"
+fi
+[ -f "$HOME/.config/matryoshka-sitebuilder-fixed" ] && [ -f "$FX/msedgewebview2.exe" ] && export WEBVIEW2_BROWSER_EXECUTABLE_FOLDER="C:\\WebView2Fixed\\Microsoft.WebView2.FixedVersionRuntime.109.0.1518.78.x64"
 exec wine /opt/ivan/sitebuilder/SiteBuilder.exe "$@"
