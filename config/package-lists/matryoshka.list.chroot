@@ -289,3 +289,6 @@ libfuse2t64
 usbmuxd
 libimobiledevice-utils
 aria2
+
+nftables
+pkexec
