@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Быстрый скрин
+Exec=matryoshka-screenshot
+Icon=spectacle
+Categories=Utility;
+Comment=Снимок области в Изображения/Скрины
+X-KDE-Shortcuts=Meta+Shift+S

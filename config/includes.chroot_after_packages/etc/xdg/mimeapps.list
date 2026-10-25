@@ -1,0 +1,11 @@
+[Default Applications]
+text/plain=chitalka.desktop
+application/x-ms-dos-executable=matryoshka-run.desktop
+application/x-msdownload=matryoshka-run.desktop
+application/vnd.android.package-archive=matryoshka-run.desktop
+application/x-xapk=matryoshka-run.desktop
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=matryoshka-office.desktop
+application/msword=matryoshka-office.desktop
+application/x-dosexec=matryoshka-run.desktop
+application/x-bat=matryoshka-run.desktop
+text/x-ponyatny=matryoshka-run.desktop

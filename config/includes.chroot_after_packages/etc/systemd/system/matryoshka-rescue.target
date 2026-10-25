@@ -1,0 +1,5 @@
+[Unit]
+Description=Matryoshka rescue
+Requires=matryoshka-rescue.service
+After=matryoshka-rescue.service
+AllowIsolate=yes

@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+. /usr/share/grub/grub-mkconfig_lib
+dev=$(${grub_probe} --target=device /)
+uuid=$(${grub_probe} --device ${dev} --target=fs_uuid)
+k=$(ls -1 /boot/vmlinuz-* 2>/dev/null | sort -V | tail -1); i=$(echo $k | sed 's/vmlinuz/initrd.img/')
+[ -n "$k" ] || exit 0
+sv=$(findmnt -no OPTIONS / | grep -o "subvol=[^,]*" | sed "s/^/rootflags=/")
+kp=$(make_system_path_relative_to_its_root "$k"); ip=$(make_system_path_relative_to_its_root "$i")
+cat <<EOT
+menuentry "Матрёшка — восстановление" {
+  search --no-floppy --fs-uuid --set=root ${uuid}
+  linux ${kp} root=UUID=${uuid} ro systemd.unit=matryoshka-rescue.target nomodeset ${sv}
+  initrd ${ip}
+}
+EOT

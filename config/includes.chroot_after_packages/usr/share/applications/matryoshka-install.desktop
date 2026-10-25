@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Установить Матрёшку на диск
+Exec=matryoshka-center 7
+Icon=system-software-install
+Categories=System;
+

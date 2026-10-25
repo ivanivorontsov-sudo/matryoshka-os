@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+<mime-type type="application/x-xapk"><comment>Android XAPK</comment><glob pattern="*.xapk"/><glob pattern="*.apks"/><glob pattern="*.apkm"/></mime-type>
+  <mime-type type="text/x-ponyatny"><comment>Программа на Понятном</comment><sub-class-of type="text/plain"/><glob pattern="*.pon"/></mime-type>
+  <mime-type type="application/x-bat"><comment>Пакетный файл DOS</comment><sub-class-of type="text/plain"/><glob pattern="*.bat"/></mime-type>
+</mime-info>

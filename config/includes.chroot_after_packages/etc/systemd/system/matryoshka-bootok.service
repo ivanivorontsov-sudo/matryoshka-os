@@ -1,0 +1,9 @@
+[Unit]
+Description=Matryoshka boot success marker
+After=graphical.target
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 60
+ExecStart=/bin/rm -f /var/lib/matryoshka/booting
+[Install]
+WantedBy=graphical.target

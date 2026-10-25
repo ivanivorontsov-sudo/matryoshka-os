@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends waydroid || echo "WAYDROID INSTALL FAILED"
+DEBIAN_FRONTEND=noninteractive apt-get purge -y popularity-contest avahi-daemon cups-browsed geoclue-2.0 modemmanager packagekit plasma-discover plasma-welcome kde-config-updates unattended-upgrades reportbug apt-listchanges 2>/dev/null || true
+DEBIAN_FRONTEND=noninteractive apt-get autoremove -y --purge
+for t in apt-daily.timer apt-daily-upgrade.timer e2scrub_all.timer man-db.timer dpkg-db-backup.timer fwupd-refresh.timer; do systemctl mask $t || true; done
+systemctl disable clamav-freshclam.service || true
+systemctl enable clamav-daemon.service || true
+systemctl disable waydroid-container.service || true
+systemctl enable matryoshka-bootcheck.service matryoshka-bootok.service || true
+systemctl enable opensnitch.service 2>/dev/null || true
+if [ -d /usr/share/matryoshka/clamav ]; then cp /usr/share/matryoshka/clamav/*.cvd /var/lib/clamav/ && chown clamav:clamav /var/lib/clamav/*.cvd && rm -rf /usr/share/matryoshka/clamav; fi
+mkdir -p /var/lib/NetworkManager /var/lib/matryoshka
+printf '[main]\nNetworkingEnabled=false\nWirelessEnabled=true\nWWANEnabled=false\n' > /var/lib/NetworkManager/NetworkManager.state
+f=/etc/calamares/modules/partition.conf
+if [ -f $f ]; then sed -i 's/^defaultFileSystemType:.*/defaultFileSystemType: "btrfs"/' $f; grep -q defaultFileSystemType $f || echo 'defaultFileSystemType: "btrfs"' >> $f; fi
+sed -i 's/Debian/Матрёшка/g' /etc/calamares/branding/debian/branding.desc 2>/dev/null || true
+update-mime-database /usr/share/mime
+sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Матрёшка (на базе Debian 13)"/' /etc/os-release
+echo matryoshka > /etc/hostname
+grep -q StevenBlack /etc/hosts || { echo; echo "# StevenBlack unified hosts"; grep -E '^0\.0\.0\.0 ' /usr/share/matryoshka/hosts/stevenblack | grep -v ' 0\.0\.0\.0$'; } >> /etc/hosts
+sed -i 's/^ENABLED=no/ENABLED=yes/' /etc/ufw/ufw.conf 2>/dev/null || true
+sed -i 's/^DEFAULT_INPUT_POLICY=.*/DEFAULT_INPUT_POLICY="DROP"/' /etc/default/ufw 2>/dev/null || true
+mkdir -p /etc/fwupd && printf '[fwupd]\nOnlyTrusted=true\nUpdateMotd=false\n' > /etc/fwupd/fwupd.conf
+sed -i 's/^Enabled=.*/Enabled=false/' /etc/fwupd/remotes.d/lvfs.conf 2>/dev/null || true
+sed -i 's/^Session=\${LIVE_SESSION}$/Session=plasma/' /usr/lib/live/config/0085-sddm
+for f in /usr/share/applications/calamares.desktop /usr/share/applications/install-debian.desktop; do if [ -f $f ]; then echo NoDisplay=true >> $f; fi; done
+true

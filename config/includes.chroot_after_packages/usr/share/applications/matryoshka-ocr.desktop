@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Текст с экрана
+Exec=matryoshka-ocr
+Icon=scanner
+Categories=Utility;
+Comment=Распознать текст в области экрана

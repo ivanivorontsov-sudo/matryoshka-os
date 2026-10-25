@@ -1,0 +1,4 @@
+{"policies": {"DisableTelemetry": true, "DisableFirefoxStudies": true, "DisablePocket": true, "DisableDefaultBrowserAgent": true, "DisableFeedbackCommands": true,
+ "DNSOverHTTPS": {"Enabled": false, "Locked": false}, "FirefoxHome": {"SponsoredTopSites": false, "SponsoredPocket": false, "Pocket": false, "Snippets": false},
+ "UserMessaging": {"ExtensionRecommendations": false, "FeatureRecommendations": false, "SkipOnboarding": true, "MoreFromMozilla": false},
+ "Preferences": {"browser.safebrowsing.malware.enabled": {"Value": false, "Status": "default"}, "browser.safebrowsing.phishing.enabled": {"Value": false, "Status": "default"}, "datareporting.healthreport.uploadEnabled": {"Value": false, "Status": "locked"}, "app.shield.optoutstudies.enabled": {"Value": false, "Status": "locked"}}}}

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Центр Матрёшки
+Exec=matryoshka-center
+Icon=preferences-system
+Categories=Settings;System;
+Keywords=настройки;settings;

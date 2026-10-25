@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Эмуляторы консолей
+Exec=matryoshka-emulators
+Icon=applications-games
+Categories=Game;Emulator;
+Comment=Приставки в один щелчок

@@ -1,0 +1,11 @@
+panels().forEach(function(p){p.remove()});
+var t = new Panel;
+t.location = "top"; t.height = 28;
+t.addWidget("org.kde.plasma.kickoff");
+t.addWidget("org.kde.plasma.appmenu");
+t.addWidget("org.kde.plasma.panelspacer");
+t.addWidget("org.kde.plasma.systemtray");
+t.addWidget("org.kde.plasma.digitalclock");
+var d = new Panel;
+d.location = "bottom"; d.height = 60; d.floating = true; d.lengthMode = "fit"; d.alignment = "center";
+d.addWidget("org.kde.plasma.icontasks");

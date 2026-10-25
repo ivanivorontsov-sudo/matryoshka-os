@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Читалка
+Exec=chitalka %f
+Icon=accessories-text-editor
+Categories=Utility;TextEditor;Office;
+MimeType=text/plain;text/x-log;

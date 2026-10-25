@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Песочница
+Exec=matryoshka-sandbox
+Icon=virtualbox
+Categories=System;Emulator;
+Comment=Одноразовая копия Матрёшки

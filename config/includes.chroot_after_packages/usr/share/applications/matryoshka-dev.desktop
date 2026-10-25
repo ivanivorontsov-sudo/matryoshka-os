@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Вы программист?
+Exec=matryoshka-dev
+Icon=applications-development
+Categories=Development;
+Comment=Языки, SDK и среды разработки по запросу

@@ -1,0 +1,6 @@
+[General]
+AccentColor=#FFC94A
+
+[KDE]
+LookAndFeelPackage=org.kde.breezedark.desktop
+AnimationDurationFactor=1

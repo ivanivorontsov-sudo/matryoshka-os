@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Антираскладка
+Exec=antiraskladka
+Icon=input-keyboard
+Categories=Utility;
+Comment=Исправить текст, набранный не в той раскладке
+X-KDE-Shortcuts=Ctrl+Shift+Q

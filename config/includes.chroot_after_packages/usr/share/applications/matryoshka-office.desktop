@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Матрёшка Офис
+Exec=matryoshka-office %U
+Icon=libreoffice-startcenter
+Categories=Office;
+MimeType=application/vnd.oasis.opendocument.text;application/msword;application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.ms-excel;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.ms-powerpoint;application/vnd.openxmlformats-officedocument.presentationml.presentation;application/rtf;text/csv;

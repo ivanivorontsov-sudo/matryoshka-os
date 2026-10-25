@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Сеть вкл/выкл
+Exec=matryoshka-net
+Icon=network-wireless
+Categories=Network;
+Keywords=сеть;интернет;network;

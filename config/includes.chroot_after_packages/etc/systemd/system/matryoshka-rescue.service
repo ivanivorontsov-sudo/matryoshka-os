@@ -1,0 +1,12 @@
+[Unit]
+Description=Matryoshka rescue menu
+DefaultDependencies=no
+After=local-fs.target
+[Service]
+Type=idle
+ExecStart=/usr/lib/matryoshka/rescue.sh
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes

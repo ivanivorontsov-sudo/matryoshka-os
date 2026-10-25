@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Бесконечная память
+Exec=matryoshka-cloud
+Icon=folder-cloud
+Categories=Utility;
+Comment=Облака и диск в одной зашифрованной папке

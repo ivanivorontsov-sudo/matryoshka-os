@@ -1,0 +1,1 @@
+deb [signed-by=/etc/apt/keyrings/waydroid.gpg] https://repo.waydro.id/ trixie main

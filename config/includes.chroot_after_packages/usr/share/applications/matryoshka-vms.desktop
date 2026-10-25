@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Другие системы
+Exec=matryoshka-vms
+Icon=computer
+Categories=System;Emulator;
+Comment=Linux, Windows, DOS в окне

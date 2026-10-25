@@ -1,0 +1,4 @@
+#!/bin/sh
+f=$(mktemp --suffix=.png)
+spectacle -r -b -n -o "$f" && t=$(tesseract "$f" - -l rus+eng 2>/dev/null) && printf '%s' "$t" | wl-copy && notify-send "Текст скопирован" "$(printf '%s' "$t" | head -c 120)"
+rm -f "$f"

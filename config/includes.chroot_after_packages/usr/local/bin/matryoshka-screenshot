@@ -1,0 +1,3 @@
+#!/bin/sh
+d="$HOME/Изображения/Скрины"; mkdir -p "$d"
+exec spectacle -r -b -n -o "$d/$(date +%Y-%m-%d_%H-%M-%S).png"

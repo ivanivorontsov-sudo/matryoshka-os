@@ -1,0 +1,25 @@
+[Desktop Entry]
+Type=Service
+MimeType=all/allfiles;
+Actions=toShared;openWin;installAndroid;scan
+X-KDE-Submenu=Матрёшка: поделиться
+
+[Desktop Action toShared]
+Name=Положить в «Общее» (видно Windows- и Android-программам)
+Icon=folder-publicshare
+Exec=cp -r %F "$HOME/Общее/"
+
+[Desktop Action openWin]
+Name=Открыть Windows-программой (Wine)
+Icon=wine
+Exec=wine start /unix %f
+
+[Desktop Action installAndroid]
+Name=Открыть или установить в Android
+Icon=android
+Exec=matryoshka-run %f
+
+[Desktop Action scan]
+Name=Проверить антивирусом
+Icon=security-high
+Exec=konsole --hold -e matryoshka-av scan %F

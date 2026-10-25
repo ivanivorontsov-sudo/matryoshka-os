@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Понятный
+Exec=konsole --hold -e ponyatny
+Icon=text-x-script
+Categories=Development;
+Comment=Язык программирования на русском

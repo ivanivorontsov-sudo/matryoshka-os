@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Матрёшка
+Exec=matryoshka-shell
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2

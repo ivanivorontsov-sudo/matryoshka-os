@@ -1,0 +1,2 @@
+#!/bin/sh
+if [ "$(nmcli networking)" = enabled ]; then nmcli networking off; notify-send -a Матрёшка "Сеть выключена" "Ничего не уходит наружу"; else nmcli networking on; notify-send -a Матрёшка "Сеть включена" "Выключить — тем же значком"; fi

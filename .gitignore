@@ -1,0 +1,9 @@
+config/includes.chroot_after_packages/usr/share/matryoshka/clamav/
+config/includes.chroot_after_packages/usr/share/matryoshka/yara/
+config/includes.chroot_after_packages/usr/share/matryoshka/hosts/
+config/includes.chroot_after_packages/usr/share/matryoshka/apk/
+config/includes.chroot_after_packages/usr/local/bin/ponyatny
+config/includes.chroot_after_packages/opt/ivankod/
+config/includes.chroot_after_packages/opt/ivan/
+*.iso
+*.img

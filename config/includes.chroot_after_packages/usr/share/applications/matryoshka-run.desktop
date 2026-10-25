@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Запуск программ Windows и Android
+Exec=matryoshka-run %f
+Icon=application-x-executable
+Categories=Matryoshka;System;
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/vnd.android.package-archive;application/x-xapk;application/x-ms-shortcut;application/x-dosexec;application/x-bat;text/x-ponyatny;

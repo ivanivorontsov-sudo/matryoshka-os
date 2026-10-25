@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ИИ-управляющий
+Exec=matryoshka-agent
+Icon=im-user
+Categories=Utility;
+Comment=Помощник: сделает и объяснит
+X-KDE-Shortcuts=Meta+A

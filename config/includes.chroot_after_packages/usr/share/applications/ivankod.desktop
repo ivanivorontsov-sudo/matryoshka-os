@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ИванКод
+Exec=ivankod %F
+Icon=/opt/ivankod/icon.png
+Categories=Development;IDE;
+Comment=Редактор кода с языком Понятный
+MimeType=text/x-ponyatny;

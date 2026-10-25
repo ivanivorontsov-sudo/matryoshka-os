@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Архив переписки
+Exec=python3 /opt/ivan/arhiv-perepiski/run.py
+Icon=mail-message
+Categories=Office;
+Comment=Архив переписки из мессенджеров
