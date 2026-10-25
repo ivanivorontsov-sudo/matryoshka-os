@@ -64,7 +64,7 @@ f=/etc/calamares/modules/users.conf
 if [ -f $f ]; then sed -i '/^allowWeakPasswords/d; /^allowWeakPasswordsDefault/d' $f; python3 - $f <<'PY'
 import sys, re
 p = sys.argv[1]; s = open(p).read()
-s = re.sub(r"(?ms)^passwordRequirements:.*?(?=^\S)", "", s + "\n")
+s = re.sub(r"(?m)^(passwordRequirements|allowWeakPasswords|allowWeakPasswordsDefault):.*\n(?:[ \t]+.*\n|[ \t]*\n)*", "", s + "\n")
 s += "passwordRequirements:\n    nonempty: true\n    minLength: 1\n    maxLength: -1\n    libpwquality:\n        - minlen=6\n        - dictcheck=0\n        - usercheck=0\nallowWeakPasswords: true\nallowWeakPasswordsDefault: false\n"
 open(p, "w").write(s)
 PY
