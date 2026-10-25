@@ -76,4 +76,9 @@ mkdir -p /etc/security/pwquality.conf.d && printf 'dictcheck = 0\nenforcing = 0\
 mkdir -p /media && chmod 755 /media
 [ -f /etc/xdg/menus/applications.menu ] || ln -sf plasma-applications.menu /etc/xdg/menus/applications.menu
 grep -l pam_sss /etc/pam.d/* 2>/dev/null | xargs -r sed -i '/pam_sss/d'
+ufw allow in on waydroid0 to any port 67 proto udp comment "waydroid DHCP" >/dev/null 2>&1 || true
+ufw allow in on waydroid0 to any port 53 comment "waydroid DNS" >/dev/null 2>&1 || true
+ufw route allow in on waydroid0 comment "waydroid out" >/dev/null 2>&1 || true
+ufw route allow out on waydroid0 comment "waydroid in" >/dev/null 2>&1 || true
+systemctl enable matryoshka-snapper-setup.service matryoshka-dpkg-recover.service matryoshka-flatpak-update.timer 2>/dev/null || true
 true

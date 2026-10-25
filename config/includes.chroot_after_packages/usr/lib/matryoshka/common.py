@@ -199,7 +199,7 @@ def shared_dir():
 def prep_wine():
     s = shared_dir(); dd = os.path.join(HOME, ".wine", "dosdevices")
     if not os.path.isdir(dd):
-        run(["wineboot", "-i"], env=dict(os.environ, WINEDLLOVERRIDES="mscoree,mshtml="), timeout=300)
+        run(["wineboot", "-i"], env=dict(os.environ, LANG="ru_RU.UTF-8"), timeout=600)
     link = os.path.join(dd, "s:")
     if os.path.isdir(dd) and not os.path.islink(link):
         os.symlink(s, link)

@@ -1,0 +1,9 @@
+[Unit]
+Description=Матрёшка: обновление Flatpak
+After=network-online.target
+
+[Service]
+Type=oneshot
+Nice=19
+IOSchedulingClass=idle
+ExecStart=/bin/sh -c 'nmcli -t networking | grep -q enabled && flatpak update --system -y --noninteractive || true'

@@ -1,0 +1,12 @@
+[Unit]
+Description=Матрёшка: восстановление прерванного обновления
+After=local-fs.target
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'if [ -n "$(ls -A /var/lib/dpkg/updates 2>/dev/null)" ] || dpkg --audit 2>/dev/null | grep -q .; then echo "прерванное обновление найдено, чиню"; dpkg --configure -a; DEBIAN_FRONTEND=noninteractive apt-get -f install -y; else echo "dpkg в порядке"; fi'
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

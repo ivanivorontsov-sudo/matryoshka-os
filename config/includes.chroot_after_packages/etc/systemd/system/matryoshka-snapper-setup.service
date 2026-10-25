@@ -1,0 +1,11 @@
+[Unit]
+Description=Матрёшка: снимки btrfs после установки
+ConditionPathExists=!/etc/snapper/configs/root
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '[ "$(findmnt -no FSTYPE /)" = btrfs ] && ! grep -q boot=live /proc/cmdline && snapper -c root create-config / && snapper -c root create -d "после установки" && systemctl enable --now snapper-timeline.timer snapper-cleanup.timer || true'
+
+[Install]
+WantedBy=multi-user.target

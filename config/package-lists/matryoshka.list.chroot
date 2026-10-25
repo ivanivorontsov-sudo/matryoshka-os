@@ -281,3 +281,11 @@ nodejs
 npm
 libpwquality-tools
 winetricks
+fonts-wine
+mesa-vulkan-drivers
+libvulkan1
+vulkan-tools
+libfuse2t64
+usbmuxd
+libimobiledevice-utils
+aria2
