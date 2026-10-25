@@ -143,5 +143,12 @@ case "$cmd" in
     else echo "в обновлении нет apply.sh или config/"; ok=0; fi
     if [ $ok = 1 ]; then echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО"; rm -rf $W; exit 0; fi
     if [ -n "$S" ]; then snapper -c root undochange $S..0 && echo "ОШИБКА: изменения откачены к снимку $S"; else echo "ОШИБКА, снимка нет"; fi; exit 7 ;;
+  android-arm)
+    [ "$1" = libndk ] || [ "$1" = libhoudini ] || exit 2
+    nmcli -t networking | grep -q enabled || { echo "Сеть выключена"; exit 4; }
+    d=/var/lib/matryoshka/waydroid_script; rm -rf $d; git clone --depth 1 https://github.com/casualsnek/waydroid_script $d || exit 5
+    python3 -m venv $d/venv && $d/venv/bin/pip install -q -r $d/requirements.txt || exit 5
+    waydroid session stop 2>/dev/null; $d/venv/bin/python3 $d/main.py install "$1" || exit 6
+    systemctl restart waydroid-container && echo "$1 установлен" ;;
   *) echo "unknown"; exit 1 ;;
 esac
