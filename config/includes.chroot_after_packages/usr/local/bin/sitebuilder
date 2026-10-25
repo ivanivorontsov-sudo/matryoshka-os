@@ -1,6 +1,7 @@
 #!/bin/sh
 python3 -c "import sys; sys.path.insert(0, \"/usr/lib/matryoshka\"); import common; common.prep_wine()"
-export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--no-sandbox --disable-gpu"
+export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--no-sandbox"
+for e in msedgewebview2.exe msedge.exe SiteBuilder.exe; do wine reg add "HKCU\\Software\\Wine\\AppDefaults\\$e" /v Version /d win7 /f >/dev/null 2>&1; done
 P="$HOME/.wine/drive_c/Program Files (x86)/Microsoft/EdgeWebView/Application"
 if ! ls "$P"/*/msedgewebview2.exe >/dev/null 2>&1; then
   if ! nmcli -t networking | grep -q enabled; then kdialog --title "Конструктор сайтов" --error "Для первого запуска нужен компонент Microsoft WebView2 (около 180 МБ, бесплатно с сайта Microsoft). Включите сеть и запустите конструктор ещё раз."; exit 1; fi
