@@ -1,0 +1,76 @@
+#!/bin/bash
+set -euo pipefail
+MIRROR=${MATRYOSHKA_MIRROR:-https://github.com/ivanivorontsov-sudo/matryoshka-updates/releases/latest/download}
+MANIFEST_SHA=${MATRYOSHKA_MANIFEST_SHA:-}
+die() { echo "ОШИБКА: $*" >&2; exit 1; }
+say() { echo ">>> $*"; }
+[ "$(id -u)" = 0 ] || exec sudo -E "$0" "$@"
+LIVE=$(blkid -L MATRYOSHKA 2>/dev/null || true)
+[ -b "$LIVE" ] || die "раздел MATRYOSHKA не найден"
+[ "$(blkid -s TYPE -o value "$LIVE")" = vfat ] || die "$LIVE не FAT32, обновление остановлено"
+for f in /run/matryoshka-recover-source /var/lib/matryoshka/recover-source; do
+  [ -f "$f" ] && [ "$(cat "$f")" = "$LIVE" ] && die "$LIVE отмечен как источник восстановления"
+done
+MED=$(findmnt -no SOURCE /run/live/medium 2>/dev/null || true)
+MFS=$(findmnt -no FSTYPE /run/live/medium 2>/dev/null || true)
+W=/run/matryoshka-update-target
+if [ "$MED" = "$LIVE" ] && [ "$MFS" != tmpfs ]; then
+  mount -o remount,rw /run/live/medium || die "не удалось открыть $LIVE для записи"
+  cfg=/run/live/medium/boot/grub/grub.cfg
+  if ! grep -q "matryoshka.update" "$cfg"; then
+    cp "$cfg" "$cfg.bak-update"
+    k=$(sed -n 's/^[[:space:]]*linux[[:space:]]\+\(\/live\/vmlinuz[^ ]*\).*/\1/p' "$cfg" | head -n1)
+    i=$(sed -n 's/^[[:space:]]*initrd[[:space:]]\+\(\/live\/initrd[^ ]*\).*/\1/p' "$cfg" | head -n1)
+    a=$(sed -n 's/^[[:space:]]*linux[[:space:]]\+\/live\/vmlinuz[^ ]* \(.*\)$/\1/p' "$cfg" | head -n1)
+    [ -n "$k" ] && [ -n "$i" ] || die "не удалось разобрать grub.cfg"
+    { sed -n '1,/^set timeout/p' "$cfg"; printf 'set default=0\nmenuentry "Обновить Матрёшку (система в память)" {\n\tlinux\t%s %s toram matryoshka.update\n\tinitrd\t%s\n}\n' "$k" "$a" "$i"; sed '1,/^set timeout/d' "$cfg"; } > "$cfg.new"
+    mv "$cfg.new" "$cfg"
+  fi
+  sync; mount -o remount,ro /run/live/medium || true
+  echo
+  echo "Шаг 1 из 2 готов: в меню загрузки добавлен пункт «Обновить Матрёшку (система в память)»."
+  echo "Перезагрузите компьютер. Обновление запустится само (в build17.1 — выполните эту же команду ещё раз после перезагрузки)."
+  exit 0
+fi
+mkdir -p $W
+mountpoint -q $W || mount -t vfat -o rw,utf8,umask=022 "$LIVE" $W
+[ "$(findmnt -no SOURCE $W)" = "$LIVE" ] || die "раздел смонтирован не туда"
+trap 'sync; umount $W 2>/dev/null || true' EXIT
+fetch() { curl -fL --retry 10 --retry-delay 5 --retry-all-errors -C - -o "$2" "$MIRROR/$1"; }
+say "Загрузка списка файлов"
+fetch live-update.txt /run/live-update.txt
+if [ -n "$MANIFEST_SHA" ]; then echo "$MANIFEST_SHA  /run/live-update.txt" | sha256sum -c --quiet || die "список файлов повреждён или подменён"; fi
+grep -q '^#matryoshka-live-update 1' /run/live-update.txt || die "неизвестный формат обновления"
+SQ_SHA=$(awk '$1=="squashfs"{print $2}' /run/live-update.txt); SQ_SIZE=$(awk '$1=="squashfs"{print $3}' /run/live-update.txt)
+free=$(df -B1 --output=avail $W | tail -1); old=$(stat -c %s $W/live/filesystem.squashfs 2>/dev/null || echo 0)
+[ $((free + old)) -gt $((SQ_SIZE + 200*1024*1024)) ] || die "на $LIVE мало места"
+say "Загрузка новой системы ($((SQ_SIZE/1048576)) МБ) прямо на $LIVE"
+st=$W/live/.update-state; new=$W/live/filesystem.squashfs.new
+[ -f $st ] && [ "$(head -n1 $st)" = "$SQ_SHA" ] || { rm -f $new; echo "$SQ_SHA" > $st; }
+if [ "$old" -gt 0 ] && [ $((free)) -lt $((SQ_SIZE + 100*1024*1024)) ]; then rm -f $W/live/filesystem.squashfs; fi
+for name in $(awk '$1=="part"{print $4}' /run/live-update.txt); do
+  grep -qx "done $name" $st && continue
+  psha=$(awk -v n=$name '$1=="part"&&$4==n{print $2}' /run/live-update.txt)
+  for try in 1 2 3; do
+    fetch "$name" /run/live-part && echo "$psha  /run/live-part" | sha256sum -c --quiet && break
+    rm -f /run/live-part; [ $try = 3 ] && die "часть $name не скачалась, запустите обновление ещё раз — оно продолжится"
+  done
+  cat /run/live-part >> $new; rm -f /run/live-part; sync
+  echo "done $name" >> $st; say "часть $name готова"
+done
+say "Проверка SHA256 новой системы"
+echo "$SQ_SHA  $new" | sha256sum -c --quiet || { rm -f $new $st; die "контрольная сумма не совпала, запустите обновление заново"; }
+for kind in kernel initrd grubcfg diskinfo; do
+  awk -v k=$kind '$1==k{print $2, $4, $5}' /run/live-update.txt | while read -r sha name dst; do
+    fetch "$name" /run/live-file; echo "$sha  /run/live-file" | sha256sum -c --quiet || die "$name повреждён"
+    mkdir -p "$(dirname "$W/$dst")"; cp /run/live-file "$W/$dst.new"; rm -f /run/live-file
+  done
+done
+mv -f $new $W/live/filesystem.squashfs
+for kind in kernel initrd grubcfg diskinfo; do
+  awk -v k=$kind '$1==k{print $5}' /run/live-update.txt | while read -r dst; do mv -f "$W/$dst.new" "$W/$dst"; done
+done
+newk=$(awk '$1=="kernel"{print $5}' /run/live-update.txt); newi=$(awk '$1=="initrd"{print $5}' /run/live-update.txt)
+for f in $W/live/vmlinuz-* $W/live/initrd.img-*; do case "/${f#$W/}" in "$newk"|"$newi") ;; *) rm -f "$f" ;; esac; done
+rm -f $st; sync
+say "Обновление установлено. Перезагрузите компьютер."

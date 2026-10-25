@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Восстановление файлов
+Comment=Спасти файлы с испорченного или переформатированного диска, ничего на него не записывая
+Exec=matryoshka-recover
+Icon=drive-harddisk
+Categories=System;Utility;

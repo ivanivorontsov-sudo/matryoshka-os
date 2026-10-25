@@ -1,0 +1,50 @@
+#!/bin/bash
+[ "$(id -u)" = 0 ] || exec pkexec env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" XAUTHORITY="${XAUTHORITY:-}" "$0" "$@"
+T="Восстановление файлов"
+CORE=/usr/lib/matryoshka/recover-core.sh
+gb() { echo "$(( $1 / 1073741824 )),$(( ($1 % 1073741824) * 10 / 1073741824 ))"; }
+src=
+while read -r n t s fs lb; do
+  [ "$t" = part ] || continue
+  [ "$lb" = MATRYOSHKA ] && continue
+  case "$fs" in vfat|ntfs) [ "$s" -lt $((2*1073741824)) ] && continue ;; esac
+  [ -z "$src" ] || [ "$s" -gt "$best" ] && { src=$n; best=$s; }
+done < <(lsblk -rnbpo NAME,TYPE,SIZE,FSTYPE,LABEL | awk '{print $1,$2,$3,($4==""?"-":$4),($5==""?"-":$5)}')
+[ -n "$src" ] || { kdialog --error "Подходящий раздел для восстановления не найден."; exit 1; }
+kdialog --title "$T" --yesno "Спасаем файлы с раздела $src ($(gb $best) ГБ) — бывший диск C:.\n\nРаздел переводится в режим ТОЛЬКО ЧТЕНИЕ, на него ничего не записывается.\n\nВерно?" --yes-label "Да, начать" --no-label "Выбрать другой" || {
+  items=(); while read -r n s f l; do items+=("$n" "$n $s $f $l" off); done < <(lsblk -rnpo NAME,SIZE,FSTYPE,LABEL | awk 'NF>=2 && $1 ~ /[0-9]$/')
+  src=$(kdialog --title "$T" --radiolist "Раздел, с которого спасать:" "${items[@]}") || exit 0; }
+"$CORE" protect "$src" >/dev/null || { kdialog --error "Не удалось защитить $src от записи. Остановлено."; exit 1; }
+for d in $(lsblk -rnpo NAME,TRAN | awk '$2=="usb"{print $1}'); do for p in $(lsblk -rnpo NAME "$d" | tail -n +2); do findmnt -rn -S "$p" >/dev/null || udisksctl mount -b "$p" >/dev/null 2>&1; done; done
+opts=(); def=
+for d in $(lsblk -rnpo NAME,TRAN | awk '$2=="usb"{print $1}'); do for p in $(lsblk -rnpo NAME "$d"); do m=$(findmnt -rno TARGET -S "$p" | head -n1); [ -n "$m" ] && { opts+=("$m" "Внешний диск $p (свободно $(df -h --output=avail "$m" | tail -1 | tr -d ' '))" off); def=${def:-$m}; }; done; done
+LIVE=$(blkid -L MATRYOSHKA 2>/dev/null)
+if [ -n "$LIVE" ] && [ "$LIVE" != "$src" ]; then
+  m=$(findmnt -rno TARGET -S "$LIVE" | head -n1)
+  if [ -z "$m" ]; then mkdir -p /run/matryoshka-p4; mount -t vfat -o rw,utf8 "$LIVE" /run/matryoshka-p4 && m=/run/matryoshka-p4; else mount -o remount,rw "$m" 2>/dev/null; fi
+  [ -n "$m" ] && [ -w "$m" ] && { mkdir -p "$m/Спасённое"; opts+=("$m/Спасённое" "Раздел Матрёшки $LIVE на этом ноутбуке (свободно $(df -h --output=avail "$m" | tail -1 | tr -d ' '), только документы и фото)" off); def=${def:-$m/Спасённое}; }
+fi
+ram=$(( $(awk '/MemAvailable/{print $2}' /proc/meminfo) * 1024 / 2 ))
+opts+=("ram" "Оперативная память ($(gb $ram) ГБ), потом загрузка в облако (Яндекс Диск / Google Диск)" off)
+rec=$(lsblk -rnpo NAME,PARTTYPE | awk '$2=="de94bba4-06d1-4d40-a16a-bfd50179d6ac"{print $1; exit}')
+[ -n "$rec" ] && [ "$rec" != "$src" ] && opts+=("winre" "Раздел восстановления Windows $rec (маленький; его содержимое будет стёрто)" off)
+def=${def:-ram}
+for ((i=0;i<${#opts[@]};i+=3)); do [ "${opts[i]}" = "$def" ] && opts[i+2]=on; done
+dest=$(kdialog --title "$T" --radiolist "Куда сохранять (выбран самый безопасный вариант):" "${opts[@]}") || exit 0
+if [ "$dest" = ram ]; then mkdir -p /run/matryoshka-recovered; mountpoint -q /run/matryoshka-recovered || mount -t tmpfs -o size=$ram tmpfs /run/matryoshka-recovered; dest=/run/matryoshka-recovered; fi
+if [ "$dest" = winre ]; then
+  kdialog --title "ВНИМАНИЕ" --warningcontinuecancel "Раздел $rec будет ОТФОРМАТИРОВАН. Windows уже стёрта, поэтому этот раздел не нужен, но восстановить Windows из него будет нельзя.\n\nПродолжить?" || exit 0
+  mkfs.ntfs -Q -F -L Спасённое "$rec" >/dev/null && mkdir -p /run/matryoshka-winre && mount -t ntfs3 "$rec" /run/matryoshka-winre && dest=/run/matryoshka-winre || { kdialog --error "Не удалось подготовить $rec"; exit 1; }
+fi
+"$CORE" backup "$src" "$dest" > /run/matryoshka-recover-backup.log 2>&1
+found=$("$CORE" probe "$src")
+kind=docs
+case "$dest" in /run/matryoshka-recovered|/media/*|/run/media/*) kind=all ;; esac
+if [ "$found" != none ]; then
+  kdialog --title "$T" --yesno "Найдены следы старого раздела Windows (загрузочная запись NTFS: $found).\n\nМожно попробовать вернуть файлы С ИМЕНАМИ И ПАПКАМИ через TestDisk (пошаговая подсказка будет в окне). Резервная копия разметки уже сохранена.\n\nПопробовать сначала этот способ?" --yes-label "Да, TestDisk" --no-label "Нет, сразу PhotoRec" && { konsole --hold -e "$CORE" testdisk "$src" "$dest"; kdialog --title "$T" --yesno "Запустить ещё PhotoRec (найдёт файлы без имён)?" || exit 0; }
+fi
+konsole --hold -e "$CORE" photorec "$src" "$dest" "$kind"
+if [ "$dest" = /run/matryoshka-recovered ]; then
+  kdialog --title "$T" --yesno "Файлы сейчас в оперативной памяти и пропадут после выключения.\n\nЗагрузить их в облако (Яндекс Диск или Google Диск)?" && konsole --hold -e "$CORE" cloud /run/matryoshka-recovered
+fi
+kdialog --title "$T" --msgbox "Готово. Спасённые файлы: $dest"

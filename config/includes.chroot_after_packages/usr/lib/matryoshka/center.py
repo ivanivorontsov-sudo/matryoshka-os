@@ -191,7 +191,7 @@ class Center(QWidget):
         v.addWidget(btn("Личный сейф (Plasma Vault, второй слой шифрования)", lambda: subprocess.Popen(["systemsettings", "kcm_plasmavault"])))
     def p_install(self, v):
         v.addWidget(QLabel("<h2>Установка на диск</h2>Мастер проверит Windows (BitLocker, быстрый запуск, свободное место, раздел EFI) и не даст начать в опасном состоянии. Загрузчик Windows не удаляется: в меню появятся «Матрёшка» и «Windows Boot Manager».", wordWrap=True))
-        o = self.out(v); go = btn("Запустить установщик", lambda: subprocess.Popen(["sudo", "-E", "calamares"])); go.setEnabled(False)
+        o = self.out(v); go = btn("Запустить установщик", lambda: subprocess.Popen(["/usr/lib/matryoshka/install-launch.sh"])); go.setEnabled(False)
         def check():
             o.setPlainText("Проверяю диски…"); QApplication.processEvents()
             try: r = json.loads(C.root("install-check").stdout)
