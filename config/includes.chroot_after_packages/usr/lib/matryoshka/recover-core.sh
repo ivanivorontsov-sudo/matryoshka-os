@@ -22,7 +22,7 @@ check_dest() {
 }
 types() {
   case "$1" in
-    docs) echo "fileopt,everything,disable,jpg,enable,png,enable,heic,enable,tif,enable,pdf,enable,doc,enable,zip,enable,txt,enable,rtf,enable,mov,enable,mp3,enable,psd,enable,rar,enable,7z,enable" ;;
+    docs) echo "fileopt,everything,disable,jpg,enable,png,enable,tif,enable,pdf,enable,doc,enable,zip,enable,txt,enable,mov,enable,mp3,enable,psd,enable,rar,enable,7z,enable" ;;
     *) echo "fileopt,everything,enable" ;;
   esac
 }
