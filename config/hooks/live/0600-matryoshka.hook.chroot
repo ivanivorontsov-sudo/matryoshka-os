@@ -61,6 +61,7 @@ rfkill unblock all 2>/dev/null || true
 ufw allow in on wl+ to any port 67 proto udp comment "hotspot DHCP" >/dev/null 2>&1 || true
 ufw allow in on wl+ to any port 53 comment "hotspot DNS" >/dev/null 2>&1 || true
 ufw route allow in on wl+ comment "hotspot sharing" >/dev/null 2>&1 || true
+sed -i "s#^Exec=.*#Exec=/usr/lib/matryoshka/install-launch.sh#" /usr/share/applications/calamares-install-debian.desktop 2>/dev/null || true
 sed -i "s/^Name=.*/Name=Установить Матрёшку/; s/^Name\[\(.*\)\]=.*/Name[\1]=Установить Матрёшку/" /usr/share/applications/calamares-install-debian.desktop 2>/dev/null || true
 update-cracklib 2>/dev/null; ls /var/cache/cracklib/cracklib_dict.pwd >/dev/null 2>&1 || create-cracklib-dict /usr/share/dict/cracklib-small /usr/share/dict/words 2>/dev/null || true
 f=/etc/calamares/modules/users.conf

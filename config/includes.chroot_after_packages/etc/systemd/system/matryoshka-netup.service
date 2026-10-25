@@ -4,3 +4,6 @@ Description=Matryoshka: updates after the user turned network on
 [Service]
 Type=oneshot
 ExecStart=/usr/lib/matryoshka/netup.sh
+Nice=19
+IOSchedulingClass=idle
+CPUSchedulingPolicy=idle
