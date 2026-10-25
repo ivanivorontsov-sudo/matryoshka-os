@@ -1,0 +1,14 @@
+[services][matryoshka-taskmanager.desktop]
+_launch=Ctrl+Shift+Esc\tCtrl+Alt+Del
+
+[services][org.kde.plasma-systemmonitor.desktop]
+_launch=none
+
+[ksmserver]
+Log Out=Ctrl+Alt+Shift+Del,Ctrl+Alt+Del,Выйти из системы
+
+[kwin]
+Kill Window=Ctrl+Alt+Esc,Ctrl+Alt+Esc,Принудительно закрыть окно
+
+[services][supersmart-exit.desktop]
+_launch=Meta+Esc

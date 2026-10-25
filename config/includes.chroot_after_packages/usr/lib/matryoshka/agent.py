@@ -123,6 +123,7 @@ class Agent(QWidget):
         sysm = SYSTEM % ("\n".join("- %s: %s" % kv for kv in TOOLS.items()), facts)
         return [{"role": "system", "content": sysm}] + [{"role": r, "content": t} for r, t in m["history"][-20:]]
     def ask(self, msgs):
+        if C.settings().get("ai_off"): raise SystemExit("ИИ выключен")
         b = self.back.currentData(); s = C.settings()
         if b == "local": return http_chat(s["local_url"].rstrip("/") + "/v1", s["local_model"], "", msgs)
         if b == "api": return http_chat(s["api_url"], s["api_model"], s["api_key"], msgs)
@@ -130,6 +131,7 @@ class Agent(QWidget):
     def hist(self, r, t):
         m = mem(); m["history"].append([r, t]); m["history"] = m["history"][-200:]; C.save("agent", m)
     def send(self):
+        if C.settings().get("ai_off"): self.show_msg("ИИ", "ИИ выключен в Центре → Защита."); return
         q = self.inp.text().strip()
         if not q: return
         self.inp.clear(); self.show_msg("Вы", q); self.hist("user", q); QApplication.processEvents(); self.turn(0)

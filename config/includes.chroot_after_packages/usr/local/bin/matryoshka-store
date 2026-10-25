@@ -1,0 +1,9 @@
+#!/bin/sh
+if ! nmcli -t networking | grep -q enabled; then
+  kdialog --title "Магазин приложений" --yesno "Магазину нужна сеть, а она сейчас выключена. Включить сеть?" && nmcli networking on && sleep 6
+fi
+kdialog --title "Магазин приложений" --passivepopup "Обновляю каталог программ, первый раз до минуты…" 8 &
+pkcon refresh >/dev/null 2>&1
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1
+flatpak update --user --appstream -y >/dev/null 2>&1
+exec plasma-discover "$@"

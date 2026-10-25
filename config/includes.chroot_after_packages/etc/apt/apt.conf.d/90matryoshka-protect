@@ -1,0 +1,4 @@
+DPkg::Pre-Install-Pkgs { "/usr/lib/matryoshka/protect.sh"; };
+DPkg::Tools::Options::/usr/lib/matryoshka/protect.sh::Version "2";
+APT::Periodic::Unattended-Upgrade "0";
+APT::Periodic::Update-Package-Lists "0";

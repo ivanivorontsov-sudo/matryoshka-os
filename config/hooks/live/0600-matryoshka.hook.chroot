@@ -2,14 +2,14 @@
 set -e
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends waydroid || echo "WAYDROID INSTALL FAILED"
-DEBIAN_FRONTEND=noninteractive apt-get purge -y popularity-contest avahi-daemon cups-browsed geoclue-2.0 modemmanager packagekit plasma-discover plasma-welcome kde-config-updates unattended-upgrades reportbug apt-listchanges 2>/dev/null || true
+DEBIAN_FRONTEND=noninteractive apt-get purge -y popularity-contest avahi-daemon cups-browsed geoclue-2.0 modemmanager plasma-welcome kde-config-updates reportbug apt-listchanges 2>/dev/null || true
 DEBIAN_FRONTEND=noninteractive apt-get autoremove -y --purge
-for t in apt-daily.timer apt-daily-upgrade.timer e2scrub_all.timer man-db.timer dpkg-db-backup.timer fwupd-refresh.timer; do systemctl mask $t || true; done
+for t in e2scrub_all.timer man-db.timer dpkg-db-backup.timer fwupd-refresh.timer; do systemctl mask $t || true; done
 systemctl disable clamav-freshclam.service || true
 systemctl enable clamav-daemon.service || true
 systemctl disable waydroid-container.service || true
-systemctl enable matryoshka-bootcheck.service matryoshka-bootok.service || true
-systemctl enable opensnitch.service 2>/dev/null || true
+systemctl enable matryoshka-bootcheck.service matryoshka-bootok.service matryoshka-sandbox-mode.service || true
+systemctl disable opensnitch.service 2>/dev/null || true
 if [ -d /usr/share/matryoshka/clamav ]; then cp /usr/share/matryoshka/clamav/*.cvd /var/lib/clamav/ && chown clamav:clamav /var/lib/clamav/*.cvd && rm -rf /usr/share/matryoshka/clamav; fi
 mkdir -p /var/lib/NetworkManager /var/lib/matryoshka
 printf '[main]\nNetworkingEnabled=false\nWirelessEnabled=true\nWWANEnabled=false\n' > /var/lib/NetworkManager/NetworkManager.state
@@ -26,4 +26,51 @@ mkdir -p /etc/fwupd && printf '[fwupd]\nOnlyTrusted=true\nUpdateMotd=false\n' > 
 sed -i 's/^Enabled=.*/Enabled=false/' /etc/fwupd/remotes.d/lvfs.conf 2>/dev/null || true
 sed -i 's/^Session=\${LIVE_SESSION}$/Session=plasma/' /usr/lib/live/config/0085-sddm
 for f in /usr/share/applications/calamares.desktop /usr/share/applications/install-debian.desktop; do if [ -f $f ]; then echo NoDisplay=true >> $f; fi; done
+pam-auth-update --disable fprintd 2>/dev/null || true
+sed -i '/pam_fprintd/d' /etc/pam.d/common-auth
+systemctl enable apparmor.service 2>/dev/null || true
+systemctl disable ssh.service 2>/dev/null || true
+chmod 640 /etc/shadow; chown root:shadow /etc/shadow
+systemctl mask lxc-net.service 2>/dev/null || true
+rm -f /usr/share/dbus-1/services/org.kde.kdeconnect.service
+ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf 2>/dev/null || true
+systemctl enable matryoshka-hosts.service matryoshka-resolv.service 2>/dev/null || true
+rm -f /etc/xdg/autostart/org.kde.kdeconnect.daemon.desktop
+grep -q '^ConcurrentDatabaseReload' /etc/clamav/clamd.conf && sed -i 's/^ConcurrentDatabaseReload.*/ConcurrentDatabaseReload no/' /etc/clamav/clamd.conf || echo 'ConcurrentDatabaseReload no' >> /etc/clamav/clamd.conf
+rm -f /usr/share/kio/servicemenus/*telnet* /usr/share/applications/*ktelnet* /usr/share/kservices6/*telnet* 2>/dev/null
+for f in /usr/share/applications/ktelnetservice*.desktop; do [ -f "$f" ] && rm -f "$f"; done
+sed -i 's/^Listen .*:631$/Listen localhost:631/; s/^Port 631$/Listen localhost:631/' /etc/cups/cupsd.conf 2>/dev/null || true
+sed -i 's/^Browsing .*/Browsing No/' /etc/cups/cupsd.conf 2>/dev/null || true
+f=/etc/calamares/modules/partition.conf
+if [ -f $f ]; then sed -i '/^enableLuksAutomatedPartitioning/d; /^luksGeneration/d' $f; printf 'enableLuksAutomatedPartitioning: true\nluksGeneration: luks2\n' >> $f; fi
+true
+systemctl enable zramswap.service earlyoom.service power-profiles-daemon.service systemd-timesyncd.service 2>/dev/null || true
+printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/91matryoshka-auto
+for t in apt-daily.timer apt-daily-upgrade.timer; do systemctl unmask $t; systemctl enable $t; done
+mkdir -p /etc/needrestart/conf.d && echo '$nrconf{restart} = "l";' > /etc/needrestart/conf.d/matryoshka.conf
+mkdir -p /etc/ssh/ssh_config.d && printf 'VerifyHostKeyDNS no\n' > /etc/ssh/ssh_config.d/matryoshka.conf
+systemctl enable grub-btrfsd.service 2>/dev/null || true
+rm -f /etc/xdg/autostart/org.kde.discover.notifier.desktop
+mkdir -p /etc/xdg && printf '[Global]\nUpdatesAvailable=false\n' > /etc/xdg/PlasmaDiscoverUpdates
+mkdir -p /etc/xdg/drkonqi && printf '[General]\nDisableSubmission=true\n' > /etc/xdg/drkonqirc
+systemctl mask usbguard.service 2>/dev/null || true
+rfkill unblock all 2>/dev/null || true
+ufw allow in on wl+ to any port 67 proto udp comment "hotspot DHCP" >/dev/null 2>&1 || true
+ufw allow in on wl+ to any port 53 comment "hotspot DNS" >/dev/null 2>&1 || true
+ufw route allow in on wl+ comment "hotspot sharing" >/dev/null 2>&1 || true
+sed -i "s/^Name=.*/Name=Установить Матрёшку/; s/^Name\[\(.*\)\]=.*/Name[\1]=Установить Матрёшку/" /usr/share/applications/calamares-install-debian.desktop 2>/dev/null || true
+update-cracklib 2>/dev/null; ls /var/cache/cracklib/cracklib_dict.pwd >/dev/null 2>&1 || create-cracklib-dict /usr/share/dict/cracklib-small /usr/share/dict/words 2>/dev/null || true
+f=/etc/calamares/modules/users.conf
+if [ -f $f ]; then sed -i '/^allowWeakPasswords/d; /^allowWeakPasswordsDefault/d' $f; python3 - $f <<'PY'
+import sys, re
+p = sys.argv[1]; s = open(p).read()
+s = re.sub(r"(?ms)^passwordRequirements:.*?(?=^\S)", "", s + "\n")
+s += "passwordRequirements:\n    nonempty: true\n    minLength: 1\n    maxLength: -1\n    libpwquality:\n        - minlen=6\n        - dictcheck=0\n        - usercheck=0\nallowWeakPasswords: true\nallowWeakPasswordsDefault: false\n"
+open(p, "w").write(s)
+PY
+fi
+mkdir -p /etc/security/pwquality.conf.d && printf 'dictcheck = 0\nenforcing = 0\n' > /etc/security/pwquality.conf.d/matryoshka.conf
+mkdir -p /media && chmod 755 /media
+[ -f /etc/xdg/menus/applications.menu ] || ln -sf plasma-applications.menu /etc/xdg/menus/applications.menu
+grep -l pam_sss /etc/pam.d/* 2>/dev/null | xargs -r sed -i '/pam_sss/d'
 true

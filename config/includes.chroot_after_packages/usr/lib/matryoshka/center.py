@@ -1,6 +1,6 @@
 import sys, os, json, secrets, subprocess, shutil
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QApplication, QWidget, QListWidget, QStackedWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QComboBox,
+from PyQt6.QtWidgets import (QInputDialog, QApplication, QWidget, QListWidget, QStackedWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QComboBox,
                              QLineEdit, QTextBrowser, QFileDialog, QMessageBox, QFormLayout, QCheckBox, QListWidgetItem)
 import common as C
 
@@ -16,7 +16,7 @@ class Center(QWidget):
         h.addWidget(self.nav); h.addWidget(self.stack, 1)
         for name, f in (("🎨 Вид и режим", self.p_look), ("🏠 Главный экран", self.p_launcher), ("🌐 Сеть", self.p_net), ("🛡 Защита", self.p_av),
                         ("📦 Программы", self.p_apps), ("🔌 Драйверы", self.p_drivers), ("♻ Восстановление", self.p_restore),
-                        ("💽 Установка на диск", self.p_install), ("🔒 Приватность", self.p_privacy)):
+                        ("💽 Установка на диск", self.p_install), ("🔒 Приватность", self.p_privacy), ("👆 Вход по пальцу и лицу", self.p_bio)):
             self.nav.addItem(name); w = QWidget(); v = QVBoxLayout(w); v.setAlignment(Qt.AlignmentFlag.AlignTop); f(v); self.stack.addWidget(w)
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex); self.nav.setCurrentRow(0)
         if len(sys.argv) > 1 and sys.argv[1].isdigit(): self.nav.setCurrentRow(int(sys.argv[1]))
@@ -83,9 +83,19 @@ class Center(QWidget):
         def ok():
             self.s.update(country=co.currentData(), ai=ai.currentData(), **{k: e.text() for k, e in fields.items()}); self.save()
         v.addWidget(btn("Сохранить", ok)); o = self.out(v)
+        off = QCheckBox("Выключить ИИ полностью (антивирус без объяснений, ИИ-управляющий недоступен)"); off.setChecked(bool(self.s.get("ai_off"))); off.toggled.connect(lambda x: (self.s.update(ai_off=x), self.save())); v.addWidget(off)
         def scan():
             d = QFileDialog.getExistingDirectory(self, "Папка для проверки", os.path.expanduser("~"))
             if d: o.setPlainText("Проверяю…"); QApplication.processEvents(); o.setPlainText(C.run([sys.executable, "/usr/lib/matryoshka/av.py", "scan", d]).stdout or "Угроз не найдено")
+        def lai():
+            if QMessageBox.question(self, "Умный антивирус", "Скачать локальную ИИ (Ollama + модель Qwen 2.5 по объёму памяти, 1–5 ГБ)? Она работает без интернета и ничего не отправляет. Работает с низким приоритетом.") != QMessageBox.StandardButton.Yes: return
+            o.setPlainText("Скачиваю…"); QApplication.processEvents(); r = C.root("ai-install"); o.setPlainText(r.stdout[-2000:] + r.stderr[-1500:])
+            m = open("/etc/matryoshka-ai.conf").read().split("=", 1)[1].strip() if os.path.exists("/etc/matryoshka-ai.conf") else ""
+            if m: self.s.update(ai="local", local_model=m, local_url="http://127.0.0.1:11434"); self.save()
+        v.addWidget(btn("Умный антивирус (локальная ИИ) — скачать", lai)); v.addWidget(btn("Удалить локальную ИИ", lambda: o.setPlainText(C.root("ai-remove").stdout)))
+        v.addWidget(btn("Проверить автозапуск, процессы и сеть", lambda: o.setPlainText(C.run([sys.executable, "/usr/lib/matryoshka/av.py", "audit"], timeout=600).stdout)))
+        fw = QCheckBox("Сетевой фильтр программ OpenSnitch (спрашивает о каждом новом подключении)"); fw.setChecked(C.run(["systemctl", "is-enabled", "opensnitch"]).stdout.strip() == "enabled"); fw.toggled.connect(lambda x: o.setPlainText(C.root("snitch-on" if x else "snitch-off").stdout)); v.addWidget(fw)
+        kc = QCheckBox("KDE Connect (связь с телефоном, слушает локальную сеть)"); kc.setChecked(os.path.exists(os.path.expanduser("~/.config/autostart/org.kde.kdeconnect.daemon.desktop"))); kc.toggled.connect(lambda x: C.kdeconnect(x)); v.addWidget(kc)
         v.addWidget(btn("Проверить папку", scan)); v.addWidget(btn("Песочница (одноразовая Матрёшка)", lambda: subprocess.Popen(["matryoshka-sandbox"]))); v.addWidget(btn("Другие системы в окне", lambda: subprocess.Popen(["matryoshka-vms"]))); v.addWidget(btn("Обновить базы (нужна сеть)", lambda: o.setPlainText(C.root("av-update").stdout)))
         st = C.run(["systemctl", "is-active", "clamav-daemon"]).stdout.strip(); g = C.run(["pgrep", "-f", "av.py guard"]).returncode == 0
         v.addWidget(QLabel("Движок ClamAV: %s · страж папок: %s" % (st, "работает" if g else "не запущен")))
@@ -105,7 +115,7 @@ class Center(QWidget):
         v.addWidget(btn("Открыть «Общее»", lambda: subprocess.Popen(["dolphin", C.shared_dir()])))
         v.addWidget(btn("Читалка для Android (установить APK)", lambda: subprocess.Popen(["matryoshka-run", "/usr/share/matryoshka/apk/Chitalka.apk"])))
         for t, c in (("Эмуляторы консолей", "matryoshka-emulators"), ("Песочница", "matryoshka-sandbox"), ("Другие системы (Linux, Windows, DOS)", "matryoshka-vms"),
-                     ("Вы программист? Языки и среды разработки", "matryoshka-dev"), ("ИванКод — редактор с Понятным", "ivankod"), ("ИИ-управляющий", "matryoshka-agent"), ("Бесконечная память", "matryoshka-cloud")):
+                     ("Вы программист? Языки и среды разработки", "matryoshka-dev"), ("ИванКод — редактор с Понятным", "ivankod"), ("ИИ-управляющий", "matryoshka-agent"), ("Бесконечная память", "matryoshka-cloud"), ("Удалить программы и «Обновить всё»", "matryoshka-apps"), ("Android-магазины (Google Play, RuStore)", "matryoshka-android")):
             v.addWidget(btn(t, lambda _=False, c=c: subprocess.Popen([c])))
         v.addWidget(QLabel("<h3>Свои сценарии</h3>Положите .js или .pon (Понятный) в ~/.config/matryoshka/scripts — они выполняются при входе в безопасной песочнице: могут менять тему, режим, вид, открывать программы и показывать уведомления, но не трогают файлы и системные части.", wordWrap=True))
         v.addWidget(btn("Открыть папку сценариев", lambda: (os.makedirs(os.path.join(C.CONF, "scripts"), exist_ok=True), subprocess.Popen(["dolphin", os.path.join(C.CONF, "scripts")]))))
@@ -160,6 +170,25 @@ class Center(QWidget):
         v.addWidget(btn("Выбрать папку…", lambda: repo.setText(QFileDialog.getExistingDirectory(self, "Папка", "/media") or repo.text())))
         v.addWidget(btn("Сделать копию домашней папки", bk)); v.addWidget(btn("Восстановить последнюю копию в ~/Восстановлено", rs))
         v.addWidget(QLabel("Ключ шифрования копий: %s — сохраните его отдельно." % pw))
+        def chk():
+            r = C.run(["restic", "check", "--read-data-subset=5%"], env=env()); o.setPlainText(r.stdout[-2000:] + r.stderr[-1000:])
+        v.addWidget(btn("Проверить целостность копий", chk))
+        def sched():
+            d = os.path.join(C.HOME, ".config/systemd/user"); os.makedirs(d, exist_ok=True); env()
+            open(os.path.join(d, "matryoshka-backup.service"), "w").write("[Service]\nType=oneshot\nEnvironment=RESTIC_REPOSITORY=%s\nEnvironment=RESTIC_PASSWORD_FILE=%s\nExecStart=/usr/bin/restic backup %s --exclude %s/.cache\nExecStartPost=/usr/bin/restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune\n" % (repo.text(), pw, C.HOME, C.HOME))
+            open(os.path.join(d, "matryoshka-backup.timer"), "w").write("[Timer]\nOnCalendar=daily\nPersistent=true\n[Install]\nWantedBy=timers.target\n")
+            r = C.run(["systemctl", "--user", "enable", "--now", "matryoshka-backup.timer"]); o.setPlainText("Ежедневная копия включена. " + r.stderr)
+        v.addWidget(btn("Делать копию каждый день", sched))
+        v.addWidget(QLabel("<b>Шифрование диска (LUKS2, AES-256)</b> — потеря пароля и ключа восстановления = потеря данных."))
+        def hdr():
+            d = QFileDialog.getExistingDirectory(self, "Флешка для заголовка LUKS", "/media")
+            if d: o.setPlainText(C.root("luks-header-backup", d).stdout)
+        v.addWidget(btn("Сохранить заголовок LUKS на флешку", hdr))
+        def rk():
+            p, ok = QInputDialog.getText(self, "Ключ восстановления", "Текущий пароль диска:", QLineEdit.EchoMode.Password)
+            if ok and p: o.setPlainText(C.root("luks-add-key", inp=p).stdout + "\nЗапишите ключ на бумаге или сохраните на флешку. В облако его не загружайте.")
+        v.addWidget(btn("Создать ключ восстановления диска", rk))
+        v.addWidget(btn("Личный сейф (Plasma Vault, второй слой шифрования)", lambda: subprocess.Popen(["systemsettings", "kcm_plasmavault"])))
     def p_install(self, v):
         v.addWidget(QLabel("<h2>Установка на диск</h2>Мастер проверит Windows (BitLocker, быстрый запуск, свободное место, раздел EFI) и не даст начать в опасном состоянии. Загрузчик Windows не удаляется: в меню появятся «Матрёшка» и «Windows Boot Manager».", wordWrap=True))
         o = self.out(v); go = btn("Запустить установщик", lambda: subprocess.Popen(["sudo", "-E", "calamares"])); go.setEnabled(False)
@@ -175,6 +204,21 @@ class Center(QWidget):
             if r["problems"]: html += "<h3 style='color:#d33'>Установка заблокирована, пока не исправлены пункты с ✖</h3>"
             o.setHtml(html); go.setEnabled(not r["problems"])
         v.addWidget(btn("1. Проверить компьютер", check)); v.addWidget(go)
+    def p_bio(self, v):
+        v.addWidget(QLabel("<h2>Вход по пальцу и лицу</h2>Отпечаток и лицо открывают только экран входа и блокировки. Для прав администратора, установки системы, шифрованных дисков и «Бесконечной памяти» всегда нужен пароль.", wordWrap=True))
+        o = self.out(v)
+        def r(*a):
+            x = C.root("bio", *a); o.setPlainText((x.stdout + x.stderr)[-3000:] or "готово")
+        v.addWidget(QLabel("<h3>Отпечаток пальца</h3>"))
+        v.addWidget(btn("Записать отпечаток", lambda: subprocess.Popen(["konsole", "--hold", "-e", "fprintd-enroll"])))
+        v.addWidget(btn("Включить вход по отпечатку", lambda: r("finger-login-on"))); v.addWidget(btn("Выключить вход по отпечатку", lambda: r("finger-login-off")))
+        sd = QCheckBox("Разрешить отпечаток для sudo в терминале (по желанию)"); sd.toggled.connect(lambda x: r("finger-sudo-on" if x else "finger-sudo-off")); v.addWidget(sd)
+        v.addWidget(QLabel("<h3>Лицо (Howdy, любая веб-камера)</h3><b>Внимание:</b> обычную веб-камеру можно обмануть фотографией. Поэтому лицо — только для удобства на экране входа и блокировки. ИК-камеры (Windows Hello) намного надёжнее.", wordWrap=True))
+        def inst():
+            if not C.net_on(): o.setPlainText("Включите сеть: Howdy и модели скачиваются с GitHub."); return
+            subprocess.Popen(["konsole", "--hold", "-e", "pkexec", "/usr/lib/matryoshka/root.sh", "bio", "face-install"]); o.setPlainText("Установка Howdy идёт в отдельном окне (10–30 минут)…")
+        v.addWidget(btn("Установить распознавание лица", inst)); v.addWidget(btn("Записать лицо", lambda: subprocess.Popen(["konsole", "--hold", "-e", "pkexec", "/usr/lib/matryoshka/root.sh", "bio", "face-add"])))
+        v.addWidget(btn("Включить вход по лицу", lambda: r("face-login-on"))); v.addWidget(btn("Выключить вход по лицу", lambda: r("face-login-off")))
     def p_privacy(self, v):
         v.addWidget(QLabel("<h2>Приватность</h2>Здесь видно всё, что может ходить в сеть. Без вашего включения сети не работает ничего.", wordWrap=True))
         o = self.out(v)

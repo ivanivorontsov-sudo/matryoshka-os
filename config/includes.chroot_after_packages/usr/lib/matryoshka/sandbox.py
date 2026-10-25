@@ -31,7 +31,7 @@ class Sandbox(QWidget):
         for p in glob.glob(os.path.join(C.HOME, "Загрузки", "*.iso")) + glob.glob(os.path.join(C.HOME, "Downloads", "*.iso")): self.img.addItem(os.path.basename(p), p)
         h = QHBoxLayout(); h.addWidget(self.img, 1); b = QPushButton("Другой ISO…"); b.clicked.connect(self.pick); h.addWidget(b); v.addLayout(h)
         self.net = QCheckBox("Интернет внутри (по умолчанию выключен)"); v.addWidget(self.net)
-        self.share = QCheckBox("Папка «Общее» внутри (только чтение)"); self.share.setChecked(True); v.addWidget(self.share)
+        self.share = QCheckBox("Папка «Общее» внутри (только чтение)"); v.addWidget(self.share)
         self.clip = QCheckBox("Общий буфер обмена"); v.addWidget(self.clip)
         self.keep = QCheckBox("Сохранять изменения между запусками (отдельный диск)"); v.addWidget(self.keep)
         h2 = QHBoxLayout(); h2.addWidget(QLabel("Память, ГБ:")); self.mem = QSpinBox(); self.mem.setRange(1, 16); self.mem.setValue(2); h2.addWidget(self.mem); v.addLayout(h2)
@@ -43,11 +43,15 @@ class Sandbox(QWidget):
         src = self.img.currentData()
         if not src: return None
         if src.startswith("/dev/"): C.root("sandbox-grant", src)
-        a = ["qemu-system-x86_64", "-m", str(self.mem.value() * 1024), "-smp", "2", "-name", "Песочница", "-display", "gtk", "-vga", "virtio", "-usb", "-device", "usb-tablet"]
+        a = ["qemu-system-x86_64", "-sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny", "-nodefaults", "-m", str(self.mem.value() * 1024), "-smp", "2", "-name", "Песочница", "-display", "gtk", "-vga", "virtio", "-usb", "-device", "usb-tablet"]
         a += ["-accel", "kvm", "-cpu", "host"] if self.kvm else ["-accel", "tcg,thread=multi", "-cpu", "max"]
+        if src.startswith("/dev/"):
+            k = sorted(glob.glob("/run/live/medium/live/vmlinuz*")); i = sorted(glob.glob("/run/live/medium/live/initrd*"))
+            if k and i:
+                a += ["-kernel", k[-1], "-initrd", i[-1], "-append", "boot=live components quiet splash locales=ru_RU.UTF-8 keyboard-layouts=us,ru keyboard-options=grp:alt_shift_toggle timezone=Asia/Vladivostok hostname=sandbox username=ivan user-fullname=Иван matryoshka.sandbox"]
         if src.endswith(".iso"): a += ["-cdrom", src]
         else: a += ["-drive", "file=%s,format=raw,if=virtio,readonly=on,snapshot=on" % src if src.startswith("/dev/") else "file=%s,if=virtio,snapshot=on" % src]
-        a += ["-nic", "user,model=virtio-net-pci"] if self.net.isChecked() else ["-nic", "none"]
+        a += ["-nic", "user,model=virtio-net-pci,ipv6=off"] if self.net.isChecked() else ["-nic", "none"]
         if self.share.isChecked(): a += ["-virtfs", "local,path=%s,mount_tag=shared,security_model=none,readonly=on" % C.shared_dir()]
         if self.clip.isChecked(): a += ["-chardev", "qemu-vdagent,id=vda,clipboard=on", "-device", "virtio-serial-pci", "-device", "virtserialport,chardev=vda,name=com.redhat.spice.0"]
         if self.keep.isChecked():

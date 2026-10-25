@@ -53,6 +53,12 @@ def cmdline():
     except Exception:
         return ""
 
+def live():
+    return "boot=live" in cmdline()
+
+def persistent():
+    return os.path.isdir("/run/live/persistence") and bool(os.listdir("/run/live/persistence"))
+
 def safe_mode():
     return "matryoshka.safe" in cmdline()
 
@@ -61,12 +67,16 @@ def simple():
 
 def run(args, **kw):
     try:
+        kw.setdefault("timeout", 120); kw.setdefault("stdin", None if "input" in kw else subprocess.DEVNULL)
         return subprocess.run(args, capture_output=True, text=True, **kw)
     except Exception as e:
         return subprocess.CompletedProcess(args, 127, "", str(e))
 
 def root(*args, inp=None):
-    return run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", *args], input=inp)
+    r = run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", *args], input=inp, timeout=7200)
+    if r.returncode != 0 and "password" in (r.stderr or "").lower():
+        r = run(["pkexec", "/usr/lib/matryoshka/root.sh", *args], input=inp, timeout=7200)
+    return r
 
 def kwrite(file, group, key, value):
     run(["kwriteconfig6", "--file", file, "--group", group, "--key", key, str(value)])
@@ -78,6 +88,17 @@ def apply_mode(mode):
     for eff in ("blur", "contrast", "magiclamp", "wobblywindows", "slidingpopups", "fadingpopups", "scale", "glide"):
         kwrite("kwinrc", "Plugins", eff + "Enabled", "true" if on and eff in ("blur", "contrast", "magiclamp", "slidingpopups", "fadingpopups", "scale") else "false")
     kwrite("plasmarc", "Theme", "name", "default")
+    kwrite("kwinrc", "Compositing", "LatencyPolicy", "Medium" if on else "High")
+    for eff in ("kwin4_effect_translucency", "kwin4_effect_dimscreen", "slide", "desktopgrid", "overview", "screenedge"):
+        kwrite("kwinrc", "Plugins", eff + "Enabled", "true" if on else "false")
+    kwrite("baloofilerc", "Basic Settings", "Indexing-Enabled", "true" if on else "false")
+    run(["balooctl6", "enable" if on else "disable"])
+    kwrite("kdedrc", "Module-browserintegrationreminder", "autoload", "false")
+    for svc in ("kdeconnectd", "opensnitch-ui", "easyeffects", "kaccess", "xembedsniproxy"):
+        if not on: run(["pkill", "-x", svc])
+    kwrite("klaunchrc", "BusyCursorSettings", "Bouncing", "true" if on else "false")
+    kwrite("ksplashrc", "KSplash", "Engine", "KSplashQML" if on else "none")
+    kwrite("ksplashrc", "KSplash", "Theme", "org.kde.breeze.desktop" if on else "None")
     run(["busctl", "--user", "call", "org.kde.KWin", "/KWin", "org.kde.KWin", "reconfigure"])
 
 def write_colorscheme(key):
@@ -190,3 +211,13 @@ def qt_ru(app):
         t = QTranslator()
         if t.load(n, QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)):
             app.installTranslator(t); app._tr.append(t)
+
+def kdeconnect(on):
+    a = os.path.expanduser("~/.config/autostart/org.kde.kdeconnect.daemon.desktop")
+    if on:
+        os.makedirs(os.path.dirname(a), exist_ok=True)
+        open(a, "w").write("[Desktop Entry]\nType=Application\nName=KDE Connect\nExec=/usr/bin/kdeconnectd\nX-KDE-autostart-phase=1\n")
+        subprocess.Popen(["/usr/bin/kdeconnectd"])
+    else:
+        if os.path.exists(a): os.remove(a)
+        subprocess.run(["pkill", "-x", "kdeconnectd"])

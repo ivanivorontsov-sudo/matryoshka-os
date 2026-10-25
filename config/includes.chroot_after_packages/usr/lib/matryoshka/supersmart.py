@@ -56,7 +56,7 @@ class Home(QWidget):
         self.home_mode = home_mode
         self.s = C.settings(); self.t = C.THEMES.get(self.s["theme"], C.THEMES["matryoshka"])
         self.setWindowTitle("СуперСмарт"); self.setWindowFlags(Qt.WindowType.FramelessWindowHint | (Qt.WindowType.WindowStaysOnBottomHint if home_mode else Qt.WindowType.Window))
-        self.apps = C.desktop_apps(); self.fav = C.load("favorites", ["Firefox ESR", "Матрёшка Офис", "Dolphin", "Читалка", "Центр Матрёшки", "Konsole"])
+        self.apps = C.desktop_apps(); self.fav = C.load("favorites", ["Firefox ESR", "Матрёшка Офис", "Dolphin", "Читалка", "Центр Матрёшки", "Диспетчер задач", "Konsole"])
         t = self.t
         self.setStyleSheet("QWidget{color:%s;font-size:11pt} QLineEdit{background:%s;border:2px solid %s;border-radius:22px;padding:10px 20px;font-size:15pt} QPushButton{background:%s;border:none;border-radius:16px;padding:8px 16px} QPushButton:hover{background:%s;color:%s} QScrollArea{background:transparent;border:none} QTabBar::tab{background:transparent;padding:8px 14px;color:%s} QTabBar::tab:selected{color:%s;border-bottom:3px solid %s} QScrollBar:vertical{background:transparent;width:8px} QScrollBar::handle:vertical{background:rgba(255,255,255,60);border-radius:4px} QScrollBar::add-line,QScrollBar::sub-line{height:0}" % (t["fg"], t["bg2"], t["accent"], t["bg2"], t["accent"], t["bg"], t["dim"], t["fg"], t["accent"]))
         v = QVBoxLayout(self); v.setContentsMargins(60, 40, 60, 30); v.setSpacing(14)
@@ -68,8 +68,9 @@ class Home(QWidget):
         modeb = QPushButton("Простой режим" if not C.simple() else "Стандартный режим"); modeb.clicked.connect(self.toggle_mode)
         cb = QPushButton("⚙ Центр"); cb.clicked.connect(lambda: (subprocess.Popen(["matryoshka-center"]), self.done()))
         top.addWidget(self.netb); top.addWidget(modeb); top.addWidget(cb)
-        if not home_mode:
-            xb = QPushButton("✕"); xb.clicked.connect(self.close); top.addWidget(xb)
+        ab = QPushButton("🤖 Android"); ab.clicked.connect(lambda: (subprocess.Popen(["supersmart", "--android"]), self.close())); top.addWidget(ab)
+        sb = QPushButton("⚙ Настройки"); sb.clicked.connect(lambda: subprocess.Popen(["systemsettings"])); top.addWidget(sb)
+        xb = QPushButton("⌂ На рабочий стол"); xb.clicked.connect(self.close); top.addWidget(xb)
         v.addLayout(top)
         self.q = QLineEdit(); self.q.setPlaceholderText("Поиск: можно по-русски, транслитом или в другой раскладке (ntktuhfv → телеграм)")
         self.q.textChanged.connect(self.refill); self.q.returnPressed.connect(self.first)
@@ -108,7 +109,7 @@ class Home(QWidget):
         if it: C.launch(it[0]); self.done()
     def resizeEvent(self, e): self.refill()
     def keyPressEvent(self, e):
-        if e.key() == Qt.Key.Key_Escape: self.done()
+        if e.key() == Qt.Key.Key_Escape: self.close()
         elif e.text() and not self.q.hasFocus(): self.q.setFocus(); self.q.setText(self.q.text() + e.text())
     def done(self):
         if self.home_mode: self.q.clear()
@@ -123,9 +124,35 @@ class Home(QWidget):
         if not C.simple():
             self.setWindowOpacity(0); a = QPropertyAnimation(self, b"windowOpacity", self); a.setDuration(220); a.setStartValue(0.0); a.setEndValue(1.0); a.setEasingCurve(QEasingCurve.Type.OutCubic); a.start(); self._a = a
 
+def android_ready():
+    return os.path.exists("/var/lib/waydroid/images/system.img") or os.path.exists("/usr/share/waydroid-extra/images/system.img")
+
+def stop_all():
+    subprocess.run(["waydroid", "session", "stop"], capture_output=True, timeout=30)
+    subprocess.run(["pkill", "-f", "/usr/lib/matryoshka/supersmart.py"])
+
+class Bar(QWidget):
+    def __init__(self):
+        super().__init__(); self.setWindowTitle("СуперСмарт — панель")
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setStyleSheet("QWidget{background:rgba(20,20,30,220);color:white;font-size:11pt} QPushButton{border:1px solid #888;border-radius:12px;padding:6px 12px} QPushButton:hover{background:#c0392b}")
+        h = QHBoxLayout(self); h.setContentsMargins(6, 4, 6, 4)
+        for t, f in (("⌂ Выйти на рабочий стол", self.leave), ("⚙ Настройки", lambda: subprocess.Popen(["systemsettings"])), ("🤖 Настройки Android", lambda: subprocess.Popen(["waydroid", "app", "launch", "com.android.settings"])), ("▦ Меню Матрёшки", lambda: subprocess.Popen(["supersmart", "--menu"]))):
+            b = QPushButton(t); b.clicked.connect(f); h.addWidget(b)
+        h.addWidget(QLabel("  Win+Esc — выход"))
+        self.adjustSize(); g = QApplication.primaryScreen().geometry(); self.move(g.right() - self.width() - 10, g.bottom() - self.height() - 10)
+        self.t = QTimer(self); self.t.timeout.connect(self.raise_); self.t.start(1500)
+    def leave(self):
+        subprocess.run(["waydroid", "session", "stop"], capture_output=True, timeout=30); QApplication.quit()
+
 def main():
+    if "--exit" in sys.argv: stop_all(); return
     app = QApplication(sys.argv); C.qt_ru(app); app.setApplicationName("supersmart"); app.setDesktopFileName("supersmart")
+    if "--menu" not in sys.argv and ("--android" in sys.argv or C.settings().get("supersmart_android", True)) and android_ready():
+        subprocess.Popen(["waydroid", "show-full-ui"]); w = Bar(); w.show()
+        sys.exit(app.exec())
     w = Home("--home" in sys.argv); w.showFullScreen()
+    if not android_ready(): C.notify("СуперСмарт", "Настоящий Android-рабочий стол появится после установки Android-слоя: Центр → Android-магазины. Выход отсюда — кнопка «На рабочий стол» или Win+Esc.")
     sys.exit(app.exec())
 
 if __name__ == "__main__":

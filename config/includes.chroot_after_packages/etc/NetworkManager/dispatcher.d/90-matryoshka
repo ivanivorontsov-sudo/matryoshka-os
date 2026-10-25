@@ -1,3 +1,6 @@
 #!/bin/sh
 [ "$2" = "up" ] || exit 0
 systemctl start --no-block matryoshka-netup.service
+[ -f /run/matryoshka-store-refreshed ] && exit 0
+touch /run/matryoshka-store-refreshed
+( nice -n 19 pkcon refresh -p >/dev/null 2>&1; nice -n 19 appstreamcli refresh-cache --force >/dev/null 2>&1; flatpak remote-add --system --if-not-exists flathub /etc/flatpak/remotes.d/flathub.flatpakrepo >/dev/null 2>&1; nice -n 19 flatpak update --system --appstream -y >/dev/null 2>&1 ) &

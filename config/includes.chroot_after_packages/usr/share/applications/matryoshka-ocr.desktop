@@ -5,3 +5,4 @@ Exec=matryoshka-ocr
 Icon=scanner
 Categories=Utility;
 Comment=Распознать текст в области экрана
+X-KDE-Shortcuts=Meta+Shift+T

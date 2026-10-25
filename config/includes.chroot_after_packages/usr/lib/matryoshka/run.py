@@ -1,3 +1,4 @@
+import json
 import sys, os, zipfile, tempfile, glob, subprocess, shutil
 import common as C, av
 
@@ -8,12 +9,39 @@ def need_android():
     C.run(["kdialog", "--title", "Матрёшка", "--sorry", "Android-слой ещё не установлен. Откройте «Центр Матрёшки» → «Программы» → «Установить Android-слой» (нужна сеть, около 1 ГБ)."])
     return 3
 
+def adb_ip():
+    return C.run(["sh", "-c", "waydroid status | awk '/IP/{print $NF}'"]).stdout.strip()
+
+def bundle_pkg(d):
+    try: return json.load(open(os.path.join(d, "manifest.json")))["package_name"]
+    except Exception: return ""
+
+def pick_splits(d):
+    names = []
+    try:
+        m = json.load(open(os.path.join(d, "manifest.json")))
+        names = [x["file"] for x in m.get("split_apks", [])]
+    except Exception:
+        pass
+    allf = names or sorted(os.path.basename(p) for p in glob.glob(d + "/*.apk"))
+    abis = ("x86_64", "x86", "arm64_v8a", "armeabi_v7a")
+    have = [a for a in abis if any(a in f.replace("-", "_") for f in allf)]
+    abi = have[0] if have else None
+    out = []
+    for f in allf:
+        n = f.replace("-", "_").lower()
+        if any(a in n for a in abis) and abi and abi not in n: continue
+        if "dpi" in n and not any(x in n for x in ("xhdpi", "xxhdpi")) and any(x in g.lower() for g in allf for x in ("xhdpi",)): continue
+        if n.startswith("config.") and len(n.split(".")[1]) == 2 and n.split(".")[1] not in ("ru", "en"): continue
+        out.append(os.path.join(d, f))
+    return out
+
 def install_apks(apks):
     subprocess.Popen(["waydroid", "session", "start"])
     C.root("waydroid-share")
     if len(apks) == 1:
         return subprocess.run(["waydroid", "app", "install", apks[0]]).returncode
-    ip = C.run(["sh", "-c", "waydroid status | awk '/IP/{print $NF}'"]).stdout.strip()
+    ip = adb_ip()
     C.run(["adb", "connect", ip + ":5555"])
     return subprocess.run(["adb", "-s", ip + ":5555", "install-multiple", *apks]).returncode
 
@@ -41,7 +69,7 @@ def dos(path):
     return subprocess.call(["dosbox-x", "-conf", conf])
 
 def main(path):
-    res = av.scan(path)
+    res = {"malicious": False, "activator": False} if os.path.exists("/run/matryoshka-sandbox") else av.scan(path)
     if res["malicious"] or res["activator"]:
         av.dialog(res)
         if not os.path.exists(path): return 4
@@ -56,11 +84,12 @@ def main(path):
     if ext in ("xapk", "apks", "apkm"):
         if not waydroid_ready(): return need_android()
         d = tempfile.mkdtemp(); zipfile.ZipFile(path).extractall(d)
-        obb = glob.glob(d + "/Android/obb/*")
-        rc = install_apks(sorted(glob.glob(d + "/*.apk")))
-        for o in obb:
-            dst = os.path.expanduser("~/.local/share/waydroid/data/media/0/Android/obb/")
-            C.run(["sudo", "-n", "cp", "-r", o, dst])
+        apks = pick_splits(d)
+        rc = install_apks(apks)
+        pkg = bundle_pkg(d)
+        for o in glob.glob(d + "/Android/obb/*"):
+            ip = adb_ip()
+            subprocess.run(["adb", "-s", ip + ":5555", "push", o, "/sdcard/Android/obb/"])
         return rc
     if ext == "pon":
         return subprocess.call(["konsole", "--hold", "-e", "ponyatny", path])
@@ -70,4 +99,5 @@ def main(path):
     return subprocess.call([path])
 
 if __name__ == "__main__":
-    sys.exit(main(os.path.abspath(sys.argv[1])))
+    a = sys.argv[1] if len(sys.argv) > 1 else subprocess.run(["kdialog", "--title", "Запустить программу", "--getopenfilename", os.path.expanduser("~"), "*.exe *.msi *.apk *.xapk *.apks *.apkm *.deb *.AppImage *.appimage *.sh *.bat *.com *.jar *.flatpakref"], capture_output=True, text=True).stdout.strip()
+    sys.exit(main(os.path.abspath(a)) if a else 0)

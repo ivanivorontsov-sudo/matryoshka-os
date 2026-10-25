@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Программы и обновления
+Exec=matryoshka-apps
+Icon=system-software-update
+Categories=System;Settings;
+Comment=Удалить программы, обновить всё

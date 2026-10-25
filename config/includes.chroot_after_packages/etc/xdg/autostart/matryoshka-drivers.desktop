@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Матрёшка: уведомления о драйверах
+Exec=/usr/lib/matryoshka/drivers-notify.sh
+NoDisplay=true
+X-KDE-autostart-phase=2

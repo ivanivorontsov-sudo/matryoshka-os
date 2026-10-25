@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Выйти из СуперСмарта
+Exec=supersmart --exit
+Icon=go-home
+NoDisplay=true

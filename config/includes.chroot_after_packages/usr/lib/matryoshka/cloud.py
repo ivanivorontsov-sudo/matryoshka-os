@@ -72,8 +72,9 @@ def encrypt(path):
     if os.path.exists(out): os.remove(out)
     subprocess.run(["7z", "a", "-t7z", "-mhe=on", "-p" + pw, out, path], capture_output=True, check=True); return out, pw
 
-def upload(host, path):
-    enc, pw = encrypt(path)
+def upload(host, path, crypt=True):
+    if crypt: enc, pw = encrypt(path)
+    else: enc, pw = path, ""
     if host == "gofile":
         r = subprocess.run(["curl", "-sf", "-F", "file=@" + enc, "https://upload.gofile.io/uploadfile"], capture_output=True, text=True); link = json.loads(r.stdout)["data"]["downloadPage"]; exp = "10 дней без скачиваний"
     elif host == "pixeldrain":
@@ -86,8 +87,7 @@ def upload(host, path):
         ident = "matryoshka-" + secrets.token_hex(6)
         subprocess.run(["curl", "-sf", "--location", "--header", "authorization: LOW %s:%s" % (acc, sec), "--header", "x-amz-auto-make-bucket:1", "--header", "x-archive-meta-mediatype:data", "--upload-file", enc, "https://s3.us.archive.org/%s/%s" % (ident, os.path.basename(enc))], check=True)
         link = "https://archive.org/details/" + ident; exp = "навсегда"
-    os.remove(enc)
-    secret("file:" + link, pw); c = cfg(); c["files"].append({"name": os.path.basename(path), "host": host, "link": link, "date": datetime.date.today().isoformat(), "expires": exp}); C.save("cloud", c)
+    if crypt: os.remove(enc); secret("file:" + link, pw); c = cfg(); c["files"].append({"name": os.path.basename(path), "host": host, "link": link, "date": datetime.date.today().isoformat(), "expires": exp}); C.save("cloud", c)
     return link, pw
 
 class Cloud(QWidget):

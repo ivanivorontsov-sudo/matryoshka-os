@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Обновить систему
+Exec=matryoshka-update
+Icon=system-software-update
+Categories=System;Matryoshka;

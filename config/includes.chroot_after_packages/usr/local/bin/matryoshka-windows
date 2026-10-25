@@ -1,0 +1,18 @@
+#!/bin/sh
+T="Windows (C:)"
+for d in $(lsblk -lnpo NAME,FSTYPE | awk '$2=="BitLocker"{print $1}'); do
+  lsblk -lnpo NAME,TYPE "$d" | grep -q crypt && continue
+  k=$(kdialog --title "$T" --password "Диск $d зашифрован BitLocker.\nВведите ключ восстановления (48 цифр, формат 000000-000000-…)\nили пароль BitLocker. Ключ есть на account.microsoft.com/devices/recoverykey") || continue
+  printf '%s' "$k" | udisksctl unlock -b "$d" --key-file /dev/stdin >/dev/null 2>&1 || kdialog --title "$T" --error "Ключ не подошёл."
+done
+for d in $(lsblk -lnpo NAME,FSTYPE | awk '$2=="ntfs"{print $1}'); do
+  findmnt -n "$d" >/dev/null && { m=$(findmnt -no TARGET "$d" | head -1); continue; }
+  if ntfs-3g.probe --readwrite "$d" >/dev/null 2>&1; then o=""; else
+    kdialog --title "$T" --warningyesno "Windows на $d не выключена полностью (гибернация или «Быстрый запуск»).\nЗапись сейчас может повредить файлы Windows.\n\nОткрыть только для чтения?\n\nЧтобы писать: в Windows выключите «Быстрый запуск» и выберите «Перезагрузка» → Матрёшка." --yes-label "Только чтение" --no-label "Отмена" || continue
+    o="-o ro"
+  fi
+  udisksctl mount -b "$d" -t ntfs3 $o >/dev/null 2>&1 || udisksctl mount -b "$d" -o ro >/dev/null 2>&1
+  m=$(findmnt -no TARGET "$d" | head -1)
+done
+[ -n "$m" ] && exec dolphin "$m"
+kdialog --title "$T" --sorry "Раздел Windows не найден."

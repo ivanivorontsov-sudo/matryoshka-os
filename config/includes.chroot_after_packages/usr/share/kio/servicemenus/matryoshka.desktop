@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Service
-MimeType=all/allfiles;
-Actions=toShared;openWin;installAndroid;scan
-X-KDE-Submenu=Матрёшка: поделиться
+MimeType=all/allfiles;inode/directory;
+Actions=link;encLink;toShared;openWin;installAndroid;scan
+X-KDE-Submenu=Поделиться
 
 [Desktop Action toShared]
 Name=Положить в «Общее» (видно Windows- и Android-программам)
@@ -23,3 +23,13 @@ Exec=matryoshka-run %f
 Name=Проверить антивирусом
 Icon=security-high
 Exec=konsole --hold -e matryoshka-av scan %F
+
+[Desktop Action link]
+Name=Получить ссылку (открывается в любом браузере)
+Icon=emblem-shared-symbolic
+Exec=matryoshka-share %F
+
+[Desktop Action encLink]
+Name=Получить зашифрованную ссылку (с паролем)
+Icon=document-encrypt
+Exec=matryoshka-share --enc %F

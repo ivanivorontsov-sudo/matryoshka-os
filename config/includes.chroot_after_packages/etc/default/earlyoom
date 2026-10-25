@@ -1,0 +1,1 @@
+EARLYOOM_ARGS="-m 4 -s 100 -r 0 --avoid (^|/)(init|systemd|Xorg|kwin_wayland|sddm|plasmashell)$ --prefer (^|/)(clamd|chromium|firefox-esr|electron)$"

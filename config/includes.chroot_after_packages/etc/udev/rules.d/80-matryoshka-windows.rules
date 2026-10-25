@@ -1,0 +1,6 @@
+SUBSYSTEM=="block", ENV{ID_FS_TYPE}=="ntfs", ENV{ID_PART_ENTRY_TYPE}=="ebd0a0a2-b9e5-4433-87c0-68b6b72699c7", ENV{UDISKS_NAME}="Windows ($env{ID_FS_LABEL})", ENV{UDISKS_ICON_NAME}="drive-harddisk-windows", ENV{UDISKS_AUTO}="0", ENV{UDISKS_SYSTEM}="0"
+SUBSYSTEM=="block", ENV{ID_FS_TYPE}=="ntfs", ENV{ID_FS_LABEL}=="", ENV{UDISKS_NAME}="Windows (C:)"
+SUBSYSTEM=="block", ENV{ID_FS_TYPE}=="ntfs", ENV{ID_FS_LABEL}=="Windows|OS|System|Windows*", ENV{UDISKS_NAME}="Windows (C:)"
+SUBSYSTEM=="block", ENV{ID_FS_TYPE}=="BitLocker", ENV{UDISKS_NAME}="Windows (C:) — BitLocker", ENV{UDISKS_SYSTEM}="0"
+SUBSYSTEM=="block", ENV{ID_PART_ENTRY_TYPE}=="de94bba4-06d1-4d40-a16a-bfd50179d6ac", ENV{UDISKS_IGNORE}="1"
+SUBSYSTEM=="block", ENV{ID_PART_ENTRY_TYPE}=="e3c9e316-0b5c-4db8-817d-f92df00215ae", ENV{UDISKS_IGNORE}="1"

@@ -29,10 +29,28 @@ def prompt(res):
     return ("Ты антивирусный аналитик. Объясни простым русским языком, насколько опасен файл и что лучше сделать: удалить, поместить в карантин или оставить. "
             "Данные проверки: имя файла %s, размер %s байт, SHA-256 %s, срабатывания ClamAV: %s, срабатывания правил YARA: %s. "
             "Ответь кратко: 1) что это, вероятно, 2) риск (низкий/средний/высокий), 3) рекомендация." % (
-                os.path.basename(res["file"]), res.get("size"), res.get("sha256"), ", ".join(res["clam"]) or "нет", ", ".join(res["yara"]) or "нет"))
+                os.path.basename(res["file"]), res.get("size"), res.get("sha256"), ", ".join(res["clam"]) or "нет", ", ".join(res["yara"]) or "нет")) + head(res["file"])
+
+def head(p):
+    try:
+        b = open(p, "rb").read(3000)
+        if b and b.count(b"\0") == 0: return "\nНачало файла:\n" + b.decode("utf-8", "replace")
+    except Exception: pass
+    return ""
+
+def ask_text(text):
+    return ask_ai({"file": "-", "clam": [], "yara": [], "_text": text})
+
+def audit():
+    h = os.path.expanduser("~")
+    parts = ["Автозапуск: " + C.run(["sh", "-c", "ls ~/.config/autostart /etc/xdg/autostart 2>/dev/null; crontab -l 2>/dev/null; systemctl --user list-unit-files --state=enabled --no-legend 2>/dev/null"]).stdout[-2500:],
+             "Сетевые соединения: " + C.run(["ss", "-tunp"]).stdout[-2500:],
+             "Процессы с наибольшей нагрузкой: " + C.run(["ps", "-eo", "user,pcpu,pmem,comm,args", "--sort=-pcpu"]).stdout[:2500]]
+    return ask_text("Ты антивирусный аналитик. Проверь по-русски, есть ли здесь что-то подозрительное (неизвестный автозапуск, майнер, странные соединения). Ничего не удаляй, только объясни и посоветуй.\n" + "\n".join(parts))
 
 def ask_ai(res):
-    s = C.settings(); text = prompt(res)
+    if C.settings().get("ai_off"): return "ИИ выключен в Центре → Защита."
+    s = C.settings(); text = res["_text"] if "_text" in res else prompt(res)
     try:
         if s["ai"] == "local":
             req = urllib.request.Request(s["local_url"].rstrip("/") + "/api/chat", json.dumps({"model": s["local_model"], "stream": False, "messages": [{"role": "user", "content": text}]}).encode(), {"Content-Type": "application/json"})
@@ -74,6 +92,7 @@ def dialog(res):
     d.exec()
 
 def guard():
+    if os.path.exists("/run/matryoshka-sandbox") or "matryoshka.sandbox" in C.cmdline(): return
     dirs = [p for p in (os.path.join(C.HOME, x) for x in ("Загрузки", "Downloads", "Рабочий стол", "Desktop")) if os.path.isdir(p)]
     dirs += ["/media", "/run/media"]
     dirs = [d for d in dirs if os.path.isdir(d)]
@@ -89,6 +108,9 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "guard": guard()
     elif a and a[0] == "dialog-json": dialog(json.loads(a[1]))
+    elif a and a[0] == "audit": print(audit())
+    elif a and a[0] == "explain":
+        res = scan(a[1]); print(("УГРОЗА" if res["malicious"] else "АКТИВАТОР" if res["activator"] else "чисто"), *(res["clam"] + res["yara"])); print(ask_ai(res))
     elif a and a[0] == "scan":
         bad = 0
         for root in a[1:]:

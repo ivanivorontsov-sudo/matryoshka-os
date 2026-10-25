@@ -1,1 +1,1 @@
-ivan ALL=(ALL) NOPASSWD: /usr/lib/matryoshka/root.sh
+%sudo ALL=(root) NOPASSWD: /usr/lib/matryoshka/root.sh install-check, /usr/lib/matryoshka/root.sh drivers-check, /usr/lib/matryoshka/root.sh snap-list, /usr/lib/matryoshka/root.sh waydroid-share, /usr/lib/matryoshka/root.sh guest-mount, /usr/lib/matryoshka/root.sh sandbox-grant *, /usr/lib/matryoshka/root.sh av-update, /usr/lib/matryoshka/root.sh snap-create *, /usr/lib/matryoshka/root.sh firstrun-done

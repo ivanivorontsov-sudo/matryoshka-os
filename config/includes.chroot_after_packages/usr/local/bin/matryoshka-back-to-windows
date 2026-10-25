@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+command -v efibootmgr >/dev/null || { echo "efibootmgr не установлен"; exit 1; }
+[ -d /sys/firmware/efi ] || { echo "Система загружена не в режиме UEFI"; exit 1; }
+id=$(efibootmgr | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)\*\? *Windows Boot Manager.*/\1/p' | head -n1)
+[ -n "$id" ] || { echo "Запись Windows Boot Manager не найдена"; exit 1; }
+efibootmgr --bootnext "$id" >/dev/null
+logger -t matryoshka "BootNext=$id (Windows Boot Manager)"
+systemctl reboot

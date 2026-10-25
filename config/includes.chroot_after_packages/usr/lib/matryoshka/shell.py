@@ -7,10 +7,13 @@ def builtin():
 def main():
     if C.safe_mode():
         C.apply_mode("simple"); C.notify("Безопасный режим", "Сеть выключена, автозапуск и эффекты отключены."); C.net_set(False); return
-    if "matryoshka.simple" in C.cmdline(): C.apply_mode("simple")
+    if "matryoshka.simple" in C.cmdline() or C.settings()["mode"] == "simple": C.apply_mode("simple")
     if os.path.isdir("/sys/bus/virtio/drivers/9pnet_virtio"): C.root("guest-mount")
     C.run(["matryoshka-script", "--autostart"])
-    if not os.path.exists(os.path.join(C.CONF, "firstrun.done")):
+    if C.live():
+        C.kwrite("kscreenlockerrc", "Daemon", "Autolock", "false"); C.kwrite("kscreenlockerrc", "Daemon", "LockOnResume", "false")
+        C.notify("Живой режим", "Пользователь ivan, пароль live (если вы не задали свой). Без раздела сохранения изменения пропадут после перезагрузки." if not C.persistent() else "Пользователь ivan. Изменения сохраняются на флешке.")
+    if not os.path.exists("/var/lib/matryoshka/firstrun.done") and not os.path.exists(os.path.join(C.CONF, "firstrun.done")):
         subprocess.call(["matryoshka-firstrun"])
     l = C.settings()["launcher"]; k, t = l.get("kind", "builtin"), l.get("target", "")
     if k == "plasma": return

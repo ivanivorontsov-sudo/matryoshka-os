@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Android-магазины
+Exec=matryoshka-android
+Icon=android
+Categories=System;
+Comment=Google Play и RuStore для Android-слоя

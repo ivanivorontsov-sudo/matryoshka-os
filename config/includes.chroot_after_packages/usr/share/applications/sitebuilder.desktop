@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Конструктор сайтов
+Exec=sitebuilder
+Icon=applications-internet
+Categories=Development;
+Comment=Конструктор сайтов (Windows-программа через Wine)

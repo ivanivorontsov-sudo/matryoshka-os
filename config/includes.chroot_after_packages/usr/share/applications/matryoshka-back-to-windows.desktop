@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Вернуться в Windows
+Comment=Перезагрузиться один раз в Windows
+Exec=pkexec /usr/local/bin/matryoshka-back-to-windows
+Icon=system-reboot
+Terminal=false
+Categories=System;
