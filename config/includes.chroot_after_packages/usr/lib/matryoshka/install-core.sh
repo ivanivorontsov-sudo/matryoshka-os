@@ -106,7 +106,7 @@ PY
 log "Создание раздела системы ($((largest/1073741824)) ГБ)"
 sgdisk -n 0:0:0 -t 0:8304 -c 0:Matryoshka "$DISK" >/dev/null
 ROOTNUM=$(sgdisk -p "$DISK" | awk '$7=="Matryoshka"{n=$1} END{print n}')
-partprobe "$DISK" 2>/dev/null || true; udevadm settle; sleep 1
+partprobe "$DISK" 2>/dev/null || true; for n in $(seq 1 32); do [ "$n" = "$keepnum" ] || partx -d --nr $n "$DISK" 2>/dev/null || true; done; partx -a "$DISK" 2>/dev/null || true; udevadm settle; sleep 1
 ESP=$(part "$ESPNUM"); ROOT=$(part "$ROOTNUM")
 [ -b "$ROOT" ] || die "раздел $ROOT не появился"
 [ "$ROOT" = "$KEEP" ] && die "внутренняя ошибка: раздел системы совпал с разделом запуска"
