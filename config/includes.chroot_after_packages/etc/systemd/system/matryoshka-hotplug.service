@@ -1,0 +1,8 @@
+[Unit]
+Description=Matryoshka driver check after device hotplug
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 20
+ExecStart=/usr/lib/matryoshka/hotplug.sh

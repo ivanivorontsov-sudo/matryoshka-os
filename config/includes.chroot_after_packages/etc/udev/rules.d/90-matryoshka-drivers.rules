@@ -1,1 +1,1 @@
-ACTION=="add", SUBSYSTEM=="pci|usb", ENV{DEVTYPE}!="usb_interface", RUN+="/usr/bin/systemd-run --no-block --on-active=20 --unit=matryoshka-hotplug-%k /usr/lib/matryoshka/hotplug.sh"
+ACTION=="add", SUBSYSTEM=="pci|usb", ENV{DEVTYPE}!="usb_interface", TAG+="systemd", ENV{SYSTEMD_WANTS}+="matryoshka-hotplug.service"
