@@ -10,9 +10,11 @@ TOOLS = [("python", "Python", "mise"), ("node", "Node.js", "mise"), ("go", "Go",
          ("com.jetbrains.PyCharm-Community", "PyCharm CE", "flatpak"), ("com.google.AndroidStudio", "Android Studio", "flatpak"), ("org.kde.kdevelop", "KDevelop", "flatpak")]
 PROFILE = os.path.join(C.HOME, ".config/matryoshka/dev.sh")
 
+MISE_SH = 'M="$HOME/.local/bin/mise"; mkdir -p "$HOME/.local/bin"; [ -x "$M" ] || { echo "Загрузка mise..."; curl -fsSL --connect-timeout 15 --max-time 120 https://mise.run | sh; [ -x \"$M\" ] || { T=$(curl -fsSL --max-time 30 https://api.github.com/repos/jdx/mise/releases/latest | sed -n "s/.*\\"tag_name\\": *\\"\\([^\\"]*\\)\\".*/\\1/p"); curl -fL --connect-timeout 15 -o "$M" "https://github.com/jdx/mise/releases/download/$T/mise-$T-linux-x64" && chmod +x "$M"; }; }'
+
 def mise():
     m = os.path.join(C.HOME, ".local/bin/mise")
-    if not os.path.exists(m): subprocess.run(["sh", "-c", "curl -fsSL https://mise.run | sh"])
+    os.makedirs(os.path.dirname(PROFILE), exist_ok=True)
     open(PROFILE, "w").write('export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"\n')
     for rc in (".bashrc", ".profile"):
         p = os.path.join(C.HOME, rc); s = open(p).read() if os.path.exists(p) else ""
@@ -36,11 +38,13 @@ class Dev(QWidget):
         if not C.net_on(): QMessageBox.information(self, "Сеть", "Включите сеть."); return
         sel = [self.list.item(i).data(256) for i in range(self.list.count()) if self.list.item(i).checkState() == Qt.CheckState.Checked]
         cmds = []; ms = [k for k, h in sel if h == "mise"]; ap = " ".join(h[4:] for k, h in sel if h.startswith("apt:")); fp = [k for k, h in sel if h == "flatpak"]
-        if ms: m = mise(); cmds.append("%s use -g %s" % (m, " ".join(x + "@latest" for x in ms)))
+        if ms: m = mise(); cmds.append(MISE_SH); cmds.append("\"%s\" use -g %s" % (m, " ".join(x + "@latest" for x in ms)))
         if ap: cmds.append("sudo apt install -y " + ap)
         if fp: cmds.append("flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo; flatpak install --user -y flathub " + " ".join(fp))
-        if cmds: subprocess.run(["konsole", "--hold", "-e", "sh", "-c", "; ".join(cmds)])
-        register_ides(); QMessageBox.information(self, "Готово", "Инструменты установлены и подключены к терминалу и редакторам. Откройте новый терминал.")
+        if not cmds: return
+        register_ides()
+        subprocess.Popen(["konsole", "--hold", "-e", "sh", "-c", "; ".join(cmds) + "; echo; echo ГОТОВО. Откройте новый терминал."], start_new_session=True)
+        QMessageBox.information(self, "Установка", "Установка идёт в окне терминала, там виден ход загрузки."); self.close()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv); C.qt_ru(app); w = Dev(); w.show(); sys.exit(app.exec())
