@@ -119,6 +119,7 @@ cleanup() { for m in sys/firmware/efi/efivars sys proc dev/pts dev run boot/efi;
 trap cleanup EXIT
 log "Копирование системы (несколько минут)"
 unsquashfs -f -q -n -d $T "$SQUASH" >/dev/null
+rm -rf $T/var/lib/matryoshka/booting* $T/var/lib/matryoshka/bootcount* 2>/dev/null || true
 mkdir -p $T/boot/efi; mount "$ESP" $T/boot/efi
 RU=$(blkid -s UUID -o value "$ROOT"); EU=$(blkid -s UUID -o value "$ESP")
 [ -n "$RU" ] && [ -n "$EU" ] || die "не удалось прочитать UUID разделов"
