@@ -91,7 +91,7 @@ fi
 largest=$(python3 - "$DISK" <<'PY'
 import subprocess,sys,re
 out=subprocess.run(["sgdisk","-p",sys.argv[1]],capture_output=True,text=True).stdout
-ss=int(re.search(r"sector size \(logical/physical\): (\d+)",out).group(1))
+ss=int(re.search(r"(?i)sector size \(logical/physical\): (\d+)",out).group(1))
 first=int(re.search(r"First usable sector is (\d+), last usable sector is (\d+)",out).group(1))
 last=int(re.search(r"First usable sector is (\d+), last usable sector is (\d+)",out).group(2))
 parts=sorted((int(m.group(1)),int(m.group(2))) for m in re.finditer(r"^\s+\d+\s+(\d+)\s+(\d+)",out,re.M))
