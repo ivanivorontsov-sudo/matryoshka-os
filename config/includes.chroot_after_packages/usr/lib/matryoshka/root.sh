@@ -56,7 +56,7 @@ case "$cmd" in
   waydroid-share)
     u="$H"; mkdir -p "$u/Общее" "$u/.local/share/waydroid/data/media/0/Общее"; chown "$U": "$u/Общее"
     mountpoint -q "$u/.local/share/waydroid/data/media/0/Общее" || mount --bind "$u/Общее" "$u/.local/share/waydroid/data/media/0/Общее" ;;
-  android-init) waydroid init -s VANILLA && { lspci | grep -qi nvidia && { grep -q swiftshader /var/lib/waydroid/waydroid_base.prop 2>/dev/null || printf 'ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n' >> /var/lib/waydroid/waydroid_base.prop; waydroid upgrade --offline; }; true; } && systemctl enable --now waydroid-container ;;
+  android-init) modprobe binder_linux 2>/dev/null; I=""; for d in /usr/share/waydroid-extra/images /etc/waydroid-extra/images; do [ -f $d/system.img ] && [ -f $d/vendor.img ] && { I=$d; break; }; done; { if [ -n "$I" ]; then waydroid init -f -i "$I"; else waydroid init -s VANILLA; fi; } && { lspci | grep -qi nvidia && { grep -q swiftshader /var/lib/waydroid/waydroid_base.prop 2>/dev/null || printf 'ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n' >> /var/lib/waydroid/waydroid_base.prop; waydroid upgrade --offline; }; true; } && systemctl enable --now waydroid-container ;;
   android-stores) waydroid init -f -s GAPPS && { lspci | grep -qi nvidia && { grep -q swiftshader /var/lib/waydroid/waydroid_base.prop 2>/dev/null || printf 'ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n' >> /var/lib/waydroid/waydroid_base.prop; waydroid upgrade --offline; }; true; } && systemctl enable --now waydroid-container && systemctl restart waydroid-container ;;
   android-id) waydroid shell -- sh -c "sqlite3 /data/data/com.google.android.gsf/databases/gservices.db \"select value from main where name='android_id';\"" ;;
   android-grant) waydroid shell -- appops set ru.vk.store REQUEST_INSTALL_PACKAGES allow; waydroid shell -- settings put secure install_non_market_apps 1; true ;;
@@ -75,10 +75,7 @@ case "$cmd" in
       finger-sudo-on) grep -q pam_fprintd /etc/pam.d/sudo || sed -i '0,/^@include common-auth/s//auth\tsufficient\tpam_fprintd.so max-tries=2 timeout=10\n@include common-auth/' /etc/pam.d/sudo ;;
       finger-sudo-off) sed -i '/pam_fprintd/d' /etc/pam.d/sudo ;;
       face-install)
-        DEBIAN_FRONTEND=noninteractive apt-get install -y libpam-python python3-opencv python3-pip python3-numpy cmake build-essential libopenblas-dev liblapack-dev libx11-dev v4l-utils || exit 1
-        f=$(mktemp --suffix=.deb); curl -fsSL -o "$f" https://github.com/boltgolt/howdy/releases/download/v2.6.1/howdy_2.6.1.deb || exit 1; echo "c104329d8c7f54508b317ac7fb9782eae4104187bac657ee8a80aeeeb406c84f  $f" | sha256sum -c - || { echo "контрольная сумма Howdy не совпала"; rm -f "$f"; exit 5; }
-        DEBIAN_FRONTEND=noninteractive apt-get install -y "$f"; rm -f "$f"
-        for p in /etc/pam.d/common-auth /etc/pam.d/sudo /etc/pam.d/polkit-1 /etc/pam.d/su /etc/pam.d/login; do [ -f $p ] && sed -i '/howdy/d' $p; done ;;
+        echo "Распознавание лица недоступно: Howdy нет в официальных хранилищах Debian, сторонние сборки не ставятся"; exit 3 ;;
       face-login-on) for p in sddm kde; do grep -q howdy /etc/pam.d/$p || sed -i '0,/^auth/s//auth\tsufficient\tpam_python.so \/lib\/security\/howdy\/pam.py\nauth/' /etc/pam.d/$p; done
         for p in /etc/pam.d/common-auth /etc/pam.d/sudo /etc/pam.d/polkit-1 /etc/pam.d/su /etc/pam.d/login; do [ -f $p ] && sed -i '/howdy/d' $p; done ;;
       face-login-off) sed -i '/howdy/d' /etc/pam.d/sddm /etc/pam.d/kde ;;

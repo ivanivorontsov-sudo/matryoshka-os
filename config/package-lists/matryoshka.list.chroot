@@ -311,3 +311,12 @@ waydroid
 python3-gbinder
 lxc
 fontconfig
+firmware-mediatek
+firmware-libertas
+firmware-ti-connectivity
+libgl1-mesa-dri
+printer-driver-all
+libsane1
+libfprint-2-2
+polkit-kde-agent-1
+ksshaskpass

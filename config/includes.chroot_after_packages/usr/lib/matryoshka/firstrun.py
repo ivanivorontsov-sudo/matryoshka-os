@@ -11,7 +11,7 @@ class Wiz(QWizard):
         self.name = QLineEdit("Иван"); self.pw = QLineEdit(); self.pw.setEchoMode(QLineEdit.EchoMode.Password); self.pw2 = QLineEdit(); self.pw2.setEchoMode(QLineEdit.EchoMode.Password)
         for l, w in (("Имя администратора", self.name), ("Пароль (в живом режиме с флешки можно пусто)" if C.live() else "Пароль (обязателен, не короче 6 символов)", self.pw), ("Повтор пароля", self.pw2)): v.addWidget(QLabel(l)); v.addWidget(w)
         if C.live():
-            ib = QPushButton("💽 Установить Матрёшку на диск (рекомендуется: пароль и файлы сохраняются навсегда)"); ib.setMinimumHeight(48); ib.clicked.connect(lambda: C.subprocess.Popen(["sudo", "-E", "calamares"])); v.addWidget(ib)
+            ib = QPushButton("💽 Установить Матрёшку на диск (рекомендуется: пароль и файлы сохраняются навсегда)"); ib.setMinimumHeight(48); ib.clicked.connect(lambda: C.subprocess.Popen(["pkexec", "env", "DISPLAY=" + C.os.environ.get("DISPLAY", ""), "WAYLAND_DISPLAY=" + C.os.environ.get("WAYLAND_DISPLAY", ""), "XDG_RUNTIME_DIR=" + C.os.environ.get("XDG_RUNTIME_DIR", ""), "calamares"])); v.addWidget(ib)
         self.pers = QCheckBox("Создать на флешке раздел сохранения (настройки, пароль и файлы останутся после перезагрузки)")
         if C.live() and not C.persistent():
             v.addWidget(QLabel("<b>Живой режим:</b> без раздела сохранения после перезагрузки всё сбросится, а вход будет снова: пользователь <b>ivan</b>, пароль <b>live</b>. Для постоянной работы установите Матрёшку на диск (значок «Установка на диск»). После создания раздела перезагрузитесь: мастер откроется ещё раз, и с этого момента всё сохранится.", wordWrap=True)); self.pers.setChecked(True); v.addWidget(self.pers)

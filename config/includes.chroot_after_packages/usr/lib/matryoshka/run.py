@@ -3,10 +3,13 @@ import sys, os, zipfile, tempfile, glob, subprocess, shutil
 import common as C, av
 
 def waydroid_ready():
-    return shutil.which("waydroid") and os.path.exists("/var/lib/waydroid/images/system.img")
+    return bool(shutil.which("waydroid")) and os.path.exists("/var/lib/waydroid/waydroid.cfg") and (os.path.exists("/var/lib/waydroid/images/system.img") or "waydroid-extra" in open("/var/lib/waydroid/waydroid.cfg").read())
 
 def need_android():
-    C.run(["kdialog", "--title", "Матрёшка", "--sorry", "Android-слой ещё не установлен. Откройте «Центр Матрёшки» → «Программы» → «Установить Android-слой» (нужна сеть, около 1 ГБ)."])
+    if shutil.which("waydroid"):
+        subprocess.Popen(["notify-send", "-a", "Матрёшка", "Android", "Первый запуск Android-слоя: подготовка без сети, 1–3 минуты"])
+        if C.root("android-init", timeout=900).returncode == 0 and waydroid_ready(): return 0
+    C.run(["kdialog", "--title", "Матрёшка", "--sorry", "Android-слой не удалось подготовить. Откройте «Центр Матрёшки» → «Программы» → «Установить Android-слой» и пришлите текст ошибки."])
     return 3
 
 def adb_ip():
@@ -37,7 +40,12 @@ def pick_splits(d):
     return out
 
 def install_apks(apks):
-    subprocess.Popen(["waydroid", "session", "start"])
+    if "RUNNING" not in C.run(["waydroid", "status"]).stdout:
+        subprocess.Popen(["waydroid", "session", "start"])
+        for _ in range(90):
+            if "RUNNING" in C.run(["waydroid", "status"]).stdout: break
+            __import__("time").sleep(2)
+        __import__("time").sleep(8)
     C.root("waydroid-share")
     if len(apks) == 1:
         return subprocess.run(["waydroid", "app", "install", apks[0]]).returncode
@@ -84,6 +92,15 @@ def main(path):
     if ext in ("exe", "msi", "lnk"):
         C.prep_wine(); env = dict(os.environ, LANG="ru_RU.UTF-8")
         if ext == "msi": return subprocess.call(["wine", "msiexec", "/i", path], env=env)
+        env.update(MOZ_DISABLE_CONTENT_SANDBOX="1", MOZ_DISABLE_GPU_SANDBOX="1", MOZ_DISABLE_RDD_SANDBOX="1", MOZ_DISABLE_SOCKET_PROCESS_SANDBOX="1", MOZ_DISABLE_GMP_SANDBOX="1", MOZ_DISABLE_UTILITY_SANDBOX="1")
+        if not os.path.exists(os.path.expanduser("~/.wine/.matryoshka-win10")):
+            C.run(["wine", "reg", "add", "HKCU\\Software\\Wine", "/v", "Version", "/d", "win10", "/f"], env=env, timeout=300)
+            open(os.path.expanduser("~/.wine/.matryoshka-win10"), "w").close() if os.path.isdir(os.path.expanduser("~/.wine")) else None
+        b = os.path.basename(path).lower()
+        if any(x in b for x in ("chrome", "vivaldi", "msedge", "opera", "brave", "yandex", "electron", "code", "discord", "slack", "teams")) and not any(x in b for x in ("setup", "install", "update")):
+            return subprocess.call(["wine", path, "--no-sandbox", "--disable-gpu-sandbox", "--disable-gpu", "--in-process-gpu"], env=env, cwd=os.path.dirname(path))
+        if b.startswith("firefox") and not any(x in b for x in ("setup", "install")):
+            return subprocess.call(["wine", path, "-no-remote"], env=env, cwd=os.path.dirname(path))
         return subprocess.call(["wine", "start", "/unix", path], env=env)
     if ext == "jar":
         if shutil.which("java"): return subprocess.call(["java", "-jar", path])
@@ -94,9 +111,9 @@ def main(path):
     if ext == "appimage":
         return subprocess.call(["matryoshka-pkginstall", path])
     if ext == "apk":
-        return install_apks([path]) if waydroid_ready() else need_android()
+        return install_apks([path]) if waydroid_ready() or need_android() == 0 else 3
     if ext in ("xapk", "apks", "apkm"):
-        if not waydroid_ready(): return need_android()
+        if not waydroid_ready() and need_android() != 0: return 3
         d = tempfile.mkdtemp(); zipfile.ZipFile(path).extractall(d)
         apks = pick_splits(d)
         rc = install_apks(apks)

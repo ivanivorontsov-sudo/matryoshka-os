@@ -26,7 +26,8 @@ def capitalize(t, prev):
     return t
 
 def send(text):
-    subprocess.run(["wl-copy", "--", text])
+    if os.environ.get("WAYLAND_DISPLAY"): subprocess.run(["wl-copy", "--", text])
+    else: subprocess.run(["xclip", "-selection", "clipboard"], input=text, text=True)
     act = subprocess.run(["kdotool", "getactivewindow", "getwindowclassname"], capture_output=True, text=True).stdout.lower() if subprocess.run(["which", "kdotool"], capture_output=True).returncode == 0 else ""
     s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     try: s.sendto(b"paste-term" if any(x in act for x in TERMS) else b"paste", "/run/matryoshka-voice.sock")

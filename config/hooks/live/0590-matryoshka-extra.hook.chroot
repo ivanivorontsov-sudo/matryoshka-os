@@ -1,0 +1,3 @@
+#!/bin/sh
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xclip ksshaskpass polkit-kde-agent-1 || echo "EXTRA INSTALL FAILED"
+if ls /root/extra-debs/*.deb >/dev/null 2>&1; then DEBIAN_FRONTEND=noninteractive apt-get install -y /root/extra-debs/*.deb || echo "EXTRA DEBS FAILED"; rm -rf /root/extra-debs; fi
