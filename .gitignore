@@ -7,3 +7,4 @@ config/includes.chroot_after_packages/opt/ivankod/
 config/includes.chroot_after_packages/opt/ivan/
 *.iso
 *.img
+out/

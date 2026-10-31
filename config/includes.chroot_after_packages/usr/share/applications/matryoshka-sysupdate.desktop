@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Копия и обновление системы
+Exec=matryoshka-sysupdate
+Icon=system-software-update
+Categories=System;

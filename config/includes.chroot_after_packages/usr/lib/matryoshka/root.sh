@@ -89,7 +89,7 @@ case "$cmd" in
     for s in ufw apparmor; do printf '%s: %s\n' "$s" "$(systemctl is-active $s)"; done; ufw status | head -1 ;;
   update-all)
     nmcli -t networking | grep -q enabled || { echo "Сеть выключена"; exit 4; }
-    [ "$(findmnt -no FSTYPE /)" = btrfs ] && snapper -c root create -d "перед «Обновить всё»" 2>/dev/null && echo "снимок системы создан"
+    if ! grep -qw boot=live /proc/cmdline; then /usr/lib/matryoshka/sysbackup.sh create same || { echo "РЕЗЕРВНАЯ КОПИЯ НЕ СОЗДАНА: обновление отменено"; exit 8; }; fi
     echo "== Пакеты Debian"; apt-get update && DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confold full-upgrade && apt-get -y autoremove --purge
     echo "== Android-слой"; [ -d /var/lib/waydroid/images ] && waydroid upgrade || echo "не установлен"
     echo "== Антивирус"; freshclam --quiet || echo "базы ClamAV не обновились"
@@ -135,7 +135,8 @@ case "$cmd" in
       else [ "$got" = "$sum" ] || { echo "SHA256 не совпал: $got"; exit 6; }; fi
       tar -xaf $F -C $W/x || exit 5; R=$W/x; [ -d $R/repo ] && R=$R/repo
     fi
-    S=""; if [ "$(findmnt -no FSTYPE /)" = btrfs ]; then S=$(snapper -c root create -p -d "перед обновлением Матрёшки") && echo "снимок $S создан"; else echo "внимание: не btrfs, снимок невозможен"; fi
+    S=""; if [ "$(findmnt -no FSTYPE /)" = btrfs ]; then S=$(snapper -c root create -p -d "перед обновлением Матрёшки") && echo "снимок $S создан"; fi
+    /usr/lib/matryoshka/sysbackup.sh create same || { echo "РЕЗЕРВНАЯ КОПИЯ НЕ СОЗДАНА: обновление отменено, система не изменена"; rm -rf $W; exit 8; }
     ok=1
     if [ -x $R/apply.sh ]; then (cd $R && ./apply.sh) || ok=0
     elif [ -d $R/config/includes.chroot_after_packages ]; then
@@ -164,5 +165,8 @@ case "$cmd" in
     for p in "$@"; do [[ "$p" =~ ^[a-z0-9][a-z0-9+.-]+$ ]] || exit 2; grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }; done
     DEBIAN_FRONTEND=noninteractive apt-get remove -y -o DPkg::Lock::Timeout=120 "$@" ;;
   fix-boot) /usr/lib/matryoshka/fix-boot.sh ;;
+  sysbackup)
+    case "$1" in plan|create|list|last-ok) a="$1"; shift; NOHOME="${NOHOME:-0}" /usr/lib/matryoshka/sysbackup.sh "$a" "$@" ;; verify) /usr/lib/matryoshka/sysbackup.sh verify "$2" ;; *) exit 2 ;; esac ;;
+  upgrade) /usr/lib/matryoshka/upgrade.sh "$1" "$2" "${3:-same}" ;;
   *) echo "unknown"; exit 1 ;;
 esac

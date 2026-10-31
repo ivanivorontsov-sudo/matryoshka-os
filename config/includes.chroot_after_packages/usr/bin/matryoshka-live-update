@@ -66,6 +66,11 @@ for kind in kernel initrd grubcfg diskinfo; do
     mkdir -p "$(dirname "$W/$dst")"; cp /run/live-file "$W/$dst.new"; rm -f /run/live-file
   done
 done
+if [ -f $W/live/filesystem.squashfs ] && [ "$(df -B1 --output=avail $W | tail -1)" -gt $((old + 50*1024*1024)) ]; then
+  rm -f $W/live/filesystem.squashfs.prev; cp -a $W/live/filesystem.squashfs $W/live/filesystem.squashfs.prev && echo "предыдущая версия сохранена: live/filesystem.squashfs.prev"
+else
+  echo "внимание: места мало, предыдущая версия не сохранена"
+fi
 mv -f $new $W/live/filesystem.squashfs
 for kind in kernel initrd grubcfg diskinfo; do
   awk -v k=$kind '$1==k{print $5}' /run/live-update.txt | while read -r dst; do mv -f "$W/$dst.new" "$W/$dst"; done
