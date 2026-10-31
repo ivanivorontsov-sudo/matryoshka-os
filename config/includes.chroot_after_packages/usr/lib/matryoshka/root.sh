@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 cmd="$1"; shift || true
-U=$(id -nu "${PKEXEC_UID:-${SUDO_UID:-1000}}" 2>/dev/null || echo ivan); H=$(getent passwd "$U" | cut -d: -f6)
+CU="${PKEXEC_UID:-${SUDO_UID:-}}"; [ -n "$CU" ] || CU=$(loginctl list-sessions --no-legend 2>/dev/null | awk '$4=="seat0"{print $2; exit}'); [ -n "$CU" ] || CU=1000
+U=$(id -nu "$CU" 2>/dev/null) || { echo "неизвестный пользователь"; exit 2; }; H=$(getent passwd "$U" | cut -d: -f6)
 case "$cmd" in
   drivers-install)
     for p in "$@"; do [[ "$p" =~ ^[a-z0-9.+-]+$ ]] || exit 2; done
@@ -62,7 +63,7 @@ case "$cmd" in
   guest-mount)
     t="$H/Хост (только чтение)"; mkdir -p "$t"; mountpoint -q "$t" || mount -t 9p -o trans=virtio,version=9p2000.L,ro shared "$t" ;;
   wifi-powersave)
-    if [ "$2" = off ]; then printf '[connection]\nwifi.powersave=2\n' > /etc/NetworkManager/conf.d/80-wifi-powersave.conf; else rm -f /etc/NetworkManager/conf.d/80-wifi-powersave.conf; fi; systemctl reload NetworkManager ;;
+    v=3; [ "$1" = off ] && v=2; rm -f /etc/NetworkManager/conf.d/80-wifi-powersave.conf /etc/NetworkManager/conf.d/wifi-powersave-off.conf; printf '[connection]\nwifi.powersave=%s\n' $v > /etc/NetworkManager/conf.d/60-matryoshka-powersave.conf; systemctl reload NetworkManager ;;
   fwupd-update) fwupdmgr refresh --force && fwupdmgr update ;;
   fwupd-enable) touch /var/lib/matryoshka/fwupd-consent; sed -i 's/^Enabled=.*/Enabled=true/' /etc/fwupd/remotes.d/lvfs.conf ;;
   bio)
