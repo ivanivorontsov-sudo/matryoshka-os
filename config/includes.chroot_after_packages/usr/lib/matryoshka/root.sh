@@ -151,5 +151,18 @@ case "$cmd" in
     python3 -m venv $d/venv && $d/venv/bin/pip install -q -r $d/requirements.txt || exit 5
     waydroid session stop 2>/dev/null; $d/venv/bin/python3 $d/main.py install "$1" || exit 6
     systemctl restart waydroid-container && echo "$1 установлен" ;;
+  deb-install)
+    f="$1"; case "$f" in *.deb) ;; *) exit 2 ;; esac; [ -f "$f" ] || exit 2
+    t=$(mktemp -d); cp -- "$f" $t/p.deb; chmod 644 $t/p.deb
+    dpkg-deb -I $t/p.deb >/dev/null || { echo "файл повреждён или это не пакет .deb"; rm -rf $t; exit 3; }
+    echo "== Установка $(dpkg-deb -f $t/p.deb Package) $(dpkg-deb -f $t/p.deb Version)"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Lock::Timeout=120 $t/p.deb; rc=$?; rm -rf $t; exit $rc ;;
+  apt-install)
+    for p in "$@"; do [[ "$p" =~ ^[a-z0-9][a-z0-9+.-]+$ ]] || exit 2; done
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Lock::Timeout=120 "$@" ;;
+  apt-remove)
+    for p in "$@"; do [[ "$p" =~ ^[a-z0-9][a-z0-9+.-]+$ ]] || exit 2; grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }; done
+    DEBIAN_FRONTEND=noninteractive apt-get remove -y -o DPkg::Lock::Timeout=120 "$@" ;;
+  fix-boot) /usr/lib/matryoshka/fix-boot.sh ;;
   *) echo "unknown"; exit 1 ;;
 esac

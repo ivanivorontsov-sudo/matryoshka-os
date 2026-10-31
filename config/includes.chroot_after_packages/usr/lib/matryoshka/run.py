@@ -82,14 +82,12 @@ def main(path):
         return subprocess.call(["wine", "start", "/unix", path], env=env)
     if ext == "jar":
         if shutil.which("java"): return subprocess.call(["java", "-jar", path])
-        if subprocess.call(["kdialog", "--yesno", "Для .jar нужна Java (около 200 МБ). Установить?"]) == 0: return subprocess.call(["konsole", "-e", "sudo", "apt", "install", "-y", "default-jre"])
+        if subprocess.call(["kdialog", "--yesno", "Для .jar нужна Java (около 200 МБ). Установить?"]) == 0: return subprocess.call(["matryoshka-pkginstall", "--apt", "default-jre"])
         return 1
     if ext == "rpm":
         return subprocess.call(["kdialog", "--sorry", "Это пакет для Fedora/openSUSE (.rpm). Для Матрёшки ищите .deb, Flatpak или AppImage этой программы."])
     if ext == "appimage":
-        os.chmod(path, os.stat(path).st_mode | 0o111)
-        rc = subprocess.call([path])
-        return rc if rc == 0 else subprocess.call([path, "--appimage-extract-and-run"])
+        return subprocess.call(["matryoshka-pkginstall", path])
     if ext == "apk":
         return install_apks([path]) if waydroid_ready() else need_android()
     if ext in ("xapk", "apks", "apkm"):
@@ -105,7 +103,7 @@ def main(path):
     if ext == "pon":
         return subprocess.call(["konsole", "--hold", "-e", "ponyatny", path])
     if ext == "deb":
-        return subprocess.call(["konsole", "-e", "sudo", "apt", "install", os.path.abspath(path)])
+        return subprocess.call(["matryoshka-pkginstall", os.path.abspath(path)])
     os.chmod(path, os.stat(path).st_mode | 0o111)
     return subprocess.call([path])
 

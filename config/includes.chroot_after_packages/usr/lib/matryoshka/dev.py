@@ -39,7 +39,7 @@ class Dev(QWidget):
         sel = [self.list.item(i).data(256) for i in range(self.list.count()) if self.list.item(i).checkState() == Qt.CheckState.Checked]
         cmds = []; ms = [k for k, h in sel if h == "mise"]; ap = " ".join(h[4:] for k, h in sel if h.startswith("apt:")); fp = [k for k, h in sel if h == "flatpak"]
         if ms: m = mise(); cmds.append(MISE_SH); cmds.append("\"%s\" use -g %s" % (m, " ".join(x + "@latest" for x in ms)))
-        if ap: cmds.append("sudo apt install -y " + ap)
+        if ap: cmds.append("pkexec /usr/lib/matryoshka/root.sh apt-install " + ap)
         if fp: cmds.append("flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo; flatpak install --user -y flathub " + " ".join(fp))
         if not cmds: return
         register_ides()

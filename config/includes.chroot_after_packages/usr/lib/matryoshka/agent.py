@@ -80,7 +80,7 @@ def do(tool, a):
     if tool in ("install_package", "remove_package"):
         n = a.get("name", "")
         if not re.fullmatch(r"[a-z0-9][a-z0-9+.-]+", n): return "недопустимое имя"
-        subprocess.Popen(["konsole", "--hold", "-e", "sudo", "apt", "install" if tool == "install_package" else "remove", n]); return "открыт терминал"
+        subprocess.Popen(["matryoshka-pkginstall", "--apt", n] if tool == "install_package" else ["konsole", "--hold", "-e", "pkexec", "/usr/lib/matryoshka/root.sh", "apt-remove", n]); return "открыто окно установки" if tool == "install_package" else "открыт терминал удаления"
     if tool == "windows": return sh(["sh", "-c", "wmctrl -l 2>/dev/null || qdbus6 org.kde.KWin /KWin org.kde.KWin.queryWindowInfo"])
     if tool == "remember":
         m = mem(); m["facts"].append(a.get("fact", "")); C.save("agent", m); return "запомнил"

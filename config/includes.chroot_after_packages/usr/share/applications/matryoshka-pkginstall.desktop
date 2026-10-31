@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Установка программ
+Exec=matryoshka-pkginstall %f
+Icon=system-software-install
+MimeType=application/vnd.debian.binary-package;application/x-deb;application/vnd.appimage;application/x-iso9660-appimage;
+NoDisplay=true
