@@ -32,3 +32,6 @@ Vosk (Apache-2.0), офлайн, русский. Клавиши Meta+H или з
 - Активаторы не поставляются и не скачиваются.
 - Другие архитектуры (ARM): образ собирается только для amd64. ARM-сборка не тестировалась, программы x86 под Wine на ARM не работают без эмуляции (box64 не входит в образ).
 - Юридические тексты в установщике (`legal.py`) требуют проверки юристом.
+
+## Android (Waydroid)
+Образы LineageOS 20 VANILLA (без GApps) system+vendor x86_64 встроены в `/usr/share/waydroid-extra/images`, поэтому `waydroid init` работает без интернета. Они скачиваются при сборке скриптом `packaging/fetch-waydroid-images.sh` с проверкой sha256 из официального OTA Waydroid. Модуль binder_linux загружается автоматически (`/etc/modules-load.d/matryoshka-waydroid.conf`). APK открываются двойным щелчком.
