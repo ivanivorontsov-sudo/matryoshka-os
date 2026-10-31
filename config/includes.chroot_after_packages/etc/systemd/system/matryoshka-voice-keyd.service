@@ -1,0 +1,10 @@
+[Unit]
+Description=Matryoshka voice input key injector
+[Service]
+ExecStart=/usr/bin/python3 /usr/lib/matryoshka/voice-keyd.py
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+[Install]
+WantedBy=multi-user.target

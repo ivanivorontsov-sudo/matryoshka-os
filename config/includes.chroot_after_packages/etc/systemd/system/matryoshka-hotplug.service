@@ -1,13 +1,12 @@
 [Unit]
 Description=Matryoshka driver check after device hotplug
-After=NetworkManager.service
+After=graphical.target NetworkManager.service
 DefaultDependencies=no
 StartLimitIntervalSec=0
 
 [Service]
 Type=exec
 ExecStart=/usr/lib/matryoshka/hotplug.sh
-TimeoutStartSec=infinity
 TimeoutStopSec=5
 Nice=19
 IOSchedulingClass=idle

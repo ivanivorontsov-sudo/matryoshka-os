@@ -8,3 +8,4 @@ config/includes.chroot_after_packages/opt/ivan/
 *.iso
 *.img
 out/
+config/includes.chroot_after_packages/opt/matryoshka-voice/

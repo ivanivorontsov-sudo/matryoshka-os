@@ -304,3 +304,4 @@ alsa-ucm-conf
 upower
 pipewire-bin
 alsa-utils
+python3-evdev
