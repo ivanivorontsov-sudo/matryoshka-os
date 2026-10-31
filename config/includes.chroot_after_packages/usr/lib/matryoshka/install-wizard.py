@@ -159,7 +159,7 @@ class Wiz(QWizard):
         if self.proc: return
         h = subprocess.run(["openssl", "passwd", "-6", "-stdin"], input=self.p1.text(), capture_output=True, text=True).stdout.strip()
         self.p1.clear(); self.p2.clear()
-        a = ["--mode", "erase" if self.erase.isChecked() else "free", "--disk", self.disk()["name"], "--user", self.un.text(), "--fullname", self.fn.text(), "--password-hash", h, "--yes"]
+        a = ["--mode", "erase" if self.erase.isChecked() else "free", "--disk", self.disk()["name"], "--user", self.un.text(), "--fullname", self.fn.text(), "--password-hash", h, "--country", self.cty.currentData(), "--yes"]
         self.button(QWizard.WizardButton.BackButton).setEnabled(False); self.button(QWizard.WizardButton.CancelButton).setEnabled(False)
         self.proc = QProcess(self); self.proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels); self.buf = ""
         self.proc.readyReadStandardOutput.connect(self.rd); self.proc.finished.connect(self.fin); self.proc.start(CORE, a)

@@ -2,7 +2,7 @@
 set -euo pipefail
 die() { echo "ОШИБКА: $*" >&2; exit 1; }
 log() { echo ">>> $*"; }
-MODE= DISK= USERNAME=ivan FULLNAME= PWHASH= HOSTNAME_=matryoshka SQUASH= RECOVERY_DONE=0 DRY=0 NVRAM=1 YES=0
+COUNTRY=RU MODE= DISK= USERNAME=ivan FULLNAME= PWHASH= HOSTNAME_=matryoshka SQUASH= RECOVERY_DONE=0 DRY=0 NVRAM=1 YES=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode) MODE=$2; shift ;;
@@ -11,6 +11,7 @@ while [ $# -gt 0 ]; do
     --fullname) FULLNAME=$2; shift ;;
     --password-hash) PWHASH=$2; shift ;;
     --hostname) HOSTNAME_=$2; shift ;;
+    --country) COUNTRY=$2; shift ;;
     --squashfs) SQUASH=$2; shift ;;
     --recovery-done) RECOVERY_DONE=1 ;;
     --no-nvram) NVRAM=0 ;;
@@ -196,4 +197,5 @@ udevadm settle; [ "$(blkid -s UUID -o value "$ESP")" = "$EU" ] || die "UUID ра
 findmnt --verify --tab-file $T/etc/fstab >/dev/null 2>&1 || die "проверка fstab не прошла"
 mkdir -p $T/var/lib/matryoshka; date -Is > $T/var/lib/matryoshka/installed
 sync
+mkdir -p $T/etc/matryoshka; echo "${COUNTRY:-RU}" | tr -cd "A-Z" > $T/etc/matryoshka/country 2>/dev/null || true
 log "Готово: система установлена на $ROOT, EFI $ESP"

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Точка доступа Wi-Fi
+Exec=matryoshka-hotspot
+Icon=network-wireless-hotspot
+Categories=Network;

@@ -73,6 +73,11 @@ def main(path):
     if res["malicious"] or res["activator"]:
         av.dialog(res)
         if not os.path.exists(path): return 4
+        if res["activator"]:
+            import legal
+            if subprocess.call(["kdialog", "--title", "Активатор", "--warningcontinuecancel", "Файл похож на активатор (средство обхода лицензии).\n\n" + legal.activator_text()]) != 0: return 5
+            r = subprocess.run(["kdialog", "--title", "Активатор", "--checklist", "Запуск разрешён только после подтверждения:", "ok", "подтверждаю, что использую только для экспериментов", "off"], capture_output=True, text=True)
+            if "ok" not in r.stdout: return 5
     ext = path.lower().rsplit(".", 1)[-1]
     if ext in ("com", "bat") or (ext == "exe" and exe_kind(path) == "dos"):
         return dos(path)
