@@ -1,4 +1,5 @@
 [Desktop Entry]
+Name=Матрёшка
 Type=Service
 MimeType=all/allfiles;inode/directory;
 Actions=link;encLink;toShared;openWin;installAndroid;scan

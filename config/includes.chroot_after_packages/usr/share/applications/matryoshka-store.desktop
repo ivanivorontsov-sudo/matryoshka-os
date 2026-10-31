@@ -3,4 +3,4 @@ Type=Application
 Name=Магазин приложений
 Exec=matryoshka-store
 Icon=plasmadiscover
-Categories=System;Matryoshka;
+Categories=System;X-Matryoshka;

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=Обновление Матрёшки
-Exec=sh -c 'grep -qw matryoshka.update /proc/cmdline && exec konsole --hold -e sudo /usr/bin/matryoshka-live-update'
+Exec=sh -c "grep -qw matryoshka.update /proc/cmdline && exec konsole --hold -e sudo /usr/bin/matryoshka-live-update"
 X-KDE-autostart-phase=2
 NoDisplay=true

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=Восстановление файлов
-Exec=sh -c 'grep -qw matryoshka.recover /proc/cmdline && exec matryoshka-recover'
+Exec=sh -c "grep -qw matryoshka.recover /proc/cmdline && exec matryoshka-recover"
 X-KDE-autostart-phase=2
 NoDisplay=true

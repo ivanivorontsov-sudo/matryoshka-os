@@ -3,4 +3,4 @@ Type=Application
 Name=Windows (C:)
 Exec=matryoshka-windows
 Icon=drive-harddisk
-Categories=System;Matryoshka;
+Categories=System;X-Matryoshka;
