@@ -59,7 +59,7 @@ case "$cmd" in
   android-id) waydroid shell -- sh -c "sqlite3 /data/data/com.google.android.gsf/databases/gservices.db \"select value from main where name='android_id';\"" ;;
   android-grant) waydroid shell -- appops set ru.vk.store REQUEST_INSTALL_PACKAGES allow; waydroid shell -- settings put secure install_non_market_apps 1; true ;;
   sandbox-grant)
-    case "$2" in /dev/*) d=$(lsblk -no PKNAME "$(findmnt -no SOURCE /run/live/medium)" 2>/dev/null); [ "$2" = "/dev/$d" ] || [ "$2" = "$(findmnt -no SOURCE /run/live/medium)" ] && setfacl -m u:$U:r "$2" ;; esac ;;
+    case "$1" in /dev/*) d=$(lsblk -no PKNAME "$(findmnt -no SOURCE /run/live/medium)" 2>/dev/null); [ "$1" = "/dev/$d" ] || [ "$1" = "$(findmnt -no SOURCE /run/live/medium)" ] && setfacl -m u:$U:r "$1" ;; esac ;;
   guest-mount)
     t="$H/Хост (только чтение)"; mkdir -p "$t"; mountpoint -q "$t" || mount -t 9p -o trans=virtio,version=9p2000.L,ro shared "$t" ;;
   wifi-powersave)
@@ -67,7 +67,7 @@ case "$cmd" in
   fwupd-update) fwupdmgr refresh --force && fwupdmgr update ;;
   fwupd-enable) touch /var/lib/matryoshka/fwupd-consent; sed -i 's/^Enabled=.*/Enabled=true/' /etc/fwupd/remotes.d/lvfs.conf ;;
   bio)
-    case "$2" in
+    case "$1" in
       finger-login-on) for p in sddm kde; do grep -q pam_fprintd /etc/pam.d/$p || sed -i '0,/^auth/s//auth\tsufficient\tpam_fprintd.so max-tries=2 timeout=10\nauth/' /etc/pam.d/$p; done ;;
       finger-login-off) sed -i '/pam_fprintd/d' /etc/pam.d/sddm /etc/pam.d/kde ;;
       finger-sudo-on) grep -q pam_fprintd /etc/pam.d/sudo || sed -i '0,/^@include common-auth/s//auth\tsufficient\tpam_fprintd.so max-tries=2 timeout=10\n@include common-auth/' /etc/pam.d/sudo ;;
@@ -84,7 +84,7 @@ case "$cmd" in
       *) exit 1 ;;
     esac ;;
   remove-app)
-    shift; for p in "$@"; do echo "$p" | grep -Eq '^[a-z0-9][a-z0-9+.-]+$' || exit 2; grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }; done
+    for p in "$@"; do echo "$p" | grep -Eq '^[a-z0-9][a-z0-9+.-]+$' || exit 2; grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }; done
     DEBIAN_FRONTEND=noninteractive apt-get purge -y "$@" && DEBIAN_FRONTEND=noninteractive apt-get autoremove -y --purge
     for s in ufw apparmor; do printf '%s: %s\n' "$s" "$(systemctl is-active $s)"; done; ufw status | head -1 ;;
   update-all)
@@ -99,10 +99,10 @@ case "$cmd" in
     echo "== Прошивки и ключи Secure Boot (UEFI CA 2023, dbx)"; [ -f /var/lib/matryoshka/fwupd-consent ] && { fwupdmgr refresh --force; fwupdmgr update -y --no-reboot-check; } || echo "пропущено (нет согласия)"
     mokutil --db 2>/dev/null | grep -q "UEFI CA 2023" && echo "ключ UEFI CA 2023 есть" || echo "ключа UEFI CA 2023 нет — обновите прошивку/ключи через fwupd или у производителя" ;;
   update-schedule)
-    if [ "$2" = on ]; then printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/91matryoshka-auto; systemctl unmask apt-daily.timer apt-daily-upgrade.timer; systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
+    if [ "$1" = on ]; then printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/91matryoshka-auto; systemctl unmask apt-daily.timer apt-daily-upgrade.timer; systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
     else rm -f /etc/apt/apt.conf.d/91matryoshka-auto; systemctl disable --now apt-daily.timer apt-daily-upgrade.timer; systemctl mask apt-daily.timer apt-daily-upgrade.timer; fi ;;
   luks-header-backup)
-    d="$2"; [ -d "$d" ] || exit 2; n=0
+    d="$1"; [ -d "$d" ] || exit 2; n=0
     for dev in $(blkid -t TYPE=crypto_LUKS -o device); do n=$((n+1)); cryptsetup luksHeaderBackup "$dev" --header-backup-file "$d/luks-header-$(basename $dev)-$(date +%Y%m%d).img" && echo "сохранён заголовок $dev"; done
     [ $n = 0 ] && echo "Зашифрованных дисков не найдено"; chown -R "$U": "$d" 2>/dev/null; true ;;
   luks-add-key)
