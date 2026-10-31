@@ -1,0 +1,12 @@
+#!/bin/bash
+[ -f "$1" ] || { echo "matryoshka-apk-check файл.apk"; exit 1; }
+abis=$(unzip -Z1 "$1" 'lib/*' 2>/dev/null | cut -d/ -f2 | sort -u | tr '\n' ' ')
+arm=$(unzip -Z1 "$1" 'assets/*' 2>/dev/null | grep -ciE 'aarch64|arm64')
+nb=$(waydroid prop get ro.dalvik.vm.native.bridge 2>/dev/null)
+echo "ABI библиотек: ${abis:-нет (чистая Java)}"
+echo "Транслятор ARM в Waydroid: ${nb:-нет}"
+if [ -n "$abis" ] && ! echo "$abis" | grep -q x86; then
+  echo "Приложение только для ARM. На x86_64 без транслятора ARM (libndk_translation) не запустится."
+elif [ "$arm" -gt 0 ]; then
+  echo "Есть x86-библиотеки, но внутри ARM-данные ($arm файлов aarch64/arm64): приложение установится, но его ARM-часть не заработает без транслятора."
+else echo "Должно работать на x86_64."; fi

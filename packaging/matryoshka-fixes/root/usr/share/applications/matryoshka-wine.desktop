@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Запуск программы Windows (Матрёшка)
+Exec=matryoshka-wine %f
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/x-ms-shortcut;application/vnd.microsoft.portable-executable;
+NoDisplay=true
+Icon=wine
