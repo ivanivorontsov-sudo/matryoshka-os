@@ -34,8 +34,9 @@ say "Копирую файлы системы"
 rsync -aK --exclude=/etc/sddm.conf.d/ --exclude=/etc/hostname --exclude=/etc/hosts $W/includes/ / || rollback
 if [ -s $W/packages.list ] && nmcli -t networking 2>/dev/null | grep -q enabled; then
   say "Доустанавливаю новые пакеты"
+  grep -q ':i386$' $W/packages.list 2>/dev/null || grep -qx 'wine32' $W/packages.list && { dpkg --print-foreign-architectures | grep -qx i386 || dpkg --add-architecture i386; }
+  apt-get -o DPkg::Lock::Timeout=120 -o Acquire::ForceIPv4=true update || echo "часть сторонних репозиториев недоступна, продолжаю с доступными"
   new=$(while read -r p; do [ -n "$p" ] && ! dpkg -s "$p" >/dev/null 2>&1 && apt-cache show "$p" >/dev/null 2>&1 && echo "$p"; done < $W/packages.list)
-  apt-get -o DPkg::Lock::Timeout=120 update || rollback
   [ -z "$new" ] || DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Lock::Timeout=120 $new || rollback
 else
   echo "сеть выключена: новые пакеты не установлены (обновление файлов продолжается)"
