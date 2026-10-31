@@ -303,3 +303,4 @@ partclone
 alsa-ucm-conf
 upower
 pipewire-bin
+alsa-utils

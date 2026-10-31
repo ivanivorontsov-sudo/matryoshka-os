@@ -4,17 +4,27 @@ from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLa
 
 DIR = os.path.join(os.path.expanduser("~"), "Аудиозаписи")
 
-def source_name():
-    r = subprocess.run(["wpctl", "inspect", "@DEFAULT_AUDIO_SOURCE@"], capture_output=True, text=True)
-    m = re.search(r'node\.(?:description|nick) = "([^"]+)"', r.stdout)
-    return m.group(1) if m else None
+def pick_source():
+    srcs = [l.split("\t")[1] for l in subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True).stdout.splitlines() if "\t" in l]
+    real = [x for x in srcs if x.startswith("alsa_input.") and not x.endswith(".monitor")]
+    d = subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True).stdout.strip()
+    if d in real: return d
+    return real[0] if real else (d or None)
+
+def source_name(src):
+    if not src: return None
+    for b in subprocess.run(["pactl", "list", "sources"], capture_output=True, text=True).stdout.split("\n\n"):
+        if "Name: %s\n" % src in b + "\n":
+            m = re.search(r"Description: (.+)", b)
+            if m: return m.group(1)
+    return src
 
 class D(QWidget):
     def __init__(self):
         super().__init__(); self.setWindowTitle("Диктофон"); self.resize(460, 480); os.makedirs(DIR, exist_ok=True)
         self.tmp = tempfile.mkdtemp(prefix="dict-"); self.parts = []; self.rec = None; self.play = None; self.t0 = 0; self.acc = 0
         v = QVBoxLayout(self)
-        s = source_name()
+        self.source = pick_source(); s = source_name(self.source)
         self.src = QLabel("Микрофон: %s" % s if s else "<b style='color:#d33'>Микрофон не найден.</b> Проверьте «Настройки → Звук → Устройства ввода»."); self.src.setWordWrap(True); v.addWidget(self.src)
         self.tm = QLabel("<h1>00:00</h1>"); v.addWidget(self.tm)
         h = QHBoxLayout(); v.addLayout(h)
@@ -34,7 +44,7 @@ class D(QWidget):
     def start(self):
         if self.rec: return
         p = os.path.join(self.tmp, "p%03d.wav" % len(self.parts)); self.parts.append(p)
-        self.rec = QProcess(self); self.rec.start("pw-record", ["--rate", "48000", "--channels", "1", p])
+        self.rec = QProcess(self); self.rec.start("pw-record", (["--target", self.source] if self.source else []) + ["--rate", "48000", "--channels", "1", p])
         if not self.rec.waitForStarted(3000): QMessageBox.warning(self, "Диктофон", "Не удалось начать запись (pw-record)."); self.rec = None; return
         self.t0 = time.time(); self.b_pause.setEnabled(True); self.b_save.setEnabled(True); self.b_rec.setText("● Идёт запись")
     def stoprec(self):

@@ -81,7 +81,7 @@ ufw allow in on waydroid0 to any port 67 proto udp comment "waydroid DHCP" >/dev
 ufw allow in on waydroid0 to any port 53 comment "waydroid DNS" >/dev/null 2>&1 || true
 ufw route allow in on waydroid0 comment "waydroid out" >/dev/null 2>&1 || true
 ufw route allow out on waydroid0 comment "waydroid in" >/dev/null 2>&1 || true
-systemctl enable matryoshka-fix-boot.service 2>/dev/null || true
+systemctl enable matryoshka-fix-boot.service matryoshka-admin-groups.service 2>/dev/null || true
 systemctl enable matryoshka-autotest.service 2>/dev/null || true
 systemctl enable matryoshka-snapper-setup.service matryoshka-dpkg-recover.service matryoshka-flatpak-update.timer 2>/dev/null || true
 true

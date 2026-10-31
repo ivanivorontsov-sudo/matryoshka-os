@@ -14,7 +14,9 @@ case "$cmd" in
     fi ;;
   drivers-check)
     /usr/lib/matryoshka/netup.sh ;;
-  av-update) freshclam ;;
+  av-update)
+    if systemctl is-active -q clamav-freshclam; then systemctl restart clamav-freshclam; sleep 25; tail -n 25 /var/log/clamav/freshclam.log; else freshclam; fi ;;
+  av-log) tail -n 60 /var/log/clamav/freshclam.log 2>/dev/null || journalctl -u clamav-freshclam -n 60 --no-pager ;;
   snitch-on) systemctl enable --now opensnitch.service; echo "OpenSnitch включён" ;;
   snitch-off) systemctl disable --now opensnitch.service; echo "OpenSnitch выключен" ;;
   av-autoupdate)
@@ -165,6 +167,7 @@ case "$cmd" in
     for p in "$@"; do [[ "$p" =~ ^[a-z0-9][a-z0-9+.-]+$ ]] || exit 2; grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }; done
     DEBIAN_FRONTEND=noninteractive apt-get remove -y -o DPkg::Lock::Timeout=120 "$@" ;;
   fix-boot) /usr/lib/matryoshka/fix-boot.sh ;;
+  admin-groups) /usr/lib/matryoshka/admin-groups.sh ;;
   sysbackup)
     case "$1" in plan|create|list|last-ok) a="$1"; shift; NOHOME="${NOHOME:-0}" /usr/lib/matryoshka/sysbackup.sh "$a" "$@" ;; verify) /usr/lib/matryoshka/sysbackup.sh verify "$2" ;; *) exit 2 ;; esac ;;
   upgrade) /usr/lib/matryoshka/upgrade.sh "$1" "$2" "${3:-same}" ;;

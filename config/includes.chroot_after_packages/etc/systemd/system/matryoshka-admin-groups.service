@@ -1,0 +1,9 @@
+[Unit]
+Description=Matryoshka admin users groups
+After=local-fs.target
+ConditionKernelCommandLine=!boot=live
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/matryoshka/admin-groups.sh
+[Install]
+WantedBy=multi-user.target

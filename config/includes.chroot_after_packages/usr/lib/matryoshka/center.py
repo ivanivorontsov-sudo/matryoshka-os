@@ -101,6 +101,7 @@ class Center(QWidget):
         fw = QCheckBox("Сетевой фильтр программ OpenSnitch (спрашивает о каждом новом подключении)"); fw.setChecked(C.run(["systemctl", "is-enabled", "opensnitch"]).stdout.strip() == "enabled"); fw.toggled.connect(lambda x: o.setPlainText(C.root("snitch-on" if x else "snitch-off").stdout)); v.addWidget(fw)
         kc = QCheckBox("KDE Connect (связь с телефоном, слушает локальную сеть)"); kc.setChecked(os.path.exists(os.path.expanduser("~/.config/autostart/org.kde.kdeconnect.daemon.desktop"))); kc.toggled.connect(lambda x: C.kdeconnect(x)); v.addWidget(kc)
         v.addWidget(btn("Проверить папку", scan)); v.addWidget(btn("Песочница (одноразовая Матрёшка)", lambda: subprocess.Popen(["matryoshka-sandbox"]))); v.addWidget(btn("Другие системы в окне", lambda: subprocess.Popen(["matryoshka-vms"]))); v.addWidget(btn("Обновить базы (нужна сеть)", lambda: (o.setPlainText("Обновляю базы…"), C.Task(self, C.root_argv("av-update"), lambda c, t: o.setPlainText(t[-4000:] or ("готово" if c == 0 else "ошибка %d" % c)), timeout=900))))
+        v.addWidget(btn("Журнал обновления баз", lambda: (o.setPlainText("Читаю журнал…"), C.Task(self, C.root_argv("av-log"), lambda c, t: o.setPlainText(t[-6000:]), timeout=60))))
         st = C.run(["systemctl", "is-active", "clamav-daemon"]).stdout.strip(); g = C.run(["pgrep", "-f", "av.py guard"]).returncode == 0
         v.addWidget(QLabel("Движок ClamAV: %s · страж папок: %s" % (st, "работает" if g else "не запущен")))
     def p_apps(self, v):
