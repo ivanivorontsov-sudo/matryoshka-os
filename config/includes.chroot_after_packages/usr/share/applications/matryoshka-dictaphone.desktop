@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Диктофон
+Comment=Запись голоса с микрофона
+Exec=matryoshka-dictaphone
+Icon=audio-input-microphone
+Categories=AudioVideo;Audio;Recorder;
+Keywords=запись;микрофон;голос;
