@@ -16,6 +16,9 @@ def scan(path):
     hack = [x for x in res["clam"] + res["yara"] if re.search(r"hacktool|kms|activat|crack|keygen", x, re.I)]
     res["activator"] = bool(ACT.search(os.path.basename(path))) or bool(hack)
     real = [x for x in res["clam"] + res["yara"] if x not in hack]
+    res["confirmed"] = [x for x in res["clam"] if x not in hack and not re.match(r"(Heuristics|PUA)\.", x)]
+    res["heuristic"] = [x for x in real if x not in res["confirmed"]]
+    res["by_name"] = bool(ACT.search(os.path.basename(path))) and not hack
     res["malicious"] = bool(real)
     try:
         h = hashlib.sha256(); f = open(path, "rb")
@@ -54,13 +57,13 @@ def ask_ai(res):
     try:
         if s["ai"] == "local":
             req = urllib.request.Request(s["local_url"].rstrip("/") + "/api/chat", json.dumps({"model": s["local_model"], "stream": False, "messages": [{"role": "user", "content": text}]}).encode(), {"Content-Type": "application/json"})
-            return json.load(urllib.request.urlopen(req, timeout=180))["message"]["content"]
+            return json.load(urllib.request.urlopen(req, timeout=60))["message"]["content"]
         if s["ai"] == "api":
             if not C.net_on(): return "Сеть выключена. Включите сеть, чтобы спросить нейросеть, или выберите локальную модель."
             h = {"Content-Type": "application/json"}
             if s["api_key"]: h["Authorization"] = "Bearer " + s["api_key"]
             req = urllib.request.Request(s["api_url"].rstrip("/") + "/chat/completions", json.dumps({"model": s["api_model"], "messages": [{"role": "user", "content": text}]}).encode(), h)
-            return json.load(urllib.request.urlopen(req, timeout=90))["choices"][0]["message"]["content"]
+            return json.load(urllib.request.urlopen(req, timeout=60))["choices"][0]["message"]["content"]
         C.run(["wl-copy", text]) if os.environ.get("WAYLAND_DISPLAY") else C.run(["xclip", "-selection", "clipboard"], input=text)
         webbrowser.open(s["chat_url"])
         return "Вопрос скопирован в буфер обмена, открыт чат нейросети. Вставьте его (Ctrl+V) и прочитайте ответ."
@@ -72,8 +75,10 @@ def dialog(res):
     app = QApplication.instance() or QApplication(sys.argv)
     d = QDialog(); d.setWindowTitle("Антивирус Матрёшки"); d.resize(640, 460); v = QVBoxLayout(d)
     name = os.path.basename(res["file"])
-    if res["malicious"]:
-        head = "<h3 style='color:#e8384f'>Найдена угроза в «%s»</h3><p>ClamAV: %s<br>YARA: %s</p>" % (name, ", ".join(res["clam"]) or "—", ", ".join(res["yara"]) or "—")
+    if res.get("confirmed"):
+        head = "<h3 style='color:#e8384f'>Найдена угроза в «%s»</h3><p>Файл: %s<br>Подтверждено сигнатурой ClamAV: %s<br>Эвристика: %s</p>" % (name, res["file"], ", ".join(res["confirmed"]), ", ".join(res.get("heuristic", [])) or "—")
+    elif res["malicious"]:
+        head = "<h3 style='color:#ffb000'>Подозрение (эвристика) в «%s»</h3><p>Файл: %s<br>Сработавшие правила: %s</p><p>Сигнатурой вирус не подтверждён. Это может быть ложное срабатывание: проверьте, откуда файл, прежде чем удалять.</p>" % (name, res["file"], ", ".join(res.get("heuristic") or res["clam"] + res["yara"]))
     else:
         head = "<h3>Файл «%s» похож на активатор</h3><p>Вирусов не найдено, поэтому файл <b>не заблокирован</b>.</p>" % name
     if res["activator"]:
@@ -82,7 +87,16 @@ def dialog(res):
     v.addWidget(QLabel(head, wordWrap=True))
     out = QTextBrowser(); out.setPlaceholderText("Здесь появится объяснение нейросети"); v.addWidget(out)
     h = QHBoxLayout(); v.addLayout(h)
-    def ai(): out.setPlainText("Спрашиваю нейросеть..."); app.processEvents(); out.setPlainText(ask_ai(res))
+    import threading
+    from PyQt6.QtCore import QTimer
+    box = {}
+    def ai():
+        if box.get("t") and box["t"].is_alive(): return
+        out.setPlainText("Спрашиваю нейросеть… Окно можно закрыть в любой момент.")
+        box.pop("r", None); box["t"] = threading.Thread(target=lambda: box.__setitem__("r", ask_ai(res)), daemon=True); box["t"].start()
+    def poll():
+        if "r" in box: out.setPlainText(box.pop("r"))
+    tm = QTimer(d); tm.timeout.connect(poll); tm.start(300)
     def quar():
         os.makedirs(QUAR, exist_ok=True); shutil.move(res["file"], os.path.join(QUAR, name)); d.accept()
     def rm():
@@ -113,10 +127,15 @@ if __name__ == "__main__":
         res = scan(a[1]); print(("УГРОЗА" if res["malicious"] else "АКТИВАТОР" if res["activator"] else "чисто"), *(res["clam"] + res["yara"])); print(ask_ai(res))
     elif a and a[0] == "scan":
         bad = 0
-        for root in a[1:]:
+        for root in [x for x in a[1:] if x != "--dialog"]:
             files = [root] if os.path.isfile(root) else [os.path.join(r, f) for r, _, fs in os.walk(root) for f in fs]
             for f in files:
                 res = scan(f)
-                print(("УГРОЗА " if res["malicious"] else "АКТИВАТОР " if res["activator"] else "чисто ") + f, *(res["clam"] + res["yara"]))
-                if res["malicious"] or res["activator"]: bad += 1; dialog(res) if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY") else None
+                if res.get("confirmed"): print("УГРОЗА (сигнатура): %s\n  правила: %s" % (f, ", ".join(res["confirmed"] + res["heuristic"])), flush=True)
+                elif res["malicious"]: print("ПОДОЗРЕНИЕ (эвристика, не подтверждено): %s\n  правила: %s" % (f, ", ".join(res["heuristic"])), flush=True)
+                elif res["activator"]: print("АКТИВАТОР%s: %s" % (" (только по имени файла)" if res["by_name"] else "", f), flush=True)
+                if res["malicious"] or res["activator"]:
+                    bad += 1
+                    if "--dialog" in a and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")): dialog(res)
+        print("Проверено. Находок: %d" % bad)
         sys.exit(1 if bad else 0)
