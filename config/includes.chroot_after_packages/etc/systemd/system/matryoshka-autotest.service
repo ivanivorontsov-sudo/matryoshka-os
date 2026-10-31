@@ -6,6 +6,6 @@ After=multi-user.target
 Type=oneshot
 StandardOutput=journal+console
 StandardError=journal+console
-ExecStart=/bin/sh -c 'm=$(sed -n "s/.*matryoshka.autotest=\\([a-z]*\\).*/\\1/p" /proc/cmdline); d=$(ls /dev/nvme0n1 /dev/vda /dev/sda 2>/dev/null | head -n1); /usr/lib/matryoshka/install-core.sh --mode $m --disk $d --user tester --fullname Tester --password-hash "$(printf test123 | openssl passwd -6 -stdin)" --yes > /run/autotest.log 2>&1; echo AUTOTEST_RC=$? >> /run/autotest.log; cat /run/autotest.log > /dev/console; sync; systemctl poweroff'
+ExecStart=/usr/lib/matryoshka/autotest.sh
 [Install]
 WantedBy=multi-user.target
