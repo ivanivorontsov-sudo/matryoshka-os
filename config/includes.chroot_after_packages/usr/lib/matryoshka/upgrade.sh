@@ -53,14 +53,27 @@ update-initramfs -u >/dev/null || rollback
 if [ -n "$ISO" ]; then
   [ -f "$ISO" ] || { echo "образ $ISO не найден"; rollback; }
   say "Копирую живую систему из образа на диск (запасной вариант загрузки)"
-  M=$(mktemp -d); mount -o loop,ro "$ISO" $M || { rmdir $M; echo "образ не подключился"; rollback; }
-  need=$(du -sb $M/live | cut -f1); free=$(df -B1 --output=avail / | tail -1)
-  if [ "$free" -gt $((need + 2*1024*1024*1024)) ]; then
-    N=/matryoshka-live/live.new; rm -rf $N; mkdir -p $N
-    cp $M/live/filesystem.squashfs $M/live/vmlinuz-* $M/live/initrd.img-* $N/ && (cd $N && sha256sum filesystem.squashfs vmlinuz-* initrd.img-* > SHA256SUMS && sha256sum -c --quiet SHA256SUMS) || { umount $M; rm -rf $N; echo "копия живой системы повреждена"; rollback; }
-    rm -rf /matryoshka-live/live.prev; [ -d /matryoshka-live/live ] && mv /matryoshka-live/live /matryoshka-live/live.prev; mv $N /matryoshka-live/live
-  else echo "мало места: живая система на диск не скопирована"; fi
-  umount $M; rmdir $M
+  modprobe loop 2>/dev/null; M=$(mktemp -d); X=""
+  if mount -o loop,ro "$ISO" $M 2>/dev/null; then MNT=1
+  else
+    MNT=0; X=$(mktemp -d -p /var/tmp); echo "петлевое устройство недоступно, распаковываю образ"
+    command -v bsdtar >/dev/null || command -v xorriso >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y libarchive-tools >/dev/null 2>&1
+    if command -v bsdtar >/dev/null; then bsdtar -xf "$ISO" -C $X live
+    elif command -v xorriso >/dev/null; then xorriso -osirrox on -indev "$ISO" -extract /live $X/live >/dev/null 2>&1
+    fi
+    rmdir $M; M=$X
+  fi
+  if [ -f $M/live/filesystem.squashfs ]; then
+    need=$(du -sb $M/live | cut -f1); free=$(df -B1 --output=avail / | tail -1)
+    if [ "$free" -gt $((need + 2*1024*1024*1024)) ]; then
+      N=/matryoshka-live/live.new; rm -rf $N; mkdir -p $N
+      if cp $M/live/filesystem.squashfs $M/live/vmlinuz-* $M/live/initrd.img-* $N/ && (cd $N && sha256sum filesystem.squashfs vmlinuz-* initrd.img-* > SHA256SUMS && sha256sum -c --quiet SHA256SUMS); then
+        rm -rf /matryoshka-live/live.prev; [ -d /matryoshka-live/live ] && mv /matryoshka-live/live /matryoshka-live/live.prev; mv $N /matryoshka-live/live
+        echo "живая система скопирована на диск"
+      else rm -rf $N; echo "ВНИМАНИЕ: живая система не скопирована (ошибка копирования), обновление системы при этом применено"; fi
+    else echo "мало места: живая система на диск не скопирована"; fi
+  else echo "ВНИМАНИЕ: не удалось открыть образ, живая система на диск не скопирована; обновление системы при этом применено"; fi
+  if [ "$MNT" = 1 ]; then umount $M; rmdir $M; else rm -rf "$X"; fi
 fi
 update-grub >/dev/null 2>&1 || rollback
 grep -q "живая система" /boot/grub/grub.cfg && say "В меню загрузки есть пункт «Матрёшка — живая система»" || echo "ВНИМАНИЕ: пункта живой системы в меню нет (нет раздела MATRYOSHKA и копии на диске)"
