@@ -45,7 +45,7 @@ def settings():
     return load("settings", {"theme": "matryoshka", "layout": "windows", "mode": "standard", "country": "RU",
                              "ai": "api", "api_url": "https://api.llm7.io/v1", "api_model": "default", "api_key": "",
                              "local_url": "http://127.0.0.1:11434", "local_model": "llama3.2",
-                             "chat_url": "https://chat.qwen.ai/", "launcher": {"kind": "builtin", "target": ""}})
+                             "chat_url": "https://chat.qwen.ai/", "launcher": {"kind": "plasma", "target": ""}, "launcher_v": 2})
 
 def cmdline():
     try:

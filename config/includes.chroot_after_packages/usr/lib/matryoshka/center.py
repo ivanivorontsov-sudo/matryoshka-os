@@ -41,7 +41,7 @@ class Center(QWidget):
         v.addWidget(QLabel("<h2>Главный экран</h2>Любой лаунчер: встроенный СуперСмарт, обычный рабочий стол Linux, программа Windows (.exe) или Android-лаунчер (.apk). Выбор сохраняется и применяется при каждом входе. СуперСмарт сам не появляется, если выбран другой главный экран.", wordWrap=True))
         l = self.s["launcher"]; k = QComboBox()
         kinds = [("builtin", "СуперСмарт (встроенный)"), ("plasma", "Рабочий стол KDE Plasma"), ("linux", "Другая Linux-программа (команда)"), ("exe", "Windows-программа (.exe через Wine)"), ("apk", "Android-лаунчер (имя пакета, через Waydroid)")]
-        [k.addItem(n, i) for i, n in kinds]; k.setCurrentIndex([i for i, _ in kinds].index(l.get("kind", "builtin")))
+        [k.addItem(n, i) for i, n in kinds]; k.setCurrentIndex([i for i, _ in kinds].index(l.get("kind", "plasma")))
         tgt = QLineEdit(l.get("target", "")); tgt.setPlaceholderText("команда, путь к .exe или пакет, напр. com.teslacoilsw.launcher")
         v.addWidget(k); v.addWidget(tgt)
         def pick():
@@ -49,7 +49,7 @@ class Center(QWidget):
             if p: tgt.setText(p)
         v.addWidget(btn("Выбрать файл…", pick))
         def ok():
-            self.s["launcher"] = {"kind": k.currentData(), "target": tgt.text()}; self.save()
+            self.s["launcher"] = {"kind": k.currentData(), "target": tgt.text(), "chosen": True}; self.s["launcher_v"] = 2; self.save()
             QMessageBox.information(self, "Главный экран", "Сохранено. Применится при следующем входе.")
         v.addWidget(btn("Сохранить", ok)); v.addWidget(btn("Открыть СуперСмарт сейчас", lambda: subprocess.Popen(["supersmart"])))
     def p_net(self, v):
