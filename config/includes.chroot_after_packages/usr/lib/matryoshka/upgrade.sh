@@ -32,14 +32,13 @@ say "Проверка пакетного менеджера"
 dpkg --configure -a || rollback
 say "Копирую файлы системы"
 rsync -aK --exclude=/etc/sddm.conf.d/ --exclude=/etc/hostname --exclude=/etc/hosts $W/includes/ / || rollback
-if [ -s $W/packages.list ] && nmcli -t networking 2>/dev/null | grep -q enabled; then
-  say "Доустанавливаю новые пакеты"
-  grep -q ':i386$' $W/packages.list 2>/dev/null || grep -qx 'wine32' $W/packages.list && { dpkg --print-foreign-architectures | grep -qx i386 || dpkg --add-architecture i386; }
-  apt-get -o DPkg::Lock::Timeout=120 -o Acquire::ForceIPv4=true update || echo "часть сторонних репозиториев недоступна, продолжаю с доступными"
-  new=$(while read -r p; do [ -n "$p" ] && ! dpkg -s "$p" >/dev/null 2>&1 && apt-cache show "$p" >/dev/null 2>&1 && echo "$p"; done < $W/packages.list)
-  [ -z "$new" ] || DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Lock::Timeout=120 $new || rollback
-else
-  echo "сеть выключена: новые пакеты не установлены (обновление файлов продолжается)"
+if [ -s $W/packages.list ]; then
+  new=$(while read -r p; do [ -n "$p" ] && ! dpkg -s "$p" >/dev/null 2>&1 && echo "$p"; done < $W/packages.list)
+  if [ -n "$new" ]; then
+    mkdir -p /var/lib/matryoshka; echo "$new" > /var/lib/matryoshka/pending-packages
+    echo "Новые пакеты не скачиваются во время обновления. Позже, при хорошей сети, поставьте их одной командой:"
+    echo "  sudo apt update; sudo apt install \$(cat /var/lib/matryoshka/pending-packages)"
+  fi
 fi
 systemctl daemon-reload
 [ -s $W/enable.list ] && xargs -a $W/enable.list systemctl enable >/dev/null 2>&1
@@ -75,7 +74,14 @@ if [ -n "$ISO" ]; then
   else echo "ВНИМАНИЕ: не удалось открыть образ, живая система на диск не скопирована; обновление системы при этом применено"; fi
   if [ "$MNT" = 1 ]; then umount $M; rmdir $M; else rm -rf "$X"; fi
 fi
-update-grub >/dev/null 2>&1 || rollback
+if ! update-grub >/tmp/matryoshka-grub.log 2>&1; then
+  echo "update-grub завершился с ошибкой:"; tail -n 15 /tmp/matryoshka-grub.log
+  if [ -x /etc/grub.d/43_matryoshka_live ]; then
+    chmod -x /etc/grub.d/43_matryoshka_live
+    if update-grub >>/tmp/matryoshka-grub.log 2>&1; then echo "ВНИМАНИЕ: меню загрузки обновлено без пункта живой системы (пришлите снимок этих строк)"
+    else chmod +x /etc/grub.d/43_matryoshka_live; tail -n 15 /tmp/matryoshka-grub.log; rollback; fi
+  else rollback; fi
+fi
 grep -q "живая система" /boot/grub/grub.cfg && say "В меню загрузки есть пункт «Матрёшка — живая система»" || echo "ВНИМАНИЕ: пункта живой системы в меню нет (нет раздела MATRYOSHKA и копии на диске)"
 cat $W/VERSION > /etc/matryoshka-version
 rm -rf $W
