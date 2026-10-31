@@ -1,4 +1,4 @@
-import json, os, re, shlex, subprocess, configparser, glob
+import json, os, re, shlex, subprocess, configparser, glob, shutil
 
 HOME = os.path.expanduser("~")
 CONF = os.path.join(HOME, ".config", "matryoshka")

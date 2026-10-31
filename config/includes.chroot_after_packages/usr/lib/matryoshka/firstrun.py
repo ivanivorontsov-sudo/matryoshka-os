@@ -30,7 +30,21 @@ class Wiz(QWizard):
         tip = QLabel("Совет: KeePassXC (уже установлен) хранит пароли, коды 2FA (TOTP) и ключи доступа (passkeys). KDE Connect связывает телефон: файлы, буфер обмена, уведомления — по зашифрованному каналу."); tip.setWordWrap(True); v.addWidget(tip)
         self.bio = QCheckBox("Настроить вход по отпечатку пальца или лицу"); v.addWidget(self.bio)
         self.dev = QCheckBox("Вы программист? Показать каталог языков, SDK и инструментов"); v.addWidget(self.dev)
-        for p in (p1, p2, p3): self.addPage(p)
+        pages = [p1, p2, p3]
+        self.finger = None
+        fp = C.run(["fprintd-list", C.os.environ.get("USER", "ivan")], timeout=15)
+        face = C.shutil.which("howdy") is not None
+        has_fp = fp.returncode == 0 and "No devices" not in fp.stdout + fp.stderr and "found 0" not in fp.stdout
+        if not C.live() and (has_fp or face):
+            p4 = QWizardPage(); p4.setTitle("Вход по отпечатку или лицу (можно пропустить)"); v = QVBoxLayout(p4)
+            v.addWidget(QLabel("Этот шаг необязателен: нажмите «Далее» или «Готово», чтобы пропустить. Вход по паролю остаётся всегда, отпечаток и лицо только добавляются к нему. Для прав администратора всегда нужен пароль.", wordWrap=True))
+            if has_fp:
+                b = QPushButton("Записать отпечаток (откроется окно, прикладывайте палец несколько раз)"); b.clicked.connect(lambda: C.subprocess.Popen(["konsole", "--hold", "-e", "fprintd-enroll"])); v.addWidget(b)
+                self.finger = QCheckBox("Включить вход по отпечатку на экране входа и блокировки"); v.addWidget(self.finger)
+            if face:
+                b = QPushButton("Записать лицо (Howdy, откроется окно)"); b.clicked.connect(lambda: C.subprocess.Popen(["konsole", "--hold", "-e", "pkexec", "/usr/lib/matryoshka/root.sh", "bio", "face-add"])); v.addWidget(b)
+            pages.append(p4)
+        for p in pages: self.addPage(p)
     def validateCurrentPage(self):
         if self.currentId() == 0 and not C.live() and 0 < len(self.pw.text()) < 6:
             self.pw.setText(""); self.pw2.setText(""); self.pw.setPlaceholderText("Нужен пароль не короче 6 символов"); return False
@@ -46,7 +60,7 @@ class Wiz(QWizard):
         def work():
             steps = ((("Раздел сохранения на флешке", lambda: self.log.append(C.root("persistence-create").stdout)),) if self.pers.isChecked() else ()) + (("Пароль администратора", lambda: (C.live() or d["pw"]) and C.root("set-password", inp=d["pw"] + "\n")), ("Автовход", lambda: C.root("autologin", "on" if C.live() and not d["pw"] else "off")),
                      ("Имя", lambda: C.root("set-name", d["name"])), ("Тема", lambda: C.apply_theme(d["theme"])), ("Расположение", lambda: C.apply_layout(d["layout"])),
-                     ("Режим", lambda: C.apply_mode(d["mode"])), ("Сеть", lambda: C.net_set(d["net"])), ("Завершение", lambda: C.live() or C.root("firstrun-done")))
+                     ("Режим", lambda: C.apply_mode(d["mode"])), ("Сеть", lambda: C.net_set(d["net"])), ("Отпечаток", lambda: self.finger is not None and self.finger.isChecked() and C.root("bio", "finger-login-on")), ("Завершение", lambda: C.live() or C.root("firstrun-done")))
             for n, f in steps:
                 if self.cancel: break
                 self.step = n
