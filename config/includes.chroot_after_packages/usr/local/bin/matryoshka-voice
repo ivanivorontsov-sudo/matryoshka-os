@@ -1,0 +1,7 @@
+#!/bin/sh
+E=/usr/lib/matryoshka/voice-engine
+S=/run/user/$(id -u)/matryoshka-voice.on
+if [ ! -x "$E" ]; then notify-send -a "Матрёшка" "Голосовой ввод" "Движок голосового ввода ещё не установлен в этой версии."; exit 1; fi
+SRC=$(pactl list short sources 2>/dev/null | awk '$2 ~ /^alsa_input\./ {print $2; exit}')
+if [ -e "$S" ]; then rm -f "$S"; "$E" stop; notify-send -a "Матрёшка" "Голосовой ввод" "Выключен"
+else : > "$S"; PULSE_SOURCE="$SRC" "$E" start & notify-send -a "Матрёшка" "Голосовой ввод" "Говорите: текст печатается в активное окно. Meta+H — выключить."; fi

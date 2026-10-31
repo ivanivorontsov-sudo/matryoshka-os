@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Голосовой ввод
+Comment=Включить или выключить ввод голосом в любое окно
+Exec=matryoshka-voice
+Icon=audio-input-microphone
+Categories=Utility;Accessibility;
+X-KDE-Shortcuts=Meta+H
