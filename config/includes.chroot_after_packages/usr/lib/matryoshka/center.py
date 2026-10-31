@@ -21,6 +21,8 @@ class Center(QWidget):
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex); self.nav.setCurrentRow(0)
         if len(sys.argv) > 1 and sys.argv[1].isdigit(): self.nav.setCurrentRow(int(sys.argv[1]))
     def save(self): C.save("settings", self.s)
+    def closeEvent(self, e):
+        C.cancel_tasks(self); e.accept()
     def out(self, v):
         o = QTextBrowser(); v.addWidget(o); return o
     def p_look(self, v):
@@ -36,7 +38,7 @@ class Center(QWidget):
         hl = QCheckBox("Подсвечивать щелчки мыши (для показа экрана и обучения)"); hl.setChecked(C.run(["kreadconfig6", "--file", "kwinrc", "--group", "Plugins", "--key", "mouseclickEnabled"]).stdout.strip() == "true")
         hl.toggled.connect(lambda x: (C.kwrite("kwinrc", "Plugins", "mouseclickEnabled", "true" if x else "false"), C.run(["busctl", "--user", "call", "org.kde.KWin", "/KWin", "org.kde.KWin", "reconfigure"]))); v.addWidget(hl)
     def p_launcher(self, v):
-        v.addWidget(QLabel("<h2>Главный экран</h2>Любой лаунчер: встроенный СуперСмарт, обычный рабочий стол Linux, программа Windows (.exe) или Android-лаунчер (.apk). Если выбранный не запустится — автоматически включится СуперСмарт.", wordWrap=True))
+        v.addWidget(QLabel("<h2>Главный экран</h2>Любой лаунчер: встроенный СуперСмарт, обычный рабочий стол Linux, программа Windows (.exe) или Android-лаунчер (.apk). Выбор сохраняется и применяется при каждом входе. СуперСмарт сам не появляется, если выбран другой главный экран.", wordWrap=True))
         l = self.s["launcher"]; k = QComboBox()
         kinds = [("builtin", "СуперСмарт (встроенный)"), ("plasma", "Рабочий стол KDE Plasma"), ("linux", "Другая Linux-программа (команда)"), ("exe", "Windows-программа (.exe через Wine)"), ("apk", "Android-лаунчер (имя пакета, через Waydroid)")]
         [k.addItem(n, i) for i, n in kinds]; k.setCurrentIndex([i for i, _ in kinds].index(l.get("kind", "builtin")))
@@ -58,7 +60,7 @@ class Center(QWidget):
         cb = QCheckBox("При включении сети обновлять базы антивируса и искать драйверы"); cb.setChecked(not os.path.exists("/var/lib/matryoshka/no-av-update"))
         cb.toggled.connect(lambda x: C.root("av-autoupdate", "on" if x else "off")); v.addWidget(cb)
         v.addWidget(QLabel("<h3>Скорость и задержки</h3>Уже включено: BBR + fq, TCP Fast Open, увеличенные буферы, кэш DNS.", wordWrap=True))
-        ps = QCheckBox("Отключить энергосбережение Wi-Fi (меньше задержка, больше расход батареи)"); ps.setChecked(os.path.exists("/etc/NetworkManager/conf.d/80-wifi-powersave.conf"))
+        ps = QCheckBox("Отключить энергосбережение Wi-Fi (меньше задержка, больше расход батареи)"); ps.setChecked(C.wifi_powersave_off())
         ps.toggled.connect(lambda x: C.root("wifi-powersave", "off" if x else "on")); v.addWidget(ps)
         v.addWidget(QLabel("<h3>Сеть</h3>Поддерживаются WireGuard, OpenVPN, IPsec/IKEv2 — профиль от вашего провайдера или работы импортируется одним нажатием. Подключение работает, только когда сеть включена.", wordWrap=True))
         o = self.out(v)
@@ -86,17 +88,19 @@ class Center(QWidget):
         off = QCheckBox("Выключить ИИ полностью (антивирус без объяснений, ИИ-управляющий недоступен)"); off.setChecked(bool(self.s.get("ai_off"))); off.toggled.connect(lambda x: (self.s.update(ai_off=x), self.save())); v.addWidget(off)
         def scan():
             d = QFileDialog.getExistingDirectory(self, "Папка для проверки", os.path.expanduser("~"))
-            if d: o.setPlainText("Проверяю…"); QApplication.processEvents(); o.setPlainText(C.run([sys.executable, "/usr/lib/matryoshka/av.py", "scan", d]).stdout or "Угроз не найдено")
+            if d:
+                o.setPlainText("Проверяю %s… Окно можно закрыть." % d)
+                C.Task(self, [sys.executable, "/usr/lib/matryoshka/av.py", "scan", d], lambda c, t: o.setPlainText(t[-8000:] or "Угроз не найдено"), timeout=3600, out=o.setPlainText)
         def lai():
             if QMessageBox.question(self, "Умный антивирус", "Скачать локальную ИИ (Ollama + модель Qwen 2.5 по объёму памяти, 1–5 ГБ)? Она работает без интернета и ничего не отправляет. Работает с низким приоритетом.") != QMessageBox.StandardButton.Yes: return
             o.setPlainText("Скачиваю…"); QApplication.processEvents(); r = C.root("ai-install"); o.setPlainText(r.stdout[-2000:] + r.stderr[-1500:])
             m = open("/etc/matryoshka-ai.conf").read().split("=", 1)[1].strip() if os.path.exists("/etc/matryoshka-ai.conf") else ""
             if m: self.s.update(ai="local", local_model=m, local_url="http://127.0.0.1:11434"); self.save()
         v.addWidget(btn("Умный антивирус (локальная ИИ) — скачать", lai)); v.addWidget(btn("Удалить локальную ИИ", lambda: o.setPlainText(C.root("ai-remove").stdout)))
-        v.addWidget(btn("Проверить автозапуск, процессы и сеть", lambda: o.setPlainText(C.run([sys.executable, "/usr/lib/matryoshka/av.py", "audit"], timeout=600).stdout)))
+        v.addWidget(btn("Проверить автозапуск, процессы и сеть", lambda: (o.setPlainText("Спрашиваю нейросеть…"), C.Task(self, [sys.executable, "/usr/lib/matryoshka/av.py", "audit"], lambda c, t: o.setPlainText(t[-6000:]), timeout=180))))
         fw = QCheckBox("Сетевой фильтр программ OpenSnitch (спрашивает о каждом новом подключении)"); fw.setChecked(C.run(["systemctl", "is-enabled", "opensnitch"]).stdout.strip() == "enabled"); fw.toggled.connect(lambda x: o.setPlainText(C.root("snitch-on" if x else "snitch-off").stdout)); v.addWidget(fw)
         kc = QCheckBox("KDE Connect (связь с телефоном, слушает локальную сеть)"); kc.setChecked(os.path.exists(os.path.expanduser("~/.config/autostart/org.kde.kdeconnect.daemon.desktop"))); kc.toggled.connect(lambda x: C.kdeconnect(x)); v.addWidget(kc)
-        v.addWidget(btn("Проверить папку", scan)); v.addWidget(btn("Песочница (одноразовая Матрёшка)", lambda: subprocess.Popen(["matryoshka-sandbox"]))); v.addWidget(btn("Другие системы в окне", lambda: subprocess.Popen(["matryoshka-vms"]))); v.addWidget(btn("Обновить базы (нужна сеть)", lambda: o.setPlainText(C.root("av-update").stdout)))
+        v.addWidget(btn("Проверить папку", scan)); v.addWidget(btn("Песочница (одноразовая Матрёшка)", lambda: subprocess.Popen(["matryoshka-sandbox"]))); v.addWidget(btn("Другие системы в окне", lambda: subprocess.Popen(["matryoshka-vms"]))); v.addWidget(btn("Обновить базы (нужна сеть)", lambda: (o.setPlainText("Обновляю базы…"), C.Task(self, C.root_argv("av-update"), lambda c, t: o.setPlainText(t[-4000:] or ("готово" if c == 0 else "ошибка %d" % c)), timeout=900))))
         st = C.run(["systemctl", "is-active", "clamav-daemon"]).stdout.strip(); g = C.run(["pgrep", "-f", "av.py guard"]).returncode == 0
         v.addWidget(QLabel("Движок ClamAV: %s · страж папок: %s" % (st, "работает" if g else "не запущен")))
     def p_apps(self, v):
@@ -123,17 +127,28 @@ class Center(QWidget):
         v.addWidget(QLabel("<h2>Драйверы</h2>Большинство драйверов уже в ядре и пакетах прошивок. Умный поиск (isenkram) сверяет ваше железо с базой Debian и предлагает недостающие пакеты — только когда сеть включена.", wordWrap=True))
         o = self.out(v); o.setPlainText(C.run(["sh", "-c", "lspci -nnk | grep -A2 -Ei 'vga|network|audio|ethernet' ; echo; lsusb"]).stdout)
         lst = QListWidget(); v.addWidget(lst)
+        job = {}
+        def busy():
+            return job.get("t") is not None and job["t"].running()
         def check():
+            if busy(): return
             if not C.net_on(): o.setPlainText("Включите сеть, чтобы искать драйверы."); return
-            o.setPlainText("Ищу…"); QApplication.processEvents(); C.root("drivers-check"); lst.clear()
-            miss = open("/var/lib/matryoshka/drivers-missing.txt").read().split() if os.path.exists("/var/lib/matryoshka/drivers-missing.txt") else []
-            for p in miss:
-                it = QListWidgetItem(p); it.setCheckState(Qt.CheckState.Checked); lst.addItem(it)
-            o.setPlainText("Найдено недостающих пакетов: %d" % len(miss))
+            o.setPlainText("Ищу… Это может занять пару минут, окно можно закрыть."); lst.clear()
+            def done(code, text):
+                miss = open("/var/lib/matryoshka/drivers-missing.txt").read().split() if os.path.exists("/var/lib/matryoshka/drivers-missing.txt") else []
+                for p in miss:
+                    it = QListWidgetItem(p); it.setCheckState(Qt.CheckState.Checked); lst.addItem(it)
+                if code != 0: o.setPlainText("Поиск не завершён (код %d). Возможно, идёт другое обновление или нет связи с репозиторием Debian.\n%s" % (code, text[-2000:]))
+                elif miss: o.setPlainText("Найдено недостающих пакетов: %d" % len(miss))
+                else: o.setPlainText("Недостающих драйверов не найдено: всё нужное уже установлено.")
+            job["t"] = C.Task(self, C.root_argv("drivers-check"), done, timeout=300)
         def inst():
+            if busy(): return
             pk = [lst.item(i).text() for i in range(lst.count()) if lst.item(i).checkState() == Qt.CheckState.Checked]
-            if pk: r = C.root("drivers-install", *pk); o.setPlainText(r.stdout[-3000:] + r.stderr[-2000:])
-        v.addWidget(btn("Найти драйверы", check)); v.addWidget(btn("Установить отмеченные", inst))
+            if not pk: return
+            o.setPlainText("Устанавливаю…")
+            job["t"] = C.Task(self, C.root_argv("drivers-install", *pk), lambda c, t: o.setPlainText(t[-5000:] + ("\nГотово." if c == 0 else "\nОшибка, код %d." % c)), timeout=1800, out=o.setPlainText)
+        v.addWidget(btn("Найти драйверы", check)); v.addWidget(btn("Установить отмеченные", inst)); v.addWidget(btn("Отменить", lambda: job.get("t") and job["t"].cancel()))
         v.addWidget(QLabel("<h3>Прошивки устройств</h3>Только подписанные производителем обновления через fwupd/LVFS и только с вашего согласия. BIOS/UEFI Матрёшка сама не прошивает.", wordWrap=True))
         def fw():
             if not C.net_on(): o.setPlainText("Включите сеть."); return

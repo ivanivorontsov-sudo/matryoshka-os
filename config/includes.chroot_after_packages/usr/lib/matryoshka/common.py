@@ -72,11 +72,48 @@ def run(args, **kw):
     except Exception as e:
         return subprocess.CompletedProcess(args, 127, "", str(e))
 
-def root(*args, inp=None):
-    r = run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", *args], input=inp, timeout=7200)
-    if r.returncode != 0 and "password" in (r.stderr or "").lower():
-        r = run(["pkexec", "/usr/lib/matryoshka/root.sh", *args], input=inp, timeout=7200)
-    return r
+ROOT_SH = "/usr/lib/matryoshka/root.sh"
+
+def root_argv(*args):
+    if run(["sudo", "-n", "-l", ROOT_SH, *args], timeout=10).returncode == 0:
+        return ["sudo", "-n", ROOT_SH, *args]
+    return ["pkexec", ROOT_SH, *args]
+
+def root(*args, inp=None, timeout=7200):
+    return run(root_argv(*args), input=inp, timeout=timeout)
+
+def wifi_powersave_off():
+    try: return "wifi.powersave=2" in open("/etc/NetworkManager/conf.d/60-matryoshka-powersave.conf").read().replace(" ", "")
+    except Exception: return False
+
+class Task:
+    def __init__(self, parent, argv, done=None, timeout=900, out=None):
+        from PyQt6.QtCore import QProcess, QTimer
+        self.p = QProcess(parent); self.p.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self.buf = ""; self.done = done; self.out = out; self.killed = False
+        self.p.readyReadStandardOutput.connect(self._read)
+        self.p.finished.connect(self._fin)
+        self.p.errorOccurred.connect(lambda e: self._fin(127, None) if e == QProcess.ProcessError.FailedToStart else None)
+        self.tm = QTimer(parent); self.tm.setSingleShot(True); self.tm.timeout.connect(lambda: self.cancel("время ожидания истекло")); self.tm.start(timeout * 1000)
+        tasks = getattr(parent, "_tasks", None)
+        if tasks is None: tasks = []; setattr(parent, "_tasks", tasks)
+        tasks.append(self)
+        self.p.start(argv[0], argv[1:])
+    def _read(self):
+        t = bytes(self.p.readAllStandardOutput()).decode("utf-8", "replace"); self.buf += t
+        if self.out: self.out(self.buf[-6000:])
+    def _fin(self, code, _status):
+        self.tm.stop()
+        if self.done: d, self.done = self.done, None; d(-1 if self.killed else code, self.buf)
+    def running(self):
+        from PyQt6.QtCore import QProcess
+        return self.p.state() != QProcess.ProcessState.NotRunning
+    def cancel(self, why="отменено"):
+        if self.running():
+            self.killed = True; self.buf += "\n[%s]" % why; self.p.kill(); self.p.waitForFinished(2000)
+
+def cancel_tasks(parent):
+    for t in getattr(parent, "_tasks", []): t.cancel()
 
 def kwrite(file, group, key, value):
     run(["kwriteconfig6", "--file", file, "--group", group, "--key", key, str(value)])
