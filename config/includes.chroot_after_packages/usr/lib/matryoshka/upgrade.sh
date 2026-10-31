@@ -45,7 +45,7 @@ systemctl daemon-reload
 systemctl disable lxc.service >/dev/null 2>&1 || true
 modprobe tun 2>/dev/null || true
 sysctl --system >/dev/null 2>&1 || true
-/usr/lib/matryoshka/fix-boot.sh || rollback
+FB=/usr/lib/matryoshka/fix-boot.sh; [ -x "$FB" ] || FB="$(dirname "$(readlink -f "$0")")/fix-boot.sh"; "$FB" || rollback
 findmnt --verify >/dev/null 2>&1 || { echo "проверка fstab не прошла"; rollback; }
 udevadm control --reload 2>/dev/null
 update-initramfs -u >/dev/null || rollback

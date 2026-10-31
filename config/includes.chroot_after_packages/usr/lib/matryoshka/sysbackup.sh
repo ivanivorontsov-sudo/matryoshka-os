@@ -51,7 +51,7 @@ cmd_create() {
   blkid > "$D/blkid.txt" 2>/dev/null || true
   cp /etc/fstab "$D/fstab"
   printf 'date=%s\nhost=%s\nkernel=%s\nroot=%s\nroot_uuid=%s\nesp=%s\nesp_uuid=%s\ndisk=%s\nnohome=%s\n' "$(date -Is)" "$(hostname)" "$(uname -r)" "$(rootdev)" "$(findmnt -no UUID /)" "$(findmnt -no SOURCE /boot/efi 2>/dev/null)" "$(findmnt -no UUID /boot/efi 2>/dev/null)" "$disk" "${NOHOME:-0}" > "$D/meta"
-  cp /usr/lib/matryoshka/sysbackup.sh "$D/sysbackup.sh"; cp /usr/lib/matryoshka/sysbackup.sh "$R/sysbackup.sh"
+  local self; self=$(readlink -f "$0"); cp "$self" "$D/sysbackup.sh"; cp "$self" "$R/sysbackup.sh"
   say "Считаю контрольные суммы"
   (cd "$D" && find root esp -type f -print0 2>/dev/null | xargs -0 -r sha256sum > manifest.sha256) || { rm -rf "$D"; die "не удалось посчитать суммы"; }
   mv "$D" "$R/$id"; D="$R/$id"
