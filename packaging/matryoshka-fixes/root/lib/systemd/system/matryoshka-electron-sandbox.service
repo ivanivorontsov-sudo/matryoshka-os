@@ -1,0 +1,8 @@
+[Unit]
+Description=Matryoshka Electron chrome-sandbox permissions
+After=local-fs.target
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/matryoshka-fixes/electron-sandbox
+[Install]
+WantedBy=multi-user.target

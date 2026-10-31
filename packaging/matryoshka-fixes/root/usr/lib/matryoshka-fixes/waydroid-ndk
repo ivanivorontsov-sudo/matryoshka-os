@@ -1,0 +1,25 @@
+#!/bin/sh
+S=/usr/share/matryoshka-fixes/ndk/system
+O=/var/lib/waydroid/overlay/system
+B=/var/lib/waydroid/waydroid_base.prop
+[ -d "$S" ] || exit 0
+[ -e /etc/matryoshka/ndk-off ] && { rm -f /var/lib/waydroid/.matryoshka-ndk; exit 0; }
+mkdir -p "$O"
+if [ "$(cat /var/lib/waydroid/.matryoshka-ndk 2>/dev/null)" != 13-68734c5 ]; then
+  cp -a "$S/." "$O/" && echo 13-68734c5 > /var/lib/waydroid/.matryoshka-ndk
+fi
+[ -f "$B" ] || exit 0
+sed -i '/^ro\.product\.cpu\.abilist/d;/^ro\.dalvik\.vm\.native\.bridge=/d;/^ro\.enable\.native\.bridge\.exec=/d;/^ro\.vendor\.enable\.native\.bridge\.exec/d;/^ro\.ndk_translation\.version=/d;/^ro\.dalvik\.vm\.isa\.arm/d' "$B"
+cat >> "$B" <<P
+ro.product.cpu.abilist=x86_64,x86,arm64-v8a,armeabi-v7a,armeabi
+ro.product.cpu.abilist32=x86,armeabi-v7a,armeabi
+ro.product.cpu.abilist64=x86_64,arm64-v8a
+ro.dalvik.vm.native.bridge=libndk_translation.so
+ro.enable.native.bridge.exec=1
+ro.vendor.enable.native.bridge.exec=1
+ro.vendor.enable.native.bridge.exec64=1
+ro.ndk_translation.version=0.2.3
+ro.dalvik.vm.isa.arm=x86
+ro.dalvik.vm.isa.arm64=x86_64
+P
+exit 0

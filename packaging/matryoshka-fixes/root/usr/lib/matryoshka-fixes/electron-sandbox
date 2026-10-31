@@ -1,0 +1,8 @@
+#!/bin/sh
+for d in /opt /usr/lib /usr/share /usr/local/lib; do
+  find "$d" -xdev -maxdepth 4 -type f -name chrome-sandbox 2>/dev/null
+done | while read -r f; do
+  [ "$(stat -c %u%a "$f")" = 04755 ] && continue
+  chown root:root "$f" && chmod 4755 "$f"
+done
+exit 0

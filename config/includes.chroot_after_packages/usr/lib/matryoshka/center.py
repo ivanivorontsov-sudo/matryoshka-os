@@ -229,12 +229,12 @@ class Center(QWidget):
         v.addWidget(btn("Записать отпечаток", lambda: subprocess.Popen(["konsole", "--hold", "-e", "fprintd-enroll"])))
         v.addWidget(btn("Включить вход по отпечатку", lambda: r("finger-login-on"))); v.addWidget(btn("Выключить вход по отпечатку", lambda: r("finger-login-off")))
         sd = QCheckBox("Разрешить отпечаток для sudo в терминале (по желанию)"); sd.toggled.connect(lambda x: r("finger-sudo-on" if x else "finger-sudo-off")); v.addWidget(sd)
-        v.addWidget(QLabel("<h3>Лицо (Howdy, любая веб-камера)</h3><b>Внимание:</b> обычную веб-камеру можно обмануть фотографией. Поэтому лицо — только для удобства на экране входа и блокировки. ИК-камеры (Windows Hello) намного надёжнее.", wordWrap=True))
-        def inst():
-            if not C.net_on(): o.setPlainText("Включите сеть: Howdy и модели скачиваются с GitHub."); return
-            subprocess.Popen(["konsole", "--hold", "-e", "pkexec", "/usr/lib/matryoshka/root.sh", "bio", "face-install"]); o.setPlainText("Установка Howdy идёт в отдельном окне (10–30 минут)…")
-        v.addWidget(btn("Установить распознавание лица", inst)); v.addWidget(btn("Записать лицо", lambda: subprocess.Popen(["konsole", "--hold", "-e", "pkexec", "/usr/lib/matryoshka/root.sh", "bio", "face-add"])))
-        v.addWidget(btn("Включить вход по лицу", lambda: r("face-login-on"))); v.addWidget(btn("Выключить вход по лицу", lambda: r("face-login-off")))
+        v.addWidget(QLabel("<h3>Драйвер Goodix GXFP5130 (экспериментальный)</h3>Для Huawei MateBook D16 2024 и похожих. Выключен по умолчанию. При первом включении в сканер записывается ключ шифрования, как это делает Windows. При включённом Secure Boot модуль не загрузится.", wordWrap=True))
+        def gx(m):
+            if not os.path.exists("/usr/sbin/matryoshka-gxfp"): o.setPlainText("Пакет matryoshka-gxfp не установлен."); return
+            x = C.run(["pkexec", "/usr/sbin/matryoshka-gxfp", m]); o.setPlainText((x.stdout + x.stderr)[-3000:] or "готово")
+        v.addWidget(btn("Включить драйвер Goodix (экспериментальный)", lambda: gx("on"))); v.addWidget(btn("Выключить драйвер Goodix", lambda: gx("off")))
+        v.addWidget(QLabel("<h3>Лицо</h3>Вход по лицу не добавлен: Howdy нет в официальных репозиториях Debian, а установка с GitHub запрещена правилами Матрёшки.", wordWrap=True))
     def p_privacy(self, v):
         v.addWidget(QLabel("<h2>Приватность</h2>Здесь видно всё, что может ходить в сеть. Без вашего включения сети не работает ничего.", wordWrap=True))
         o = self.out(v)

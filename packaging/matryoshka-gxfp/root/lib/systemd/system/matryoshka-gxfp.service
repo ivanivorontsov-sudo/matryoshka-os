@@ -1,0 +1,10 @@
+[Unit]
+Description=Matryoshka experimental Goodix GXFP5130 driver
+ConditionPathExists=/etc/matryoshka/gxfp-on
+After=multi-user.target
+[Service]
+Type=oneshot
+TimeoutStartSec=30
+ExecStart=-/usr/sbin/matryoshka-gxfp boot
+[Install]
+WantedBy=multi-user.target

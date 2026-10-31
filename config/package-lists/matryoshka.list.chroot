@@ -320,3 +320,6 @@ libsane1
 libfprint-2-2
 polkit-kde-agent-1
 ksshaskpass
+matryoshka-fixes
+matryoshka-gxfp
+libopencv-features2d410
