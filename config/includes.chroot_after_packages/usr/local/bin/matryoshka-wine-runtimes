@@ -1,0 +1,4 @@
+#!/bin/sh
+export WINEPREFIX=${WINEPREFIX:-$HOME/.wine}
+kdialog --title "Компоненты Windows" --yesno "Будут скачаны и установлены в $WINEPREFIX:\n- Wine Mono и Wine Gecko (окно Wine попросит установить)\n- Visual C++ 2015-2022, .NET Framework 4.8, шрифты Microsoft\n\nНужен интернет, 10-30 минут. Продолжить?" || exit 0
+konsole --hold -e sh -c 'wineboot -u; winetricks -q --force vcrun2022 dotnet48 corefonts && echo ГОТОВО || echo "ОШИБКА: см. сообщения выше"'

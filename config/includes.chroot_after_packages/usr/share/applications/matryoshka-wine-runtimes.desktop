@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Компоненты для программ Windows
+Comment=Mono, Gecko, Visual C++, .NET через winetricks
+Exec=matryoshka-wine-runtimes
+Icon=wine
+Categories=System;
