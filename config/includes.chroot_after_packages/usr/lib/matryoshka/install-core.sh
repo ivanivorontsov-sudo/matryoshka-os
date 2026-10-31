@@ -125,7 +125,7 @@ RU=$(blkid -s UUID -o value "$ROOT"); EU=$(blkid -s UUID -o value "$ESP")
 [ -n "$RU" ] && [ -n "$EU" ] || die "не удалось прочитать UUID разделов"
 cat > $T/etc/fstab <<FS
 UUID=$RU / ext4 defaults,noatime,errors=remount-ro 0 1
-UUID=$EU /boot/efi vfat defaults,umask=0077,nofail,x-systemd.device-timeout=10s 0 2
+UUID=$EU /boot/efi vfat defaults,umask=0077,nofail,x-systemd.device-timeout=5s 0 2
 FS
 echo "$HOSTNAME_" > $T/etc/hostname
 printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n' "$HOSTNAME_" > $T/etc/hosts.new
@@ -162,6 +162,8 @@ if [ "$NVRAM" = 1 ] && command -v efibootmgr >/dev/null && [ -d /sys/firmware/ef
 fi
 chroot $T update-grub >/dev/null 2>&1
 grep -q "$RU" $T/boot/grub/grub.cfg || die "grub.cfg не указывает на раздел системы"
+udevadm settle; [ "$(blkid -s UUID -o value "$ESP")" = "$EU" ] || die "UUID раздела EFI изменился во время установки"
+findmnt --verify --tab-file $T/etc/fstab >/dev/null 2>&1 || die "проверка fstab не прошла"
 mkdir -p $T/var/lib/matryoshka; date -Is > $T/var/lib/matryoshka/installed
 sync
 log "Готово: система установлена на $ROOT, EFI $ESP"

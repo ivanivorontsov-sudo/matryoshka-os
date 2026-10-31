@@ -1,0 +1,10 @@
+[Unit]
+Description=Matryoshka EFI fstab check
+After=local-fs.target
+ConditionKernelCommandLine=!boot=live
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/matryoshka/fix-boot.sh
+TimeoutStartSec=30
+[Install]
+WantedBy=multi-user.target

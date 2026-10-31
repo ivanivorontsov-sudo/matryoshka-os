@@ -297,3 +297,9 @@ gddrescue
 adb
 jmtpfs
 gdisk
+timeshift
+clonezilla
+partclone
+alsa-ucm-conf
+upower
+pipewire-bin
