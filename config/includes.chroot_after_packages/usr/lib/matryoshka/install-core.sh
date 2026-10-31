@@ -56,6 +56,24 @@ if [ "$MODE" = erase ]; then
 fi
 [ "$DRY" = 1 ] && exit 0
 [ "$YES" = 1 ] || die "нужно подтверждение (--yes)"
+LIVEDIR=$(dirname "$SQUASH")
+LIVENEED=$(( $(du -sb "$LIVEDIR" | cut -f1) + 200*1024*1024 ))
+IB=/run/matryoshka-install-backup; rm -rf $IB; mkdir -p $IB/esp
+log "Резервная копия таблицы разделов и разделов EFI"
+sgdisk --backup=$IB/gpt.bin "$DISK" >/dev/null 2>&1 || [ "$MODE" = erase ] || die "не удалось сохранить таблицу разделов: установка отменена"
+sfdisk -d "$DISK" > $IB/partitions.txt 2>/dev/null || true
+lsblk -fp "$DISK" > $IB/lsblk.txt 2>/dev/null || true
+for e in $(lsblk -lnpo NAME,PARTTYPE "$DISK" | awk 'tolower($2)=="c12a7328-f81f-11d2-ba4b-00a0c93ec93b"{print $1}'); do
+  m=$(mktemp -d); mount -o ro "$e" "$m" || { rmdir "$m"; die "не удалось прочитать раздел EFI $e: установка отменена"; }
+  mkdir -p "$IB/esp/$(basename "$e")"; cp -a "$m/." "$IB/esp/$(basename "$e")/" || { umount "$m"; die "не удалось скопировать раздел EFI $e: установка отменена"; }
+  umount "$m"; rmdir "$m"
+done
+(cd $IB && find . -type f ! -name SHA256SUMS -print0 | xargs -0 -r sha256sum > SHA256SUMS && sha256sum -c --quiet SHA256SUMS) || die "проверка резервной копии не прошла: установка отменена"
+log "Резервная копия создана и проверена ($(du -sh $IB | cut -f1))"
+if [ -n "$KEEP" ]; then
+  km=$(findmnt -no TARGET -S "$KEEP" | head -1)
+  if [ -n "$km" ] && mount -o remount,rw "$KEEP" 2>/dev/null; then mkdir -p "$km/matryoshka-install-backup" && cp -a $IB/. "$km/matryoshka-install-backup/$(date +%Y%m%d-%H%M%S)/" && log "Копия также сохранена на $KEEP"; mount -o remount,ro "$KEEP" 2>/dev/null || true; fi
+fi
 SECTOR=$(blockdev --getss "$DISK")
 if [ "$MODE" = erase ]; then
   if [ -z "$KEEP" ]; then
@@ -120,6 +138,17 @@ trap cleanup EXIT
 log "Копирование системы (несколько минут)"
 unsquashfs -f -q -n -d $T "$SQUASH" >/dev/null
 rm -rf $T/var/lib/matryoshka/booting* $T/var/lib/matryoshka/bootcount* 2>/dev/null || true
+D=$T/.matryoshka-backup/install-$(date +%Y%m%d-%H%M%S); mkdir -p "$D"; chmod 700 $T/.matryoshka-backup
+cp -a $IB/. "$D/" && (cd "$D" && sha256sum -c --quiet SHA256SUMS) || die "не удалось записать резервную копию на новый раздел"
+log "Копия разметки и EFI: /.matryoshka-backup/$(basename "$D")"
+if [ "$(df -B1 --output=avail $T | tail -1)" -gt "$LIVENEED" ]; then
+  log "Копирование живой системы на диск (запасной вариант загрузки)"
+  mkdir -p $T/matryoshka-live/live
+  cp "$LIVEDIR"/filesystem.squashfs "$LIVEDIR"/vmlinuz-* "$LIVEDIR"/initrd.img-* $T/matryoshka-live/live/ || die "не удалось скопировать живую систему"
+  (cd $T/matryoshka-live/live && sha256sum filesystem.squashfs vmlinuz-* initrd.img-* > SHA256SUMS && sha256sum -c --quiet SHA256SUMS) || die "копия живой системы повреждена"
+else
+  log "ВНИМАНИЕ: мало места, живая система на диск не скопирована"
+fi
 mkdir -p $T/boot/efi; mount "$ESP" $T/boot/efi
 RU=$(blkid -s UUID -o value "$ROOT"); EU=$(blkid -s UUID -o value "$ESP")
 [ -n "$RU" ] && [ -n "$EU" ] || die "не удалось прочитать UUID разделов"
@@ -162,6 +191,7 @@ if [ "$NVRAM" = 1 ] && command -v efibootmgr >/dev/null && [ -d /sys/firmware/ef
 fi
 chroot $T update-grub >/dev/null 2>&1
 grep -q "$RU" $T/boot/grub/grub.cfg || die "grub.cfg не указывает на раздел системы"
+if [ -d $T/matryoshka-live/live ]; then grep -q "живая система" $T/boot/grub/grub.cfg && log "В меню загрузки есть «Матрёшка — живая система»" || log "ВНИМАНИЕ: пункт живой системы не появился в меню"; fi
 udevadm settle; [ "$(blkid -s UUID -o value "$ESP")" = "$EU" ] || die "UUID раздела EFI изменился во время установки"
 findmnt --verify --tab-file $T/etc/fstab >/dev/null 2>&1 || die "проверка fstab не прошла"
 mkdir -p $T/var/lib/matryoshka; date -Is > $T/var/lib/matryoshka/installed

@@ -2,7 +2,7 @@
 set -uo pipefail
 die() { echo "ОШИБКА: $*"; exit 1; }
 say() { echo ">>> $*"; }
-BUNDLE="${1:-}"; SUM="${2:-}"; TARGET="${3:-same}"
+BUNDLE="${1:-}"; SUM="${2:-}"; TARGET="${3:-same}"; ISO="${4:-}"
 [ "$(id -u)" = 0 ] || die "нужны права администратора"
 grep -qw boot=live /proc/cmdline && die "обновление ставится на установленную систему, а не на флешку"
 [ -f "$BUNDLE" ] || die "файл обновления не найден"
@@ -49,6 +49,20 @@ sysctl --system >/dev/null 2>&1 || true
 findmnt --verify >/dev/null 2>&1 || { echo "проверка fstab не прошла"; rollback; }
 udevadm control --reload 2>/dev/null
 update-initramfs -u >/dev/null || rollback
+if [ -n "$ISO" ]; then
+  [ -f "$ISO" ] || { echo "образ $ISO не найден"; rollback; }
+  say "Копирую живую систему из образа на диск (запасной вариант загрузки)"
+  M=$(mktemp -d); mount -o loop,ro "$ISO" $M || { rmdir $M; echo "образ не подключился"; rollback; }
+  need=$(du -sb $M/live | cut -f1); free=$(df -B1 --output=avail / | tail -1)
+  if [ "$free" -gt $((need + 2*1024*1024*1024)) ]; then
+    N=/matryoshka-live/live.new; rm -rf $N; mkdir -p $N
+    cp $M/live/filesystem.squashfs $M/live/vmlinuz-* $M/live/initrd.img-* $N/ && (cd $N && sha256sum filesystem.squashfs vmlinuz-* initrd.img-* > SHA256SUMS && sha256sum -c --quiet SHA256SUMS) || { umount $M; rm -rf $N; echo "копия живой системы повреждена"; rollback; }
+    rm -rf /matryoshka-live/live.prev; [ -d /matryoshka-live/live ] && mv /matryoshka-live/live /matryoshka-live/live.prev; mv $N /matryoshka-live/live
+  else echo "мало места: живая система на диск не скопирована"; fi
+  umount $M; rmdir $M
+fi
+update-grub >/dev/null 2>&1 || rollback
+grep -q "живая система" /boot/grub/grub.cfg && say "В меню загрузки есть пункт «Матрёшка — живая система»" || echo "ВНИМАНИЕ: пункта живой системы в меню нет (нет раздела MATRYOSHKA и копии на диске)"
 cat $W/VERSION > /etc/matryoshka-version
 rm -rf $W
 echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО. Перезагрузите компьютер."

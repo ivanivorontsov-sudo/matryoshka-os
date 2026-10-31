@@ -46,6 +46,7 @@ class W(QWidget):
         bv.addWidget(QLabel("<h2>Обновление установленной Матрёшки</h2><p>Ставится только после проверенной копии (не старше 24 часов). Ваши файлы и программы сохраняются. При любой ошибке изменённые файлы автоматически возвращаются из копии.</p>", wordWrap=True))
         self.bundle = QLineEdit(); self.bundle.setPlaceholderText("файл обновления matryoshka-update-*.tar.gz"); h = QHBoxLayout(); h.addWidget(self.bundle); x = QPushButton("Выбрать…"); x.clicked.connect(self.pickb); h.addWidget(x); bv.addLayout(h)
         self.sum = QLineEdit(); self.sum.setPlaceholderText("SHA256 файла обновления (подставляется из файла .sha256 рядом)"); bv.addWidget(self.sum)
+        self.iso = QLineEdit(); self.iso.setPlaceholderText("необязательно: ISO новой Матрёшки, чтобы на диске была и живая система"); h = QHBoxLayout(); h.addWidget(self.iso); x = QPushButton("ISO…"); x.clicked.connect(lambda: self.iso.setText(QFileDialog.getOpenFileName(self, "Образ", os.path.expanduser("~"), "ISO (*.iso)")[0] or self.iso.text())); h.addWidget(x); bv.addLayout(h)
         self.ok = QCheckBox("Копия сделана и проверена, я прочитал(а), как восстановиться через F12"); bv.addWidget(self.ok)
         x = QPushButton("Обновить"); x.clicked.connect(self.upgrade); bv.addWidget(x)
         self.bar = QProgressBar(); self.bar.setRange(0, 1); v.addWidget(self.bar)
@@ -88,7 +89,7 @@ class W(QWidget):
         if not self.ok.isChecked(): QMessageBox.information(self, "Обновление", "Сначала сделайте копию и отметьте галочку."); return
         b = self.bundle.text().strip(); s = self.sum.text().strip()
         if not os.path.exists(b) or len(s) != 64: QMessageBox.information(self, "Обновление", "Выберите файл обновления и укажите его SHA256."); return
-        self.start(asroot("bash", UP, b, s, self.target()), lambda c, t: self.o.setPlainText(t[-8000:] + ("\n\nПерезагрузите компьютер." if c == 0 else "\n\nОБНОВЛЕНИЕ НЕ ПРИМЕНЕНО (код %d)." % c)))
+        self.start(asroot("bash", UP, b, s, self.target(), *([self.iso.text().strip()] if self.iso.text().strip() else [])), lambda c, t: self.o.setPlainText(t[-8000:] + ("\n\nПерезагрузите компьютер." if c == 0 else "\n\nОБНОВЛЕНИЕ НЕ ПРИМЕНЕНО (код %d)." % c)))
     def closeEvent(self, e):
         if self.job and self.job.running():
             QMessageBox.warning(self, "Идёт работа", "Дождитесь окончания: прерывать копирование или обновление опасно."); e.ignore(); return

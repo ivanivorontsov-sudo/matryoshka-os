@@ -3,7 +3,7 @@ set -uo pipefail
 B=.matryoshka-backup
 die() { echo "ОШИБКА: $*"; exit 1; }
 say() { echo ">>> $*"; }
-EXCL=(--exclude="/$B" --exclude=/proc/ --exclude=/sys/ --exclude=/dev/ --exclude=/run/ --exclude=/tmp/ --exclude=/mnt/ --exclude=/media/ --exclude=/var/tmp/ --exclude=/swapfile --exclude=/lost+found --exclude=/var/cache/apt/archives/*.deb --exclude=/home/*/.cache/ --exclude=/root/.cache/ --exclude=/var/lib/matryoshka/update/)
+EXCL=(--exclude="/$B" --exclude=/matryoshka-live/ --exclude=/proc/ --exclude=/sys/ --exclude=/dev/ --exclude=/run/ --exclude=/tmp/ --exclude=/mnt/ --exclude=/media/ --exclude=/var/tmp/ --exclude=/swapfile --exclude=/lost+found --exclude=/var/cache/apt/archives/*.deb --exclude=/home/*/.cache/ --exclude=/root/.cache/ --exclude=/var/lib/matryoshka/update/)
 rootdev() { findmnt -no SOURCE "${1:-/}"; }
 diskof() { local d; d=$(lsblk -no PKNAME "$1" 2>/dev/null | tail -1); [ -n "$d" ] && echo "/dev/$d"; }
 repo_for() {

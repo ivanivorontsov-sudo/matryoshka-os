@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+. /usr/share/grub/grub-mkconfig_lib
+entry() {
+  u="$1"; p="$2"; t="$3"; k=$(ls -1 "$4"/vmlinuz-* 2>/dev/null | sort -V | tail -1); [ -n "$k" ] || return 0
+  i=$(echo "$k" | sed 's/vmlinuz/initrd.img/'); [ -f "$i" ] || return 0
+  cat <<EOT
+menuentry "$t" {
+  search --no-floppy --fs-uuid --set=root $u
+  linux $p/$(basename "$k") boot=live components live-media=/dev/disk/by-uuid/$u live-media-path=$p locales=ru_RU.UTF-8 keyboard-layouts=us,ru keyboard-options=grp:alt_shift_toggle username=ivan hostname=matryoshka
+  initrd $p/$(basename "$i")
+}
+EOT
+}
+ru=$(${grub_probe} --device "$(${grub_probe} --target=device /)" --target=fs_uuid)
+[ -f /matryoshka-live/live/filesystem.squashfs ] && entry "$ru" /matryoshka-live/live "Матрёшка — живая система (с диска)" /matryoshka-live/live
+lp=$(blkid -L MATRYOSHKA 2>/dev/null || true)
+if [ -n "$lp" ]; then
+  lu=$(blkid -s UUID -o value "$lp"); m=$(findmnt -no TARGET -S "$lp" | head -1); t=""
+  if [ -z "$m" ]; then t=$(mktemp -d); mount -o ro "$lp" "$t" 2>/dev/null && m=$t; fi
+  [ -n "$m" ] && [ -f "$m/live/filesystem.squashfs" ] && entry "$lu" /live "Матрёшка — живая система (раздел MATRYOSHKA)" "$m/live"
+  [ -n "$t" ] && { umount "$t" 2>/dev/null || true; rmdir "$t"; }
+fi
+exit 0
