@@ -3,7 +3,7 @@ export WINEPREFIX=${WINEPREFIX:-$HOME/.wine}
 export WINEARCH=${WINEARCH:-win64}
 export WINEDEBUG=${WINEDEBUG:-err+all}
 export ELECTRON_DISABLE_SANDBOX=1 ELECTRON_NO_ATTACH_CONSOLE=1
-export MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_GPU_SANDBOX=1 MOZ_DISABLE_RDD_SANDBOX=1 MOZ_DISABLE_SOCKET_PROCESS_SANDBOX=1 MOZ_DISABLE_GMP_SANDBOX=1 MOZ_DISABLE_UTILITY_SANDBOX=1 MOZ_DISABLE_VR_SANDBOX=1
+export MOZ_DISABLE_WIN32K_LOCKDOWN=1 MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_GPU_SANDBOX=1 MOZ_DISABLE_RDD_SANDBOX=1 MOZ_DISABLE_SOCKET_PROCESS_SANDBOX=1 MOZ_DISABLE_GMP_SANDBOX=1 MOZ_DISABLE_UTILITY_SANDBOX=1 MOZ_DISABLE_VR_SANDBOX=1
 LOG=$HOME/.cache/matryoshka-wine.log
 mkdir -p "$(dirname "$LOG")"
 W=wine; command -v wine >/dev/null || W=/usr/lib/wine/wine64
@@ -15,27 +15,13 @@ if [ ! -f "$WINEPREFIX/system.reg" ]; then
   wineserver -w
   "$W" reg add 'HKCU\Software\Wine\X11 Driver' /v UseXRandR /d N /f >/dev/null 2>&1
   "$W" reg add 'HKCU\Software\Wine\X11 Driver' /v UseXVidMode /d N /f >/dev/null 2>&1
+  "$W" winecfg -v win10 >/dev/null 2>&1
   for s in wineusb winebth; do "$W" reg add "HKLM\\System\\CurrentControlSet\\Services\\$s" /v Start /t REG_DWORD /d 4 /f >/dev/null 2>&1; done
 fi
 ffprefs() {
   for d in "$WINEPREFIX"/drive_c/users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/; do
     [ -d "$d" ] || continue
-    cat > "$d/user.js" <<'J'
-user_pref("browser.shell.checkDefaultBrowser", false);
-user_pref("security.sandbox.content.level", 0);
-user_pref("security.sandbox.gpu.level", 0);
-user_pref("security.sandbox.rdd.level", 0);
-user_pref("media.cubeb.sandbox", false);
-user_pref("browser.tabs.remote.autostart", false);
-user_pref("fission.autostart", false);
-user_pref("dom.ipc.processCount", 1);
-user_pref("layers.gpu-process.enabled", false);
-user_pref("media.rdd-process.enabled", false);
-user_pref("media.utility-process.enabled", false);
-user_pref("network.process.enabled", false);
-user_pref("gfx.direct2d.disabled", true);
-user_pref("layers.acceleration.disabled", true);
-J
+    cp /usr/share/matryoshka-fixes/firefox-prefs.js "$d/user.js"
   done
 }
 [ -z "$1" ] && { echo "matryoshka-wine файл.exe|файл.msi [аргументы]"; exit 1; }
@@ -43,7 +29,7 @@ case "${1,,}" in
   *.msi) f=$(readlink -f "$1"); shift; set -- msiexec /i "$f" "$@";;
   *.exe|*.bat|*.com) f=$(readlink -f "$1"); shift; cd "$(dirname "$f")"
     b=$(basename "${f,,}")
-    if [ "$b" = firefox.exe ]; then ffprefs; set -- "$f" -no-remote "$@"
+    if [ "$b" = firefox.exe ]; then ffprefs; mkdir -p defaults/pref 2>/dev/null && sed -n 's/^user_pref(/pref(/p' /usr/share/matryoshka-fixes/firefox-prefs.js > defaults/pref/matryoshka.js 2>/dev/null; [ -e "$WINEPREFIX/.matryoshka-win10" ] || { "$W" winecfg -v win10 >/dev/null 2>&1; touch "$WINEPREFIX/.matryoshka-win10"; }; set -- "$f" -no-remote "$@"
     elif [ -e resources/app.asar ] || [ -d resources/app ] || { [ -e libEGL.dll ] && ls *.pak >/dev/null 2>&1; }; then
       set -- "$f" --no-sandbox --disable-gpu --disable-gpu-compositing --disable-gpu-sandbox --disable-hang-monitor --disable-features=CalculateNativeWinOcclusion,RendererCodeIntegrity --disable-renderer-backgrounding "$@"
     else set -- "$f" "$@"; fi;;

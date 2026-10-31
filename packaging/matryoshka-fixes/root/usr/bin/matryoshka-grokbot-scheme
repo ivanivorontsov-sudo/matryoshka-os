@@ -1,0 +1,23 @@
+#!/bin/sh
+U=$HOME/.local/share/applications
+H=grokbot-url-handler.desktop
+cur=$(xdg-mime query default x-scheme-handler/grokbot 2>/dev/null)
+if [ -n "$cur" ]; then
+  for d in "$U" /usr/local/share/applications /usr/share/applications; do
+    [ -f "$d/$cur" ] && grep -q '^Exec=.*%[uU]' "$d/$cur" && exit 0
+  done
+fi
+src=$(grep -lis -E '^Name=.*grok' "$U"/*.desktop /usr/local/share/applications/*.desktop /usr/share/applications/*.desktop 2>/dev/null | grep -v "/$H\$" | head -1)
+[ -n "$src" ] || exit 0
+mkdir -p "$U"
+if grep -q '^Exec=.*%[uU]' "$src"; then
+  t=$(basename "$src")
+else
+  ex=$(sed -n 's/^Exec=//p' "$src" | head -1 | sed 's/ %[fFuUick]//g')
+  [ -n "$ex" ] || exit 0
+  printf '[Desktop Entry]\nType=Application\nName=Grok Bot\nExec=%s %%u\nMimeType=x-scheme-handler/grokbot;\nNoDisplay=true\nTerminal=false\n' "$ex" > "$U/$H"
+  t=$H
+fi
+xdg-mime default "$t" x-scheme-handler/grokbot
+update-desktop-database -q "$U" 2>/dev/null
+exit 0
