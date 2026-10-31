@@ -3,6 +3,8 @@ set -uo pipefail
 die() { echo "ОШИБКА: $*"; exit 1; }
 say() { echo ">>> $*"; }
 BUNDLE="${1:-}"; SUM="${2:-}"; TARGET="${3:-same}"; ISO="${4:-}"
+ISOM=""; ISOX=""; ISOMNT=0
+isoclean() { if [ "$ISOMNT" = 1 ]; then umount $ISOM 2>/dev/null; rmdir $ISOM 2>/dev/null; elif [ -n "$ISOX" ]; then rm -rf "$ISOX"; fi; true; }
 [ "$(id -u)" = 0 ] || die "нужны права администратора"
 grep -qw boot=live /proc/cmdline && die "обновление ставится на установленную систему, а не на флешку"
 [ -f "$BUNDLE" ] || die "файл обновления не найден"
@@ -25,20 +27,55 @@ rollback() {
   [ -f "$LAST/root/etc/fstab" ] && cp -a "$LAST/root/etc/fstab" /etc/fstab
   systemctl daemon-reload; dpkg --configure -a >/dev/null 2>&1
   echo "ОБНОВЛЕНИЕ НЕ ПРИМЕНЕНО, файлы возвращены. Если система ведёт себя странно: загрузитесь с флешки через F12 и выполните полное восстановление (инструкция в программе)."
+  type isoclean >/dev/null 2>&1 && isoclean
   exit 7
 }
-trap 'echo "прервано"; rollback' INT TERM
+trap 'echo "прервано"; isoclean; rollback' INT TERM
 say "Проверка пакетного менеджера"
 dpkg --configure -a || rollback
 say "Копирую файлы системы"
 rsync -aK --exclude=/etc/sddm.conf.d/ --exclude=/etc/hostname --exclude=/etc/hosts $W/includes/ / || rollback
+rm -f /etc/debian_chroot
+if [ -n "$ISO" ]; then
+  [ -f "$ISO" ] || { echo "образ $ISO не найден"; rollback; }
+  modprobe loop 2>/dev/null; ISOM=$(mktemp -d)
+  if mount -o loop,ro "$ISO" $ISOM 2>/dev/null; then ISOMNT=1
+  else
+    rmdir $ISOM 2>/dev/null; ISOX=$(mktemp -d -p /var/tmp); ISOM=$ISOX; echo "петлевое устройство недоступно, распаковываю образ"
+    if command -v bsdtar >/dev/null; then bsdtar -xf "$ISO" -C $ISOX live matryoshka-repo 2>/dev/null
+    elif command -v xorriso >/dev/null; then xorriso -osirrox on -indev "$ISO" -extract /live $ISOX/live -extract /matryoshka-repo $ISOX/matryoshka-repo >/dev/null 2>&1
+    elif command -v 7z >/dev/null; then 7z x -o$ISOX "$ISO" live matryoshka-repo >/dev/null 2>&1
+    fi
+  fi
+fi
+LREPO=""
+for d in $W/matryoshka-repo ${ISOM:+$ISOM/matryoshka-repo}; do [ -f "$d/Packages" ] && { LREPO=$d; break; }; done
 if [ -s $W/packages.list ]; then
   new=$(while read -r p; do [ -n "$p" ] && ! dpkg -s "$p" >/dev/null 2>&1 && echo "$p"; done < $W/packages.list)
-  if [ -n "$new" ]; then
-    mkdir -p /var/lib/matryoshka; echo "$new" > /var/lib/matryoshka/pending-packages
-    echo "Новые пакеты не скачиваются во время обновления. Позже, при хорошей сети, поставьте их одной командой:"
-    echo "  sudo apt update; sudo apt install \$(cat /var/lib/matryoshka/pending-packages)"
-  fi
+  if [ -n "$new" ] && [ -n "$LREPO" ]; then
+    say "Ставлю новые программы из встроенного хранилища (без сети)"
+    L=/var/lib/matryoshka/localrepo; rm -rf $L; mkdir -p $L/lists/partial $L/archives/partial
+    echo "deb [trusted=yes] file:$LREPO ./" > $L/sources.list
+    AO=(-o Dir::Etc::sourcelist=$L/sources.list -o Dir::Etc::sourceparts=/nonexistent -o Dir::State::Lists=$L/lists -o Dir::Cache::Archives=$L/archives -o Acquire::Languages=none -o APT::Get::List-Cleanup=0)
+    if apt-get "${AO[@]}" update >/tmp/matryoshka-apt.log 2>&1; then
+      ok=$(for p in $new; do apt-cache "${AO[@]}" show "$p" >/dev/null 2>&1 && echo "$p"; done)
+      miss=$(for p in $new; do echo "$ok" | grep -qx "$p" || echo "$p"; done)
+      if [ -n "$ok" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --no-download --allow-downgrades $ok >>/tmp/matryoshka-apt.log 2>&1; then
+        say "Программы установлены: $(echo $ok | wc -w)"
+      else
+        echo "ВНИМАНИЕ: часть программ не установилась (журнал /tmp/matryoshka-apt.log):"; tail -n 10 /tmp/matryoshka-apt.log
+        DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --no-download -f >>/tmp/matryoshka-apt.log 2>&1
+        dpkg --configure -a >/dev/null 2>&1
+        miss="$new"
+      fi
+    else echo "ВНИМАНИЕ: встроенное хранилище не читается"; miss="$new"; fi
+    rm -rf $L/lists $L/archives
+  else miss="$new"; fi
+  miss=$(for p in $miss; do dpkg -s "$p" >/dev/null 2>&1 || echo "$p"; done)
+  if [ -n "$miss" ]; then
+    mkdir -p /var/lib/matryoshka; echo "$miss" > /var/lib/matryoshka/pending-packages
+    echo "Не установлены (нет в образе): $(echo $miss | tr '\n' ' ')"
+  else rm -f /var/lib/matryoshka/pending-packages; fi
 fi
 systemctl daemon-reload
 [ -s $W/enable.list ] && xargs -a $W/enable.list systemctl enable >/dev/null 2>&1
@@ -50,30 +87,20 @@ findmnt --verify >/dev/null 2>&1 || { echo "проверка fstab не прош
 udevadm control --reload 2>/dev/null
 update-initramfs -u >/dev/null || rollback
 if [ -n "$ISO" ]; then
-  [ -f "$ISO" ] || { echo "образ $ISO не найден"; rollback; }
-  say "Копирую живую систему из образа на диск (запасной вариант загрузки)"
-  modprobe loop 2>/dev/null; M=$(mktemp -d); X=""
-  if mount -o loop,ro "$ISO" $M 2>/dev/null; then MNT=1
-  else
-    MNT=0; X=$(mktemp -d -p /var/tmp); echo "петлевое устройство недоступно, распаковываю образ"
-    command -v bsdtar >/dev/null || command -v xorriso >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y libarchive-tools >/dev/null 2>&1
-    if command -v bsdtar >/dev/null; then bsdtar -xf "$ISO" -C $X live
-    elif command -v xorriso >/dev/null; then xorriso -osirrox on -indev "$ISO" -extract /live $X/live >/dev/null 2>&1
-    fi
-    rmdir $M; M=$X
-  fi
+  M=$ISOM
   if [ -f $M/live/filesystem.squashfs ]; then
+    say "Копирую живую систему из образа на диск (запасной вариант загрузки)"
     need=$(du -sb $M/live | cut -f1); free=$(df -B1 --output=avail / | tail -1)
     if [ "$free" -gt $((need + 2*1024*1024*1024)) ]; then
       N=/matryoshka-live/live.new; rm -rf $N; mkdir -p $N
       if cp $M/live/filesystem.squashfs $M/live/vmlinuz-* $M/live/initrd.img-* $N/ && (cd $N && sha256sum filesystem.squashfs vmlinuz-* initrd.img-* > SHA256SUMS && sha256sum -c --quiet SHA256SUMS); then
         rm -rf /matryoshka-live/live.prev; [ -d /matryoshka-live/live ] && mv /matryoshka-live/live /matryoshka-live/live.prev; mv $N /matryoshka-live/live
-        echo "живая система скопирована на диск"
+        echo "живая система скопирована на диск: /matryoshka-live/live"
       else rm -rf $N; echo "ВНИМАНИЕ: живая система не скопирована (ошибка копирования), обновление системы при этом применено"; fi
     else echo "мало места: живая система на диск не скопирована"; fi
   else echo "ВНИМАНИЕ: не удалось открыть образ, живая система на диск не скопирована; обновление системы при этом применено"; fi
-  if [ "$MNT" = 1 ]; then umount $M; rmdir $M; else rm -rf "$X"; fi
 fi
+isoclean
 if ! update-grub >/tmp/matryoshka-grub.log 2>&1; then
   echo "update-grub завершился с ошибкой:"; tail -n 15 /tmp/matryoshka-grub.log
   if [ -x /etc/grub.d/43_matryoshka_live ]; then
@@ -82,7 +109,7 @@ if ! update-grub >/tmp/matryoshka-grub.log 2>&1; then
     else chmod +x /etc/grub.d/43_matryoshka_live; tail -n 15 /tmp/matryoshka-grub.log; rollback; fi
   else rollback; fi
 fi
-grep -q "живая система" /boot/grub/grub.cfg && say "В меню загрузки есть пункт «Матрёшка — живая система»" || echo "ВНИМАНИЕ: пункта живой системы в меню нет (нет раздела MATRYOSHKA и копии на диске)"
+grep -q "живая система" /boot/grub/grub.cfg && say "В меню загрузки есть пункт «Матрёшка — живая система»" || echo "ВНИМАНИЕ: пункта живой системы в меню нет (журнал /tmp/matryoshka-grub.log)"; grep -i "живая\|error\|ошибк" /tmp/matryoshka-grub.log | tail -n 5
 cat $W/VERSION > /etc/matryoshka-version
 rm -rf $W
 echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО. Перезагрузите компьютер."

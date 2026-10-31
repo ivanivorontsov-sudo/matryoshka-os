@@ -4,21 +4,36 @@ set -e
 entry() {
   u="$1"; p="$2"; t="$3"; k=$(ls -1 "$4"/vmlinuz-* 2>/dev/null | sort -V | tail -1); [ -n "$k" ] || return 0
   i=$(echo "$k" | sed 's/vmlinuz/initrd.img/'); [ -f "$i" ] || return 0
+  echo "Найдена живая система: $4" >&2
   cat <<EOT
 menuentry "$t" {
+  insmod part_gpt
+  insmod ext2
+  insmod fat
+  insmod iso9660
   search --no-floppy --fs-uuid --set=root $u
   linux $p/$(basename "$k") boot=live components live-media=/dev/disk/by-uuid/$u live-media-path=$p locales=ru_RU.UTF-8 keyboard-layouts=us,ru keyboard-options=grp:alt_shift_toggle username=ivan hostname=matryoshka
   initrd $p/$(basename "$i")
 }
 EOT
 }
-ru=$(${grub_probe} --device "$(${grub_probe} --target=device /)" --target=fs_uuid)
+rs=$(findmnt -no SOURCE / 2>/dev/null | sed 's/\[.*//')
+ru=$(findmnt -no UUID / 2>/dev/null || true)
+[ -n "$ru" ] || ru=$(${grub_probe} --device "$(${grub_probe} --target=device /)" --target=fs_uuid)
 [ -f /matryoshka-live/live/filesystem.squashfs ] && entry "$ru" /matryoshka-live/live "Матрёшка — живая система (с диска)" /matryoshka-live/live
-lp=$(blkid -L MATRYOSHKA 2>/dev/null || true)
-if [ -n "$lp" ]; then
-  lu=$(blkid -s UUID -o value "$lp"); m=$(findmnt -no TARGET -S "$lp" | head -1); t=""
-  if [ -z "$m" ]; then t=$(mktemp -d); mount -o ro "$lp" "$t" 2>/dev/null && m=$t; fi
-  [ -n "$m" ] && [ -f "$m/live/filesystem.squashfs" ] && entry "$lu" /live "Матрёшка — живая система (раздел MATRYOSHKA)" "$m/live"
-  [ -n "$t" ] && { umount "$t" 2>/dev/null || true; rmdir "$t"; }
-fi
+lsblk -lnpo NAME,TYPE,FSTYPE,LABEL 2>/dev/null | while read -r dev typ fs lab; do
+  [ "$typ" = part ] || continue
+  [ "$dev" = "$rs" ] && continue
+  case "$fs" in ext2|ext3|ext4|vfat|exfat|iso9660|ntfs) ;; *) continue ;; esac
+  case "$lab" in *[Mm][Aa][Tt][Rr][Yy][Oo][Ss][Hh][Kk][Aa]*|*[Mm][Aa][Tt][Rr]*) ;; *) [ "$fs" = vfat ] && [ "$(lsblk -no PARTTYPE "$dev" 2>/dev/null)" = c12a7328-f81f-11d2-ba4b-00a0c93ec93b ] && continue ;; esac
+  u=$(blkid -s UUID -o value "$dev" 2>/dev/null || true); [ -n "$u" ] || continue
+  m=$(findmnt -no TARGET -S "$dev" 2>/dev/null | head -1 || true); t=""
+  if [ -z "$m" ]; then t=$(mktemp -d); if mount -o ro "$dev" "$t" 2>/dev/null; then m=$t; fi; fi
+  if [ -n "$m" ]; then
+    for p in /live /matryoshka-live/live; do
+      [ -f "$m$p/filesystem.squashfs" ] && entry "$u" "$p" "Матрёшка — живая система (раздел $(basename "$dev"))" "$m$p" && break
+    done
+  fi
+  if [ -n "$t" ]; then umount "$t" 2>/dev/null || true; rmdir "$t" 2>/dev/null || true; fi
+done
 exit 0

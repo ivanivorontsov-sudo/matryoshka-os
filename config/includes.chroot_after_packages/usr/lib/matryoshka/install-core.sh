@@ -138,6 +138,7 @@ cleanup() { for m in sys/firmware/efi/efivars sys proc dev/pts dev run boot/efi;
 trap cleanup EXIT
 log "Копирование системы (несколько минут)"
 unsquashfs -f -q -n -d $T "$SQUASH" >/dev/null
+rm -f $T/etc/debian_chroot
 rm -rf $T/var/lib/matryoshka/booting* $T/var/lib/matryoshka/bootcount* 2>/dev/null || true
 D=$T/.matryoshka-backup/install-$(date +%Y%m%d-%H%M%S); mkdir -p "$D"; chmod 700 $T/.matryoshka-backup
 cp -a $IB/. "$D/" && (cd "$D" && sha256sum -c --quiet SHA256SUMS) || die "не удалось записать резервную копию на новый раздел"

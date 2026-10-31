@@ -307,3 +307,7 @@ alsa-utils
 python3-evdev
 python3-dbus
 python3-gi
+waydroid
+python3-gbinder
+lxc
+fontconfig
