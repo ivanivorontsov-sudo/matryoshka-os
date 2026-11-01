@@ -49,19 +49,22 @@ if [ -n "$ISO" ]; then
   fi
 fi
 LREPO=""
-for d in $W/matryoshka-repo ${ISOM:+$ISOM/matryoshka-repo}; do [ -f "$d/Packages" ] && { LREPO=$d; break; }; done
+for d in $W/matryoshka-repo ${ISOM:+$ISOM/matryoshka-repo}; do [ -f "$d/Packages" ] && { LREPO=$(readlink -f "$d"); break; }; done
 if [ -s $W/packages.list ]; then
   new=$(while read -r p; do [ -n "$p" ] && ! dpkg -s "$p" >/dev/null 2>&1 && echo "$p"; done < $W/packages.list)
   if [ -n "$new" ] && [ -n "$LREPO" ]; then
     say "Ставлю новые программы из встроенного хранилища (без сети)"
     L=/var/lib/matryoshka/localrepo; rm -rf $L; mkdir -p $L/lists/partial $L/archives/partial
-    echo "deb [trusted=yes] file:$LREPO ./" > $L/sources.list
-    AO=(-o Dir::Etc::sourcelist=$L/sources.list -o Dir::Etc::sourceparts=/nonexistent -o Dir::State::Lists=$L/lists -o Dir::Cache::Archives=$L/archives -o Acquire::Languages=none -o APT::Get::List-Cleanup=0)
+    echo "deb [trusted=yes] copy://$LREPO ./" > $L/sources.list
+    AO=(-o Dir::Etc::sourcelist="$L/sources.list" -o Dir::Etc::sourceparts=/nonexistent -o Dir::State::Lists="$L/lists" -o Dir::Cache::Archives="$L/archives" -o Acquire::Languages=none -o APT::Get::List-Cleanup=0)
     if apt-get "${AO[@]}" update >/tmp/matryoshka-apt.log 2>&1; then
       ok=$(for p in $new; do apt-cache "${AO[@]}" show "$p" >/dev/null 2>&1 && echo "$p"; done)
       miss=$(for p in $new; do echo "$ok" | grep -qx "$p" || echo "$p"; done)
-      if [ -n "$ok" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --no-download --allow-downgrades $ok >>/tmp/matryoshka-apt.log 2>&1; then
+      debs=$(for p in $ok; do awk -v p="$p" '$1=="Package:"{x=($2==p)} x&&$1=="Filename:"{print $2; exit}' "$LREPO/Packages" | sed 's#^\./##' | while read -r f; do [ -f "$LREPO/$f" ] && echo "$LREPO/$f"; done; done)
+      if [ -n "$ok" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --allow-downgrades $ok >>/tmp/matryoshka-apt.log 2>&1; then
         say "Программы установлены: $(echo $ok | wc -w)"
+      elif [ -n "$debs" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --allow-downgrades $debs >>/tmp/matryoshka-apt.log 2>&1; then
+        say "Программы установлены из файлов: $(echo $debs | wc -w)"
       else
         echo "ВНИМАНИЕ: часть программ не установилась (журнал /tmp/matryoshka-apt.log):"; tail -n 10 /tmp/matryoshka-apt.log
         DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --no-download -f >>/tmp/matryoshka-apt.log 2>&1

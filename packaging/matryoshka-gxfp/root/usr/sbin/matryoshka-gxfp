@@ -1,6 +1,7 @@
 #!/bin/sh
 L=/usr/lib/matryoshka-gxfp
 F=/etc/matryoshka/gxfp-on
+OFF=/etc/matryoshka/gxfp-off
 DI=/etc/systemd/system/fprintd.service.d/50-matryoshka-gxfp.conf
 PSK=/var/lib/fprintd/gxfp/psk_raw32.bin
 [ "$(id -u)" = 0 ] || exec pkexec "$0" "$@"
@@ -9,7 +10,7 @@ load() {
   K=$L/gxfp-$(uname -r).ko
   [ -f "$K" ] || { echo "Нет модуля для ядра $(uname -r)"; return 1; }
   timeout 20 insmod "$K" || { mokutil --sb-state 2>/dev/null | grep -q enabled && echo "Включён Secure Boot: неподписанный модуль не загружается"; return 1; }
-  for i in 1 2 3 4 5 6 7 8 9 10; do [ -c /dev/gxfp ] && return 0; sleep 1; done
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -c /dev/gxfp ] && return 0; sleep 1; done
   echo "Устройство /dev/gxfp не появилось"; return 1
 }
 case "$1" in
@@ -22,15 +23,23 @@ case "$1" in
       [ "$(wc -c < "$W/psk.bin")" -eq 32 ] && timeout 60 $L/bin/gxfp_psk_tool --upload-bb010002 "$W/blob.bin" &&
       install -d -m 700 /var/lib/fprintd/gxfp && install -m 600 "$W/psk.bin" "$PSK" || { echo "Не удалось записать ключ в сканер"; rmmod gxfp 2>/dev/null; exit 1; }
     fi
-    mkdir -p /etc/matryoshka "$(dirname "$DI")"; touch "$F"
+    mkdir -p /etc/matryoshka "$(dirname "$DI")"; touch "$F"; rm -f "$OFF"
     printf '[Service]\nEnvironment=LD_LIBRARY_PATH=%s/lib\nDeviceAllow=/dev/gxfp rw\n' "$L" > "$DI"
     systemctl daemon-reload; systemctl enable matryoshka-gxfp.service >/dev/null 2>&1; systemctl restart fprintd 2>/dev/null
+    command -v pam-auth-update >/dev/null && pam-auth-update --package --enable fprintd 2>/dev/null
     echo "Драйвер включён. Добавьте палец: fprintd-enroll или Параметры → Пользователи";;
   off)
-    rm -f "$F" "$DI"; systemctl disable matryoshka-gxfp.service >/dev/null 2>&1
+    rm -f "$F" "$DI"; mkdir -p /etc/matryoshka; touch "$OFF"; command -v pam-auth-update >/dev/null && pam-auth-update --package --remove fprintd 2>/dev/null; systemctl disable matryoshka-gxfp.service >/dev/null 2>&1
     systemctl daemon-reload; systemctl stop fprintd 2>/dev/null; rmmod gxfp 2>/dev/null
     echo "Драйвер выключен";;
   boot) [ -e "$F" ] && load; exit 0;;
+  auto)
+    [ -e "$F" ] && { load; exit 0; }
+    [ -e "$OFF" ] && exit 0
+    grep -qs GXFP5130 /sys/bus/acpi/devices/*/hid || exit 0
+    mokutil --sb-state 2>/dev/null | grep -q enabled && exit 0
+    [ -f "$L/gxfp-$(uname -r).ko" ] || exit 0
+    exec "$0" on;;
   status) [ -e "$F" ] && echo on || echo off; [ -c /dev/gxfp ] && echo "/dev/gxfp есть";;
-  *) echo "matryoshka-gxfp on|off|status"; exit 1;;
+  *) echo "matryoshka-gxfp on|off|auto|status"; exit 1;;
 esac

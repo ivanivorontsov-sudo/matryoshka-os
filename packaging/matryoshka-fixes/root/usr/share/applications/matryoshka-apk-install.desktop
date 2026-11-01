@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Установить в Android (Waydroid)
+Exec=matryoshka-apk-install %F
+Icon=waydroid
+MimeType=application/vnd.android.package-archive;
+NoDisplay=true
+Categories=System;

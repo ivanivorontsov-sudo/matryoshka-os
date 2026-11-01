@@ -1,10 +1,11 @@
 [Unit]
 Description=Matryoshka experimental Goodix GXFP5130 driver
-ConditionPathExists=/etc/matryoshka/gxfp-on
-After=multi-user.target
+ConditionPathExists=!/etc/matryoshka/gxfp-off
+After=systemd-udev-settle.service
+Before=display-manager.service
 [Service]
 Type=oneshot
-TimeoutStartSec=30
-ExecStart=-/usr/sbin/matryoshka-gxfp boot
+TimeoutStartSec=150
+ExecStart=-/usr/sbin/matryoshka-gxfp auto
 [Install]
 WantedBy=multi-user.target

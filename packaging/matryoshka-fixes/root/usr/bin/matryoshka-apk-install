@@ -1,0 +1,17 @@
+#!/bin/bash
+note() { command -v kdialog >/dev/null && kdialog --title "Установка APK" --passivepopup "$1" 8 || echo "$1"; }
+[ $# -gt 0 ] || { echo "matryoshka-apk-install файл.apk"; exit 1; }
+command -v waydroid >/dev/null || { note "Waydroid не установлен"; exit 1; }
+if ! waydroid status 2>/dev/null | grep -q "Session:.*RUNNING"; then
+  note "Запускаю Waydroid…"
+  setsid waydroid session start >/dev/null 2>&1 &
+  for _ in $(seq 1 60); do waydroid status 2>/dev/null | grep -q "Session:.*RUNNING" && break; sleep 1; done
+  sleep 5
+fi
+waydroid status 2>/dev/null | grep -q "Session:.*RUNNING" || { note "Waydroid не запустился. Откройте Waydroid из меню и повторите."; exit 1; }
+rc=0
+for f in "$@"; do
+  f=$(readlink -f "$f")
+  if waydroid app install "$f"; then note "Установлено: $(basename "$f")"; else note "Не удалось установить: $(basename "$f")"; rc=1; fi
+done
+exit $rc

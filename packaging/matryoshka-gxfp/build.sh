@@ -22,11 +22,11 @@ Package: matryoshka-gxfp
 Version: $V
 Architecture: amd64
 Maintainer: Ivan Vorontsov
-Depends: fprintd, libgusb2, libgudev-1.0-0, libmbedtls21, libmbedcrypto16, libopencv-features2d410, libopencv-imgproc410, libopencv-core410, kmod
+Depends: fprintd, libpam-fprintd, libgusb2, libgudev-1.0-0, libmbedtls21, libmbedcrypto16, libopencv-features2d410, libopencv-imgproc410, libopencv-core410, kmod
 Description: Experimental Goodix GXFP5130 fingerprint driver (opt-in)
  Off by default. Enable: matryoshka-gxfp on. Disable: matryoshka-gxfp off.
 C
-printf '#!/bin/sh\n[ -d /run/systemd/system ] && systemctl daemon-reload || true\nexit 0\n' > "$T/DEBIAN/postinst"
+printf '#!/bin/sh\n[ -d /run/systemd/system ] && systemctl daemon-reload\nsystemctl enable matryoshka-gxfp.service >/dev/null 2>&1 || true\nexit 0\n' > "$T/DEBIAN/postinst"
 printf '#!/bin/sh\n[ "$1" = remove ] && /usr/sbin/matryoshka-gxfp off >/dev/null 2>&1\nexit 0\n' > "$T/DEBIAN/prerm"
 chmod 755 "$T/DEBIAN/postinst" "$T/DEBIAN/prerm"
 dpkg-deb --root-owner-group -Zxz -b "$T" "$O/matryoshka-gxfp_${V}_amd64.deb"; rm -rf "$T"
