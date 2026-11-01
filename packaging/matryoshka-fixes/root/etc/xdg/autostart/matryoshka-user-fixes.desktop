@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Matryoshka user fixes
+Exec=/usr/lib/matryoshka-fixes/user-login
+NoDisplay=true
+X-KDE-autostart-phase=2

@@ -1,0 +1,8 @@
+#!/bin/bash
+L="$HOME/.local/share/applications/wine/Programs/Тирпроц.desktop"
+if [ -e "$L" ] && [ -x "/opt/Тирпроц/tirproc" ] && grep -q '^Exec=.*wine' "$L"; then
+  rm -f "$L"
+  update-desktop-database -q "$HOME/.local/share/applications" 2>/dev/null
+fi
+[ -f "$HOME/.wine/system.reg" ] && (command -v wine >/dev/null || [ -x /usr/lib/wine/wine64 ]) && WINEPREFIX="$HOME/.wine" /usr/lib/matryoshka-fixes/wine-fonts >/dev/null 2>&1
+exit 0

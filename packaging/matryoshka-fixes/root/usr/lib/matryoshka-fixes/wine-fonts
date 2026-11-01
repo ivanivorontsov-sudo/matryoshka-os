@@ -1,0 +1,30 @@
+#!/bin/bash
+export WINEPREFIX=${WINEPREFIX:-$HOME/.wine}
+[ -f "$WINEPREFIX/system.reg" ] || exit 0
+M="$WINEPREFIX/.matryoshka-fonts-2"
+[ "$1" = --force ] || [ ! -e "$M" ] || exit 0
+W=wine; command -v wine >/dev/null || W=/usr/lib/wine/wine64
+export WINEDEBUG=-all WINEDLLOVERRIDES="mscoree=;mshtml=;winemenubuilder.exe=d"
+K='HKCU\Software\Wine\Fonts\Replacements'
+s="Liberation Sans"; fc-list -q "Liberation Sans" || s="DejaVu Sans"
+m="Liberation Mono"; fc-list -q "Liberation Mono" || m="DejaVu Sans Mono"
+r="Liberation Serif"; fc-list -q "Liberation Serif" || r="DejaVu Serif"
+c="Noto Sans CJK SC"; fc-list -q "$c" || c="$s"
+for f in "Segoe UI" "Segoe UI Semibold" "Segoe UI Light" "Segoe UI Variable" "Segoe UI Variable Text" "Segoe UI Variable Display" "Arial" "Arial Unicode MS" "Helvetica" "Tahoma" "Verdana" "Calibri" "MS Sans Serif" "MS Shell Dlg" "MS Shell Dlg 2" "Microsoft Sans Serif" "Trebuchet MS" "system-ui"; do
+  "$W" reg add "$K" /v "$f" /d "$s" /f >/dev/null 2>&1
+done
+for f in "Courier New" "Consolas" "Lucida Console" "Cascadia Mono" "Cascadia Code"; do "$W" reg add "$K" /v "$f" /d "$m" /f >/dev/null 2>&1; done
+for f in "Times New Roman" "Georgia" "Cambria"; do "$W" reg add "$K" /v "$f" /d "$r" /f >/dev/null 2>&1; done
+for f in "Microsoft YaHei" "Microsoft YaHei UI" "SimSun" "NSimSun" "SimHei" "MS Gothic" "MS UI Gothic" "Meiryo" "Yu Gothic" "Malgun Gothic"; do "$W" reg add "$K" /v "$f" /d "$c" /f >/dev/null 2>&1; done
+D='HKCU\Control Panel\Desktop'
+"$W" reg add "$D" /v FontSmoothing /d 2 /f >/dev/null 2>&1
+"$W" reg add "$D" /v FontSmoothingType /t REG_DWORD /d 2 /f >/dev/null 2>&1
+"$W" reg add "$D" /v FontSmoothingGamma /t REG_DWORD /d 1400 /f >/dev/null 2>&1
+"$W" reg add "$D" /v FontSmoothingOrientation /t REG_DWORD /d 1 /f >/dev/null 2>&1
+wineserver -w 2>/dev/null
+for d in "$WINEPREFIX"/drive_c/users/*/AppData/Local "$WINEPREFIX"/drive_c/users/*/AppData/Roaming; do
+  [ -d "$d" ] || continue
+  find "$d" -maxdepth 4 -type d \( -name GPUCache -o -name ShaderCache -o -name DawnCache -o -name DawnGraphiteCache -o -name GrShaderCache \) -prune -exec rm -rf {} + 2>/dev/null
+done
+touch "$M"
+echo "Шрифты Wine исправлены: $WINEPREFIX"

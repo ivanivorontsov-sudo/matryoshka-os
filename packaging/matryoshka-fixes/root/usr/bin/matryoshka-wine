@@ -18,13 +18,15 @@ if [ ! -f "$WINEPREFIX/system.reg" ]; then
   "$W" winecfg -v win10 >/dev/null 2>&1
   for s in wineusb winebth; do "$W" reg add "HKLM\\System\\CurrentControlSet\\Services\\$s" /v Start /t REG_DWORD /d 4 /f >/dev/null 2>&1; done
 fi
+[ "$1" = --fix-fonts ] && exec /usr/lib/matryoshka-fixes/wine-fonts --force
+/usr/lib/matryoshka-fixes/wine-fonts
 ffprefs() {
   for d in "$WINEPREFIX"/drive_c/users/*/AppData/Roaming/Mozilla/Firefox/Profiles/*/; do
     [ -d "$d" ] || continue
     cp /usr/share/matryoshka-fixes/firefox-prefs.js "$d/user.js"
   done
 }
-[ -z "$1" ] && { echo "matryoshka-wine файл.exe|файл.msi [аргументы]"; exit 1; }
+[ -z "$1" ] && { echo "matryoshka-wine файл.exe|файл.msi [аргументы] | --fix-fonts"; exit 1; }
 case "${1,,}" in
   *.msi) f=$(readlink -f "$1"); shift; set -- msiexec /i "$f" "$@";;
   *.exe|*.bat|*.com) f=$(readlink -f "$1"); shift; cd "$(dirname "$f")"
