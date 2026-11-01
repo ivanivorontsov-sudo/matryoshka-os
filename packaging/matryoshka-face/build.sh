@@ -27,15 +27,16 @@ for m in dlib_face_recognition_resnet_model_v1 mmod_human_face_detector shape_pr
 cp "$X/usr/share/doc/howdy/copyright" "$T/usr/share/doc/matryoshka-face/howdy-copyright"
 printf 'Howdy 2.6.1 (MIT): https://launchpad.net/~boltgolt/+archive/ubuntu/howdy sha256 %s\ndlib 19.24.6 (Boost Software License), models: github.com/davisking/dlib-models (CC0 / public domain)\n' "$HSUM" > "$T/usr/share/doc/matryoshka-face/SOURCE"
 cp -a "$D/root/." "$T/"
-chmod 755 "$T/usr/sbin/"* "$T/usr/lib/security/howdy/cli.py"; chmod -R go-w "$T/usr/lib/security/howdy"
+chmod 755 "$T/usr/sbin/"* "$T/usr/bin/matryoshka-face-gui" "$T/usr/lib/security/howdy/cli.py"; chmod -R go-w "$T/usr/lib/security/howdy"
 ln -s /usr/lib/security/howdy/cli.py "$T/usr/bin/howdy"
+ln -s /usr/sbin/matryoshka-face "$T/usr/bin/matryoshka-face"
 mkdir -p "$T/DEBIAN"
 cat > "$T/DEBIAN/control" <<C
 Package: matryoshka-face
 Version: $V
 Architecture: amd64
 Maintainer: Ivan Vorontsov
-Depends: python3 (>= 3.13), python3 (<< 3.14), python3-opencv, python3-numpy, libpam-python, libopenblas0, libx11-6, libpng16-16t64, libjpeg62-turbo, libwebp7, libgfortran5, v4l-utils
+Depends: python3 (>= 3.13), python3 (<< 3.14), python3-opencv, python3-numpy, libpam-python, libopenblas0, libx11-6, libpng16-16t64, libjpeg62-turbo, libwebp7, libgfortran5, v4l-utils, python3-pyqt6, pkexec | policykit-1
 Conflicts: howdy
 Description: Face login for Matryoshka (Howdy 2.6.1 + dlib), off by default
  Password always works. Enable: matryoshka-face on; add face: matryoshka-face add USER.

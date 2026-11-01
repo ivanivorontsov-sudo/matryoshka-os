@@ -10,3 +10,4 @@ config/includes.chroot_after_packages/opt/ivan/
 out/
 config/includes.chroot_after_packages/opt/matryoshka-voice/
 config/includes.chroot_after_packages/usr/share/waydroid-extra/
+__pycache__/

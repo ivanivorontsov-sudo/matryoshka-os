@@ -7,6 +7,8 @@ grep -v '^#' $R/config/package-lists/matryoshka.list.chroot | tr ' ' '\n' | grep
 for f in ${EXTRA:-/nonexistent}/*.deb; do [ -f "$f" ] && dpkg-deb -f "$f" Package >> $T/packages.list; done
 grep -ho 'systemctl enable [^|&;]*' $R/config/hooks/live/0600-matryoshka.hook.chroot | sed 's/systemctl enable//; s/--now//; s/2>\/dev\/null//' | tr ' ' '\n' | grep -E '^matryoshka-.*\.(service|timer)$' | grep -v autotest | sort -u > $T/enable.list
 echo "$V" > $T/VERSION
-tar --owner=0 --group=0 -C $T -caf $O/matryoshka-update-$V.tar.gz VERSION includes packages.list enable.list
+for f in ${EXTRA:-/nonexistent}/*.deb; do [ -f "$f" ] && { mkdir -p $T/matryoshka-repo; cp "$f" $T/matryoshka-repo/; }; done
+[ -d $T/matryoshka-repo ] && (cd $T/matryoshka-repo && apt-ftparchive packages . > Packages)
+tar --owner=0 --group=0 -C $T -caf $O/matryoshka-update-$V.tar.gz VERSION includes packages.list enable.list $(cd $T && ls -d matryoshka-repo 2>/dev/null)
 (cd $O && sha256sum matryoshka-update-$V.tar.gz > matryoshka-update-$V.tar.gz.sha256)
 rm -rf $T; echo $O/matryoshka-update-$V.tar.gz

@@ -329,3 +329,4 @@ python3-numpy
 libpam-python
 libopenblas0
 matryoshka-face
+python3-requests python3-tqdm python3-websockets python3-certifi python3-srt

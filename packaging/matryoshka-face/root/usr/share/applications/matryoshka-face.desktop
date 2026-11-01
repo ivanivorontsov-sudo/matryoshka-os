@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Вход по лицу
+Comment=Записать лицо и включить вход по лицу
+Exec=matryoshka-face-gui
+Icon=user-identity
+Categories=Settings;Security;
+Keywords=face;howdy;лицо;вход;

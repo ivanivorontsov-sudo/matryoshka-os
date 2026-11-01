@@ -79,6 +79,8 @@ case "$cmd" in
       face-login-off) /usr/sbin/matryoshka-face off ;;
       face-add) /usr/sbin/matryoshka-face add "$U" ;;
       face-cameras) /usr/sbin/matryoshka-face cameras ;;
+      face-clear) /usr/sbin/matryoshka-face clear "$U" ;;
+      face-check) /usr/sbin/matryoshka-face check "$U" ;;
       *) exit 1 ;;
     esac ;;
   remove-app)

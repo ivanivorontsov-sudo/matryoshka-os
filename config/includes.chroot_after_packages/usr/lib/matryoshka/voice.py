@@ -14,7 +14,8 @@ def source():
     srcs = [l.split("\t")[1] for l in subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True).stdout.splitlines() if "\t" in l]
     real = [x for x in srcs if x.startswith("alsa_input.") and not x.endswith(".monitor")]
     d = subprocess.run(["pactl", "get-default-source"], capture_output=True, text=True).stdout.strip()
-    return d if d in real else (real[0] if real else None)
+    ok = [x for x in srcs if not x.endswith(".monitor")]
+    return d if d and d in ok else (real[0] if real else (ok[0] if ok else None))
 
 def punct(t):
     for w, p in CMDS: t = re.sub(r"\s*\b%s\b" % w, p, t)

@@ -48,37 +48,39 @@ if [ -n "$ISO" ]; then
     fi
   fi
 fi
-LREPO=""
-for d in $W/matryoshka-repo ${ISOM:+$ISOM/matryoshka-repo}; do [ -f "$d/Packages" ] && { LREPO=$(readlink -f "$d"); break; }; done
+LREPOS=""
+for d in $W/matryoshka-repo ${ISOM:+$ISOM/matryoshka-repo}; do [ -f "$d/Packages" ] && LREPOS="$LREPOS $(readlink -f "$d")"; done
 if [ -s $W/packages.list ]; then
   new=$(while read -r p; do [ -n "$p" ] && ! dpkg -s "$p" >/dev/null 2>&1 && echo "$p"; done < $W/packages.list)
-  if [ -n "$new" ] && [ -n "$LREPO" ]; then
-    say "Ставлю новые программы из встроенного хранилища (без сети)"
+  own=$(dpkg-query -W -f='${Package} ${Status}\n' 'matryoshka-*' 2>/dev/null | awk '$NF=="installed"{print $1}')
+  own=$(for p in $own $(grep -x 'matryoshka-.*' $W/packages.list); do echo "$p"; done | sort -u)
+  if [ -n "$LREPOS" ]; then
+    say "Ставлю новые и обновляю установленные программы Матрёшки из встроенного хранилища (без сети)"
     L=/var/lib/matryoshka/localrepo; rm -rf $L; mkdir -p $L/lists/partial $L/archives/partial
-    echo "deb [trusted=yes] copy://$LREPO ./" > $L/sources.list
+    : > $L/sources.list; for d in $LREPOS; do echo "deb [trusted=yes] copy://$d ./" >> $L/sources.list; done
     AO=(-o Dir::Etc::sourcelist="$L/sources.list" -o Dir::Etc::sourceparts=/nonexistent -o Dir::State::Lists="$L/lists" -o Dir::Cache::Archives="$L/archives" -o Acquire::Languages=none -o APT::Get::List-Cleanup=0)
     if apt-get "${AO[@]}" update >/tmp/matryoshka-apt.log 2>&1; then
-      ok=$(for p in $new; do apt-cache "${AO[@]}" show "$p" >/dev/null 2>&1 && echo "$p"; done)
-      miss=$(for p in $new; do echo "$ok" | grep -qx "$p" || echo "$p"; done)
-      debs=$(for p in $ok; do awk -v p="$p" '$1=="Package:"{x=($2==p)} x&&$1=="Filename:"{print $2; exit}' "$LREPO/Packages" | sed 's#^\./##' | while read -r f; do [ -f "$LREPO/$f" ] && echo "$LREPO/$f"; done; done)
-      if [ -n "$ok" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --allow-downgrades $ok >>/tmp/matryoshka-apt.log 2>&1; then
-        say "Программы установлены: $(echo $ok | wc -w)"
-      elif [ -n "$debs" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --allow-downgrades $debs >>/tmp/matryoshka-apt.log 2>&1; then
+      want=$(for p in $new $own; do echo "$p"; done | sort -u)
+      ok=$(for p in $want; do apt-cache "${AO[@]}" show "$p" >/dev/null 2>&1 && echo "$p"; done)
+      debs=$(for p in $ok; do for d in $LREPOS; do awk -v p="$p" '$1=="Package:"{x=($2==p)} x&&$1=="Filename:"{print $2; exit}' "$d/Packages" | sed 's#^\./##' | while read -r f; do [ -f "$d/$f" ] && echo "$d/$f"; done; done | sort -V | tail -n 1; done)
+      if [ -n "$ok" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --allow-downgrades -o Dpkg::Options::=--force-confnew $ok >>/tmp/matryoshka-apt.log 2>&1; then
+        say "Программы установлены или обновлены: $(echo $ok | wc -w)"
+      elif [ -n "$debs" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --allow-downgrades -o Dpkg::Options::=--force-confnew $debs >>/tmp/matryoshka-apt.log 2>&1; then
         say "Программы установлены из файлов: $(echo $debs | wc -w)"
       else
         echo "ВНИМАНИЕ: часть программ не установилась (журнал /tmp/matryoshka-apt.log):"; tail -n 10 /tmp/matryoshka-apt.log
         DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --no-download -f >>/tmp/matryoshka-apt.log 2>&1
         dpkg --configure -a >/dev/null 2>&1
-        miss="$new"
       fi
-    else echo "ВНИМАНИЕ: встроенное хранилище не читается"; miss="$new"; fi
+    else echo "ВНИМАНИЕ: встроенное хранилище не читается"; fi
     rm -rf $L/lists $L/archives
-  else miss="$new"; fi
-  miss=$(for p in $miss; do dpkg -s "$p" >/dev/null 2>&1 || echo "$p"; done)
+  fi
+  miss=$(for p in $new; do dpkg -s "$p" >/dev/null 2>&1 || echo "$p"; done)
   if [ -n "$miss" ]; then
     mkdir -p /var/lib/matryoshka; echo "$miss" > /var/lib/matryoshka/pending-packages
     echo "Не установлены (нет в образе): $(echo $miss | tr '\n' ' ')"
   else rm -f /var/lib/matryoshka/pending-packages; fi
+  say "Версии пакетов Матрёшки:"; dpkg-query -W -f='  ${Package} ${Version}\n' 'matryoshka-*' 2>/dev/null
 fi
 systemctl daemon-reload
 [ -s $W/enable.list ] && xargs -a $W/enable.list systemctl enable >/dev/null 2>&1

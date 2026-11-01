@@ -5,10 +5,22 @@ OFF=/etc/matryoshka/gxfp-off
 DI=/etc/systemd/system/fprintd.service.d/50-matryoshka-gxfp.conf
 PSK=/var/lib/fprintd/gxfp/psk_raw32.bin
 [ "$(id -u)" = 0 ] || exec pkexec "$0" "$@"
+MOK=/var/lib/matryoshka-mok
+sign() {
+  K=$1; KV=$2
+  [ -f "$K" ] && [ -f $MOK/MOK.key ] && [ -f $MOK/MOK.der ] || return 0
+  mokutil --sb-state 2>/dev/null | grep -q enabled || return 0
+  tail -c 28 "$K" | grep -q "Module signature appended" && return 0
+  for S in /usr/src/linux-headers-$KV/scripts/sign-file /usr/lib/linux-kbuild-*/scripts/sign-file; do
+    [ -x "$S" ] && { "$S" sha256 $MOK/MOK.key $MOK/MOK.der "$K" && echo "Модуль подписан ключом MOK" && return 0; }
+  done
+  echo "Не найдена программа sign-file (пакет linux-headers-$KV)"; return 1
+}
 load() {
   [ -c /dev/gxfp ] && return 0
   K=$L/gxfp-$(uname -r).ko
   [ -f "$K" ] || { echo "Нет модуля для ядра $(uname -r)"; return 1; }
+  sign "$K" "$(uname -r)"
   timeout 20 insmod "$K" || { mokutil --sb-state 2>/dev/null | grep -q enabled && echo "Включён Secure Boot: неподписанный модуль не загружается"; return 1; }
   for _ in 1 2 3 4 5 6 7 8 9 10; do [ -c /dev/gxfp ] && return 0; sleep 1; done
   echo "Устройство /dev/gxfp не появилось"; return 1
@@ -32,11 +44,13 @@ case "$1" in
     systemctl daemon-reload; systemctl stop fprintd 2>/dev/null; rmmod gxfp 2>/dev/null
     echo "Драйвер выключен";;
   boot) [ -e "$F" ] && load; exit 0;;
+  sign)
+    if [ -n "$2" ]; then sign "$L/gxfp-$2.ko" "$2"; else for K in $L/gxfp-*.ko; do V=${K##*/gxfp-}; sign "$K" "${V%.ko}"; done; fi; exit 0;;
   auto)
     [ -e "$F" ] && { load; exit 0; }
     [ -e "$OFF" ] && exit 0
     grep -qs GXFP5130 /sys/bus/acpi/devices/*/hid || exit 0
-    mokutil --sb-state 2>/dev/null | grep -q enabled && exit 0
+    mokutil --sb-state 2>/dev/null | grep -q enabled && [ ! -f $MOK/MOK.key ] && exit 0
     [ -f "$L/gxfp-$(uname -r).ko" ] || exit 0
     exec "$0" on;;
   debug)
@@ -68,5 +82,5 @@ case "$1" in
     chmod -R a+rX "$C"; ls -l "$C"
     systemctl start fprintd 2>/dev/null; exit $R;;
   status) [ -e "$F" ] && echo on || echo off; [ -c /dev/gxfp ] && echo "/dev/gxfp есть";;
-  *) echo "matryoshka-gxfp on|off|auto|status|debug [off]|diag|capture"; exit 1;;
+  *) echo "matryoshka-gxfp on|off|auto|sign [ядро]|status|debug [off]|diag|capture"; exit 1;;
 esac

@@ -97,6 +97,11 @@ def main(path):
             C.run(["wine", "reg", "add", "HKCU\\Software\\Wine", "/v", "Version", "/d", "win10", "/f"], env=env, timeout=300)
             open(os.path.expanduser("~/.wine/.matryoshka-win10"), "w").close() if os.path.isdir(os.path.expanduser("~/.wine")) else None
         b = os.path.basename(path).lower()
+        if ("chrome" in b or "chromium" in b) and any(x in b for x in ("setup", "install")):
+            if shutil.which("chromium"): return subprocess.call(["chromium"])
+            if subprocess.call(["kdialog", "--yesno", "Установщик Chrome для Windows под Wine не работает (ошибка 0x124fb).\nУстановить обычный Chromium для Linux (около 100 МБ, нужен интернет)?"]) == 0:
+                return subprocess.call(["matryoshka-pkginstall", "--apt", "chromium"])
+            return 1
         if any(x in b for x in ("chrome", "vivaldi", "msedge", "opera", "brave", "yandex", "electron", "code", "discord", "slack", "teams")) and not any(x in b for x in ("setup", "install", "update")):
             return subprocess.call(["wine", path, "--no-sandbox", "--disable-gpu-sandbox", "--disable-gpu", "--in-process-gpu"], env=env, cwd=os.path.dirname(path))
         if b.startswith("firefox") and not any(x in b for x in ("setup", "install")):

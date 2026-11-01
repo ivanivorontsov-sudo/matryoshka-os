@@ -238,6 +238,7 @@ class Center(QWidget):
         v.addWidget(btn("Какая камера будет использована", lambda: r("face-cameras")))
         v.addWidget(btn("1. Записать лицо (смотрите в камеру)", lambda: r("face-add")))
         v.addWidget(btn("2. Включить вход по лицу", lambda: r("face-login-on"))); v.addWidget(btn("Выключить вход по лицу", lambda: r("face-login-off")))
+        v.addWidget(btn("Проверить, узнаёт ли меня", lambda: r("face-check"))); v.addWidget(btn("Удалить снимки лица", lambda: r("face-clear")))
     def p_privacy(self, v):
         v.addWidget(QLabel("<h2>Приватность</h2>Здесь видно всё, что может ходить в сеть. Без вашего включения сети не работает ничего.", wordWrap=True))
         o = self.out(v)

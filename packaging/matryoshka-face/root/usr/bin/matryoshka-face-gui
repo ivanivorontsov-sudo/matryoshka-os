@@ -1,0 +1,71 @@
+#!/usr/bin/python3
+import subprocess, sys
+from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QPlainTextEdit, QMessageBox
+
+T = "/usr/sbin/matryoshka-face"
+
+
+class Job(QThread):
+    done = pyqtSignal(str)
+
+    def __init__(self, args):
+        super().__init__()
+        self.args = args
+
+    def run(self):
+        try:
+            r = subprocess.run(["pkexec", T] + self.args, capture_output=True, text=True, timeout=180)
+            out = "\n".join(l for l in (r.stdout + r.stderr).splitlines() if "WARN" not in l and "GStreamer" not in l)
+            if r.returncode == 126 or r.returncode == 127:
+                out = out or "Пароль не введён"
+            self.done.emit(out.strip() or "Готово")
+        except Exception as e:
+            self.done.emit("Ошибка: %s" % e)
+
+
+class W(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Вход по лицу")
+        self.resize(520, 480)
+        v = QVBoxLayout(self)
+        v.addWidget(QLabel("<h2>Вход по лицу</h2>Лицо открывает экран входа. Пароль работает всегда. Если у камеры нет инфракрасного режима, защиту можно обмануть фотографией.", wordWrap=True))
+        self.bs = []
+        for t, a in (("1. Записать лицо (смотрите прямо в камеру)", ["add"]),
+                     ("Добавить ещё снимок (другой угол или свет)", ["add"]),
+                     ("2. Включить вход по лицу", ["on"]),
+                     ("Проверить, узнаёт ли меня", ["check"]),
+                     ("Показать записанные снимки", ["list"]),
+                     ("Удалить все снимки лица", ["clear"]),
+                     ("Выключить вход по лицу", ["off"])):
+            b = QPushButton(t)
+            b.clicked.connect(lambda _, a=a: self.go(a))
+            v.addWidget(b)
+            self.bs.append(b)
+        self.o = QPlainTextEdit(readOnly=True)
+        v.addWidget(self.o)
+        self.j = None
+
+    def go(self, a):
+        if a == ["clear"] and QMessageBox.question(self, "Вход по лицу", "Удалить все снимки лица?") != QMessageBox.StandardButton.Yes:
+            return
+        for b in self.bs:
+            b.setEnabled(False)
+        self.o.setPlainText("Смотрите в камеру..." if a[0] in ("add", "check") else "Подождите...")
+        self.j = Job(a)
+        self.j.done.connect(self.fin)
+        self.j.start()
+
+    def fin(self, t):
+        self.o.setPlainText(t)
+        for b in self.bs:
+            b.setEnabled(True)
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setDesktopFileName("matryoshka-face")
+    w = W()
+    w.show()
+    sys.exit(app.exec())
