@@ -23,11 +23,11 @@ case "$1" in
     for p in common-auth sudo polkit-1 su login sudo-i; do [ -f /etc/pam.d/$p ] && sed -i '/howdy/d' /etc/pam.d/$p; done
     echo "Вход по лицу включён для экрана входа и блокировки. Добавьте лицо: matryoshka-face add";;
   off) for p in sddm kde; do [ -f /etc/pam.d/$p ] && sed -i '/howdy/d' /etc/pam.d/$p; done; echo "Вход по лицу выключен";;
-  add) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || { echo "matryoshka-face add ПОЛЬЗОВАТЕЛЬ"; exit 1; }; grep -q "^device_path = /dev" "$C" || "$0" on >/dev/null; howdy -U "$u" add -y;;
-  clear) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; howdy -U "$u" clear -y;;
+  add) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || { echo "matryoshka-face add ПОЛЬЗОВАТЕЛЬ"; exit 1; }; grep -q "^device_path = /dev" "$C" || "$0" on >/dev/null; SUDO_USER="$u" howdy -U "$u" add -y;;
+  clear) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; SUDO_USER="$u" howdy -U "$u" clear -y;;
   test) howdy test;;
-  check) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || exit 1; howdy -U "$u" list >/dev/null 2>&1 || { echo "Лицо ещё не записано"; exit 2; }; echo "Смотрите в камеру..."; if PYTHONWARNINGS=ignore timeout 30 python3 /lib/security/howdy/compare.py "$u" >/dev/null 2>&1; then echo "Лицо узнано"; else echo "Лицо не узнано, попробуйте записать ещё снимок"; exit 3; fi;;
-  list) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; howdy -U "$u" list 2>&1 | grep -v WARN;;
+  check) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || exit 1; SUDO_USER="$u" howdy -U "$u" list >/dev/null 2>&1 || { echo "Лицо ещё не записано"; exit 2; }; echo "Смотрите в камеру..."; if PYTHONWARNINGS=ignore timeout 30 python3 /lib/security/howdy/compare.py "$u" >/dev/null 2>&1; then echo "Лицо узнано"; else echo "Лицо не узнано, попробуйте записать ещё снимок"; exit 3; fi;;
+  list) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; SUDO_USER="$u" howdy -U "$u" list 2>&1 | grep -v WARN;;
   status) grep "^device_path" "$C"; grep -l howdy /etc/pam.d/* 2>/dev/null;;
   *) echo "matryoshka-face on|off|add [пользователь]|clear|check|list|cameras|test|status"; exit 1;;
 esac
