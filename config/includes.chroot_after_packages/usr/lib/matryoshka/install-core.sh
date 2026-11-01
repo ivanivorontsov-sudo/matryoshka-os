@@ -195,7 +195,7 @@ chroot $T update-grub >/dev/null 2>&1
 grep -q "$RU" $T/boot/grub/grub.cfg || die "grub.cfg не указывает на раздел системы"
 if [ -d $T/matryoshka-live/live ]; then grep -q "живая система" $T/boot/grub/grub.cfg && log "В меню загрузки есть «Матрёшка — живая система»" || log "ВНИМАНИЕ: пункт живой системы не появился в меню"; fi
 udevadm settle; [ "$(blkid -s UUID -o value "$ESP")" = "$EU" ] || die "UUID раздела EFI изменился во время установки"
-findmnt --verify --tab-file $T/etc/fstab >/dev/null 2>&1 || die "проверка fstab не прошла"
+chroot $T findmnt --verify --tab-file /etc/fstab >/dev/null 2>&1 || die "проверка fstab не прошла"
 mkdir -p $T/var/lib/matryoshka; date -Is > $T/var/lib/matryoshka/installed
 sync
 mkdir -p $T/etc/matryoshka; echo "${COUNTRY:-RU}" | tr -cd "A-Z" > $T/etc/matryoshka/country 2>/dev/null || true
