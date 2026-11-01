@@ -1,4 +1,8 @@
 [General]
 IgnoreImages=false
-MaxClipItems=50
+IgnoreSelection=true
+SelectionTextOnly=true
+MaxClipItems=200
 KeepClipboardContents=true
+PreventEmptyClipboard=true
+SyncClipboards=false
