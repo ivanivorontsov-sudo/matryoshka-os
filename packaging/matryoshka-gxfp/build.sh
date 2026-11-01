@@ -1,9 +1,12 @@
 #!/bin/sh
 set -e
-V=${1:-0.1.0}; O=${2:-.}; KV=${KV:-6.12.113+deb13-amd64}; D=$(dirname "$(readlink -f "$0")")
+V=${1:-0.1.2}; O=${2:-.}; KV=${KV:-6.12.113+deb13-amd64}; D=$(dirname "$(readlink -f "$0")")
 S=${GXFP_SRC:-/workspace/gxfp}
 [ -d "$S" ] || git clone -q https://github.com/Metrohan/gxfp5130-linux "$S"
 git -C "$S" checkout -q aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23
+git -C "$S" checkout -q -- libfprint/libfprint/drivers/gxfp.c
+sed -i 's/^  dev_class->nr_enroll_stages = DEFAULT_ENROLL_SAMPLES;$/&\n  dev_class->temp_hot_seconds = -1;/' "$S/libfprint/libfprint/drivers/gxfp.c"
+grep -q "temp_hot_seconds = -1" "$S/libfprint/libfprint/drivers/gxfp.c"
 make -C "$S/kernel" KERNELDIR=/usr/src/linux-headers-$KV -j4 >/dev/null
 cmake -S "$S/userspace" -B "$S/build/userspace" -DCMAKE_BUILD_TYPE=Release >/dev/null
 cmake --build "$S/build/userspace" -j4 >/dev/null
@@ -14,7 +17,7 @@ install -m 644 "$S/kernel/gxfp.ko" "$T/usr/lib/matryoshka-gxfp/gxfp-$KV.ko"
 for b in gxfp_capture gxfp_psk_tool gxfp_recovery; do install -m 755 "$S/build/userspace/$b" "$T/usr/lib/matryoshka-gxfp/bin/"; done
 cp -a "$S"/build/libfprint/libfprint/libfprint-2.so* "$T/usr/lib/matryoshka-gxfp/lib/"
 cp "$S/LICENSE" "$T/usr/share/doc/matryoshka-gxfp/LICENSE-GPL-2.0"; cp "$S/libfprint/COPYING" "$T/usr/share/doc/matryoshka-gxfp/libfprint-COPYING-LGPL"
-printf 'Source: https://github.com/Metrohan/gxfp5130-linux aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23\nKernel: %s\n' "$KV" > "$T/usr/share/doc/matryoshka-gxfp/SOURCE"
+printf 'Source: https://github.com/Metrohan/gxfp5130-linux aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23 + temp_hot_seconds=-1 (issue 21)\nKernel: %s\n' "$KV" > "$T/usr/share/doc/matryoshka-gxfp/SOURCE"
 chmod 755 "$T/usr/sbin/"*
 mkdir -p "$T/DEBIAN"
 cat > "$T/DEBIAN/control" <<C

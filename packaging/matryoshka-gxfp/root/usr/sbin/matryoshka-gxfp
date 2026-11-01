@@ -52,10 +52,21 @@ case "$1" in
       dpkg -l fprintd libfprint-2-2 matryoshka-gxfp 2>&1 | tail -n 3
       systemctl cat fprintd 2>&1 | grep -E "Environment|DeviceAllow"
       P=$(pidof fprintd); [ -n "$P" ] && grep -E "libfprint" /proc/$P/maps | awk '{print $6}' | sort -u
-      journalctl -k -b --no-pager -g gxfp 2>&1 | tail -n 80
+      ls -l /tmp/gxfp-capture 2>&1; journalctl -k -b --no-pager -g gxfp 2>&1 | tail -n 80
       journalctl -b -u fprintd --no-pager 2>&1 | grep -i -E "gxfp|sigfm|score|match|stage|minutiae|keypoint|quality|error|warn|retry" | tail -n 300
     } > "$R" 2>&1
     chmod 644 "$R"; echo "Готово: $R";;
+  capture)
+    [ -s "$PSK" ] || { echo "Нет ключа: matryoshka-gxfp on"; exit 1; }
+    load || exit 1
+    C=/tmp/gxfp-capture; mkdir -p "$C"; cd "$C" || exit 1
+    systemctl stop fprintd 2>/dev/null
+    echo "Приложите палец к сканеру"
+    FP_GXFP_LOG=1 timeout 40 $L/bin/gxfp_capture --psk-raw32 "$PSK" > "$C/log.txt" 2>&1; R=$?
+    tail -n 5 "$C/log.txt"
+    [ -s finger.pgm ] && mv -f finger.pgm "finger-$(date +%H%M%S).pgm"
+    chmod -R a+rX "$C"; ls -l "$C"
+    systemctl start fprintd 2>/dev/null; exit $R;;
   status) [ -e "$F" ] && echo on || echo off; [ -c /dev/gxfp ] && echo "/dev/gxfp есть";;
-  *) echo "matryoshka-gxfp on|off|auto|status|debug [off]|diag"; exit 1;;
+  *) echo "matryoshka-gxfp on|off|auto|status|debug [off]|diag|capture"; exit 1;;
 esac
