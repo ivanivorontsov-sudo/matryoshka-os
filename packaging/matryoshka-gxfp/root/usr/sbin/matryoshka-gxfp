@@ -39,6 +39,23 @@ case "$1" in
     mokutil --sb-state 2>/dev/null | grep -q enabled && exit 0
     [ -f "$L/gxfp-$(uname -r).ko" ] || exit 0
     exec "$0" on;;
+  debug)
+    [ -e "$DI" ] || { echo "Сначала: matryoshka-gxfp on"; exit 1; }
+    DD=/etc/systemd/system/fprintd.service.d/60-matryoshka-gxfp-debug.conf
+    if [ "$2" = off ]; then rm -f "$DD"; else printf '[Service]\nEnvironment=G_MESSAGES_DEBUG=all FP_GXFP_LOG=1\n' > "$DD"; fi
+    systemctl daemon-reload; systemctl restart fprintd 2>/dev/null
+    [ "$2" = off ] && echo "Отладка выключена" || echo "Отладка включена. Повторите fprintd-enroll и fprintd-verify, затем: matryoshka-gxfp diag";;
+  diag)
+    R=/tmp/gxfp-diag.txt
+    { date; uname -r; mokutil --sb-state 2>&1; "$0" status; ls -l "$PSK" 2>&1
+      cat /sys/bus/acpi/devices/GXFP5130*/status 2>&1
+      dpkg -l fprintd libfprint-2-2 matryoshka-gxfp 2>&1 | tail -n 3
+      systemctl cat fprintd 2>&1 | grep -E "Environment|DeviceAllow"
+      P=$(pidof fprintd); [ -n "$P" ] && grep -E "libfprint" /proc/$P/maps | awk '{print $6}' | sort -u
+      journalctl -k -b --no-pager -g gxfp 2>&1 | tail -n 80
+      journalctl -b -u fprintd --no-pager 2>&1 | grep -i -E "gxfp|sigfm|score|match|stage|minutiae|keypoint|quality|error|warn|retry" | tail -n 300
+    } > "$R" 2>&1
+    chmod 644 "$R"; echo "Готово: $R";;
   status) [ -e "$F" ] && echo on || echo off; [ -c /dev/gxfp ] && echo "/dev/gxfp есть";;
-  *) echo "matryoshka-gxfp on|off|auto|status"; exit 1;;
+  *) echo "matryoshka-gxfp on|off|auto|status|debug [off]|diag"; exit 1;;
 esac
