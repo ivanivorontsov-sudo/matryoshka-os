@@ -1,5 +1,6 @@
 #!/bin/sh
 P=/run/user/$(id -u)/matryoshka-voice.pid
-if [ -f "$P" ] && kill -0 "$(cat "$P")" 2>/dev/null; then kill -USR1 "$(cat "$P")"; exit 0; fi
-[ -d /opt/matryoshka-voice/model-ru ] || { notify-send -a "Матрёшка" "Голосовой ввод" "Модель распознавания не найдена."; exit 1; }
+if [ -f "$P" ] && kill -0 "$(cat "$P")" 2>/dev/null; then [ "$1" = --tray ] || kill -USR1 "$(cat "$P")"; exit 0; fi
+[ -d /opt/matryoshka-voice/model-ru ] || { [ "$1" = --tray ] || notify-send -a "Матрёшка" "Голосовой ввод" "Модель распознавания не найдена."; exit 1; }
+[ "$1" = --tray ] && exec /opt/matryoshka-voice/venv/bin/python3 /usr/lib/matryoshka/voice.py
 exec /opt/matryoshka-voice/venv/bin/python3 /usr/lib/matryoshka/voice.py --start

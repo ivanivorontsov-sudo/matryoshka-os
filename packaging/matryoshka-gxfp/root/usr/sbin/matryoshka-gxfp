@@ -26,10 +26,9 @@ case "$1" in
     mkdir -p /etc/matryoshka "$(dirname "$DI")"; touch "$F"; rm -f "$OFF"
     printf '[Service]\nEnvironment=LD_LIBRARY_PATH=%s/lib\nDeviceAllow=/dev/gxfp rw\n' "$L" > "$DI"
     systemctl daemon-reload; systemctl enable matryoshka-gxfp.service >/dev/null 2>&1; systemctl restart fprintd 2>/dev/null
-    command -v pam-auth-update >/dev/null && pam-auth-update --package --enable fprintd 2>/dev/null
     echo "Драйвер включён. Добавьте палец: fprintd-enroll или Параметры → Пользователи";;
   off)
-    rm -f "$F" "$DI"; mkdir -p /etc/matryoshka; touch "$OFF"; command -v pam-auth-update >/dev/null && pam-auth-update --package --remove fprintd 2>/dev/null; systemctl disable matryoshka-gxfp.service >/dev/null 2>&1
+    rm -f "$F" "$DI"; mkdir -p /etc/matryoshka; touch "$OFF"; systemctl disable matryoshka-gxfp.service >/dev/null 2>&1
     systemctl daemon-reload; systemctl stop fprintd 2>/dev/null; rmmod gxfp 2>/dev/null
     echo "Драйвер выключен";;
   boot) [ -e "$F" ] && load; exit 0;;

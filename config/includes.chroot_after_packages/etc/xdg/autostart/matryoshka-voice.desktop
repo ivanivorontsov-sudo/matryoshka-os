@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Голосовой ввод (значок в трее)
+Exec=matryoshka-voice --tray
+Icon=audio-input-microphone
+X-KDE-autostart-phase=2
+NoDisplay=true

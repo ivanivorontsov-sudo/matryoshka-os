@@ -31,7 +31,14 @@ def send(text):
     act = subprocess.run(["kdotool", "getactivewindow", "getwindowclassname"], capture_output=True, text=True).stdout.lower() if subprocess.run(["which", "kdotool"], capture_output=True).returncode == 0 else ""
     s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     try: s.sendto(b"paste-term" if any(x in act for x in TERMS) else b"paste", "/run/matryoshka-voice.sock")
-    except OSError: notify("Текст скопирован, вставьте Ctrl+V: служба ввода не запущена")
+    except OSError:
+        keys = "ctrl+shift+v" if any(x in act for x in TERMS) else "ctrl+v"
+        for c in (["ydotool", "key", "29:1", "47:1", "47:0", "29:0"] if keys == "ctrl+v" else ["ydotool", "key", "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"], ["xdotool", "key", "--clearmodifiers", keys]):
+            if c[0] == "xdotool" and os.environ.get("WAYLAND_DISPLAY"): continue
+            try:
+                if subprocess.run(c, capture_output=True, timeout=3).returncode == 0: return
+            except (OSError, subprocess.TimeoutExpired): pass
+        notify("Текст скопирован, вставьте Ctrl+V: служба ввода не запущена")
 
 def notify(t):
     subprocess.Popen(["notify-send", "-a", "Голосовой ввод", "Голосовой ввод", t])

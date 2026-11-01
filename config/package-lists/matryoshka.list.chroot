@@ -323,3 +323,9 @@ ksshaskpass
 matryoshka-fixes
 matryoshka-gxfp
 libopencv-features2d410
+xdotool
+python3-opencv
+python3-numpy
+libpam-python
+libopenblas0
+matryoshka-face

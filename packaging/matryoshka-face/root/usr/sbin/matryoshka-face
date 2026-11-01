@@ -1,0 +1,31 @@
+#!/bin/sh
+C=/usr/lib/security/howdy/config.ini
+LINE='auth\tsufficient\tpam_python.so /lib/security/howdy/pam.py'
+[ "$(id -u)" = 0 ] || exec pkexec "$0" "$@"
+cams() {
+  for d in /dev/video*; do
+    [ -c "$d" ] || continue
+    f=$(v4l2-ctl -d "$d" --list-formats 2>/dev/null) || continue
+    echo "$f" | grep -q "\[[0-9]*\]" || continue
+    n=$(v4l2-ctl -d "$d" --info 2>/dev/null | sed -n 's/.*Card type *: //p')
+    if echo "$f" | grep -q -E "'GREY'|'Y8 '|'Y800'" || echo "$n" | grep -qi "ir"; then echo "ir $d $n"; else echo "rgb $d $n"; fi
+  done
+}
+pick() { cams | sort | head -1; }
+case "$1" in
+  cameras) cams;;
+  on)
+    c=$(pick); [ -n "$c" ] || { echo "Камера не найдена"; exit 1; }
+    set -- $c; dev=$2
+    sed -i "s#^device_path = .*#device_path = $dev#" "$C"
+    if [ "$1" = rgb ]; then sed -i 's/^dark_threshold = .*/dark_threshold = 80/' "$C"; echo "ВНИМАНИЕ: инфракрасной камеры нет, используется обычная ($dev). Такую защиту можно обмануть фотографией. Пароль работает всегда."; else echo "Инфракрасная камера: $dev"; fi
+    for p in sddm kde; do [ -f /etc/pam.d/$p ] || continue; grep -q howdy /etc/pam.d/$p && continue; grep -q "^@include common-auth" /etc/pam.d/$p || { echo "В /etc/pam.d/$p нет common-auth, пропускаю"; continue; }; cp -a /etc/pam.d/$p /etc/pam.d/.$p.matryoshka-face.bak; sed -i "0,/^@include common-auth/s#^@include common-auth#$LINE\n@include common-auth#" /etc/pam.d/$p; done
+    for p in common-auth sudo polkit-1 su login sudo-i; do [ -f /etc/pam.d/$p ] && sed -i '/howdy/d' /etc/pam.d/$p; done
+    echo "Вход по лицу включён для экрана входа и блокировки. Добавьте лицо: matryoshka-face add";;
+  off) for p in sddm kde; do [ -f /etc/pam.d/$p ] && sed -i '/howdy/d' /etc/pam.d/$p; done; echo "Вход по лицу выключен";;
+  add) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || { echo "matryoshka-face add ПОЛЬЗОВАТЕЛЬ"; exit 1; }; grep -q "^device_path = /dev" "$C" || "$0" on >/dev/null; howdy -U "$u" add -y;;
+  clear) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; howdy -U "$u" clear -y;;
+  test) howdy test;;
+  status) grep "^device_path" "$C"; grep -l howdy /etc/pam.d/* 2>/dev/null;;
+  *) echo "matryoshka-face on|off|add [пользователь]|clear|cameras|test|status"; exit 1;;
+esac

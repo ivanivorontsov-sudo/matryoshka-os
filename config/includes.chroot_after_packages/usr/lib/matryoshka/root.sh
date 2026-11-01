@@ -74,12 +74,11 @@ case "$cmd" in
       finger-login-off) sed -i '/pam_fprintd/d' /etc/pam.d/sddm /etc/pam.d/kde ;;
       finger-sudo-on) grep -q pam_fprintd /etc/pam.d/sudo || sed -i '0,/^@include common-auth/s//auth\tsufficient\tpam_fprintd.so max-tries=2 timeout=10\n@include common-auth/' /etc/pam.d/sudo ;;
       finger-sudo-off) sed -i '/pam_fprintd/d' /etc/pam.d/sudo ;;
-      face-install)
-        echo "Распознавание лица недоступно: Howdy нет в официальных хранилищах Debian, сторонние сборки не ставятся"; exit 3 ;;
-      face-login-on) for p in sddm kde; do grep -q howdy /etc/pam.d/$p || sed -i '0,/^auth/s//auth\tsufficient\tpam_python.so \/lib\/security\/howdy\/pam.py\nauth/' /etc/pam.d/$p; done
-        for p in /etc/pam.d/common-auth /etc/pam.d/sudo /etc/pam.d/polkit-1 /etc/pam.d/su /etc/pam.d/login; do [ -f $p ] && sed -i '/howdy/d' $p; done ;;
-      face-login-off) sed -i '/howdy/d' /etc/pam.d/sddm /etc/pam.d/kde ;;
-      face-add) howdy -U "$U" add ;;
+      face-install) dpkg -s matryoshka-face >/dev/null 2>&1 && echo "Распознавание лица установлено" || { echo "Пакет matryoshka-face не установлен"; exit 3; } ;;
+      face-login-on) /usr/sbin/matryoshka-face on ;;
+      face-login-off) /usr/sbin/matryoshka-face off ;;
+      face-add) /usr/sbin/matryoshka-face add "$U" ;;
+      face-cameras) /usr/sbin/matryoshka-face cameras ;;
       *) exit 1 ;;
     esac ;;
   remove-app)

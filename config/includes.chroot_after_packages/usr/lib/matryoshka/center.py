@@ -234,7 +234,10 @@ class Center(QWidget):
             if not os.path.exists("/usr/sbin/matryoshka-gxfp"): o.setPlainText("Пакет matryoshka-gxfp не установлен."); return
             x = C.run(["pkexec", "/usr/sbin/matryoshka-gxfp", m]); o.setPlainText((x.stdout + x.stderr)[-3000:] or "готово")
         v.addWidget(btn("Включить драйвер Goodix (экспериментальный)", lambda: gx("on"))); v.addWidget(btn("Выключить драйвер Goodix", lambda: gx("off")))
-        v.addWidget(QLabel("<h3>Лицо</h3>Вход по лицу не добавлен: Howdy нет в официальных репозиториях Debian, а установка с GitHub запрещена правилами Матрёшки.", wordWrap=True))
+        v.addWidget(QLabel("<h3>Лицо</h3>Howdy 2.6.1 (пакет boltgolt с Launchpad) с dlib. Работает только на экране входа и блокировки, пароль подходит всегда. Если у камеры нет инфракрасного режима, защиту можно обмануть фотографией.", wordWrap=True))
+        v.addWidget(btn("Какая камера будет использована", lambda: r("face-cameras")))
+        v.addWidget(btn("1. Записать лицо (смотрите в камеру)", lambda: r("face-add")))
+        v.addWidget(btn("2. Включить вход по лицу", lambda: r("face-login-on"))); v.addWidget(btn("Выключить вход по лицу", lambda: r("face-login-off")))
     def p_privacy(self, v):
         v.addWidget(QLabel("<h2>Приватность</h2>Здесь видно всё, что может ходить в сеть. Без вашего включения сети не работает ничего.", wordWrap=True))
         o = self.out(v)

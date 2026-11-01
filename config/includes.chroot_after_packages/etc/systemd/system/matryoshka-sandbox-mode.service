@@ -1,6 +1,7 @@
 [Unit]
 Description=Matryoshka sandbox guest mode
 ConditionKernelCommandLine=matryoshka.sandbox
+ConditionVirtualization=vm
 [Service]
 Type=oneshot
 ExecStart=/bin/sh -c 'touch /run/matryoshka-sandbox; echo "ivan ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/zz-sandbox; chmod 440 /etc/sudoers.d/zz-sandbox; systemctl mask --runtime --now clamav-daemon.service clamav-daemon.socket clamav-freshclam.service matryoshka-ai.service'
