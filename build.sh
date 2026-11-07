@@ -22,4 +22,7 @@ sp=$(echo /opt/matryoshka-voice/venv/lib/python3.*/site-packages)
 miss=0
 for m in requests tqdm srt websockets; do ls $sp/$m >/dev/null 2>&1 || ls $sp/${m}-* >/dev/null 2>&1 || miss=1; done
 if [ ! -d $V/model-ru ] || [ "$miss" = 1 ]; then sudo rm -rf /opt/matryoshka-voice; sudo mkdir -p /opt/matryoshka-voice; sudo chown $(id -u) /opt/matryoshka-voice; python3 -m venv --system-site-packages /opt/matryoshka-voice/venv; /opt/matryoshka-voice/venv/bin/pip install -q --ignore-installed vosk==0.3.45 requests tqdm srt websockets certifi cffi pycparser charset_normalizer idna urllib3; curl -fsSL -o /tmp/m.zip https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip; echo "961d5ff98a17f4aa6de69864d0aa71fa5bac682301d2b5d17a3f24c5c99a46d4  /tmp/m.zip" | sha256sum -c; unzip -q /tmp/m.zip -d /opt/matryoshka-voice; mv /opt/matryoshka-voice/vosk-model-small-ru-0.22 /opt/matryoshka-voice/model-ru; mkdir -p $V; cp -a /opt/matryoshka-voice/. $V/; fi
+if grep -q '/updates ' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
+  sudo sed -i 's#/updates #-security #g' /usr/lib/live/build/lb_chroot_archives
+fi
 sudo env MKSQUASHFS_OPTIONS="-processors 2 -mem 1G" nice -n 19 lb build
