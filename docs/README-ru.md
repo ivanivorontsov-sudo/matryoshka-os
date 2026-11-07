@@ -1,5 +1,10 @@
 # Матрёшка 18 — документация разработчика
 
+Полное описание выпуска 18.5, лицензий и того, что сознательно не включено: [DEVELOPER.md](DEVELOPER.md).
+
+## 18.5 коротко
+Обновление с 18.4: поставить `matryoshka-upgrade_1.0.8_all.deb`, сделать копию, указать `matryoshka-update-18.5.tar.gz`. Уже установленные пакеты с более новой версией в архиве больше не пропускаются. libndk_translation, RuStore и GApps в образ не входят.
+
 ## Сборка образа
 - Debian 13 (trixie), live-build. Конфигурация: `config/`. Файлы системы: `config/includes.chroot_after_packages/`.
 - Сборка: `sudo lb config && sudo lb build` в каталоге сборки (конфиг синхронизируется rsync из репозитория). Голосовой ввод: `build.sh` кладёт venv Vosk и модель `vosk-model-small-ru-0.22` в `/opt/matryoshka-voice` (в git не хранится).

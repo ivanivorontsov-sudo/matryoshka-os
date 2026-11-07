@@ -32,6 +32,7 @@ dbus-user-session
 debsecan
 dolphin
 dosbox-x
+ghostscript
 dosfstools
 drkonqi
 e2fsprogs
@@ -322,6 +323,8 @@ polkit-kde-agent-1
 ksshaskpass
 matryoshka-fixes
 matryoshka-gxfp
+matryoshka-phone
+matryoshka-netclient
 libopencv-features2d410
 xdotool
 python3-opencv
@@ -329,4 +332,12 @@ python3-numpy
 libpam-python
 libopenblas0
 matryoshka-face
-python3-requests python3-tqdm python3-websockets python3-certifi python3-srt
+python3-requests
+python3-tqdm
+python3-websockets
+python3-certifi
+python3-srt
+copyq
+mesa-va-drivers
+vainfo
+intel-media-va-driver

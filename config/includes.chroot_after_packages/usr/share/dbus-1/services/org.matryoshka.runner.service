@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.matryoshka.runner
+Exec=/usr/bin/python3 /usr/lib/matryoshka/krunner_layout.py

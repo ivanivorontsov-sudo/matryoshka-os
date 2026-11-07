@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-1.1.0}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")")
-[ -d "$D/root/usr/share/matryoshka-fixes/ndk/system" ] || sh "$D/fetch-ndk.sh"
+V=${1:-1.1.4}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")")
 T=$(mktemp -d); cp -a "$D/root/." "$T/"; chmod 755 "$T"/usr/bin/* "$T"/usr/lib/matryoshka-fixes/*
 mkdir -p "$T/DEBIAN"
 cat > "$T/DEBIAN/control" <<C
@@ -12,7 +11,7 @@ Maintainer: Ivan Vorontsov
 Depends: bash, unzip
 Recommends: wine, wine64, kdialog, fonts-noto-core, fonts-dejavu-core, fonts-liberation
 Description: Matryoshka fixes for Windows programs, Electron and Android apps
- Includes libndk_translation (Google, see /usr/share/doc/matryoshka-fixes) for ARM apps in Waydroid.
+ libndk_translation is not included: its license allows redistribution only with an AMD CPU sale.
 C
 printf 'interest-noawait /opt\ninterest-noawait /usr/lib\ninterest-noawait /usr/share\n' > "$T/DEBIAN/triggers"
 cat > "$T/DEBIAN/postinst" <<'S'

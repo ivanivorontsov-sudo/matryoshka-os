@@ -51,16 +51,16 @@ fi
 LREPOS=""
 for d in $W/matryoshka-repo ${ISOM:+$ISOM/matryoshka-repo}; do [ -f "$d/Packages" ] && LREPOS="$LREPOS $(readlink -f "$d")"; done
 if [ -s $W/packages.list ]; then
-  new=$(while read -r p; do [ -n "$p" ] && ! dpkg -s "$p" >/dev/null 2>&1 && echo "$p"; done < $W/packages.list)
-  own=$(dpkg-query -W -f='${Package} ${Status}\n' 'matryoshka-*' 2>/dev/null | awk '$NF=="installed"{print $1}')
-  own=$(for p in $own $(grep -x 'matryoshka-.*' $W/packages.list); do echo "$p"; done | sort -u)
+  PLAN=/usr/lib/matryoshka-upgrade/pkgplan.py; [ -f "$PLAN" ] || PLAN=/usr/lib/matryoshka/pkgplan.py
   if [ -n "$LREPOS" ]; then
     say "Ставлю новые и обновляю установленные программы Матрёшки из встроенного хранилища (без сети)"
     L=/var/lib/matryoshka/localrepo; rm -rf $L; mkdir -p $L/lists/partial $L/archives/partial
     : > $L/sources.list; for d in $LREPOS; do echo "deb [trusted=yes] copy://$d ./" >> $L/sources.list; done
     AO=(-o Dir::Etc::sourcelist="$L/sources.list" -o Dir::Etc::sourceparts=/nonexistent -o Dir::State::Lists="$L/lists" -o Dir::Cache::Archives="$L/archives" -o Acquire::Languages=none -o APT::Get::List-Cleanup=0)
     if apt-get "${AO[@]}" update >/tmp/matryoshka-apt.log 2>&1; then
-      want=$(for p in $new $own; do echo "$p"; done | sort -u)
+      want=$(python3 "$PLAN" "$W/packages.list" "${AO[@]}" 2>/dev/null || true)
+      own=$(dpkg-query -W -f='${Package} ${Status}\n' 'matryoshka-*' 2>/dev/null | awk '$NF=="installed"{print $1}')
+      want=$(printf '%s\n' $want $own | sed '/^$/d' | sort -u)
       ok=$(for p in $want; do apt-cache "${AO[@]}" show "$p" >/dev/null 2>&1 && echo "$p"; done)
       debs=$(for p in $ok; do for d in $LREPOS; do awk -v p="$p" '$1=="Package:"{x=($2==p)} x&&$1=="Filename:"{print $2; exit}' "$d/Packages" | sed 's#^\./##' | while read -r f; do [ -f "$d/$f" ] && echo "$d/$f"; done; done | sort -V | tail -n 1; done)
       if [ -n "$ok" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --allow-downgrades -o Dpkg::Options::=--force-confnew $ok >>/tmp/matryoshka-apt.log 2>&1; then
@@ -75,7 +75,8 @@ if [ -s $W/packages.list ]; then
     else echo "ВНИМАНИЕ: встроенное хранилище не читается"; fi
     rm -rf $L/lists $L/archives
   fi
-  miss=$(for p in $new; do dpkg -s "$p" >/dev/null 2>&1 || echo "$p"; done)
+  if [ -n "${AO+x}" ]; then miss=$(python3 "$PLAN" "$W/packages.list" "${AO[@]}" 2>/dev/null | while read -r p; do dpkg -s "$p" >/dev/null 2>&1 || echo "$p"; done)
+  else miss=$(while read -r p; do [ -n "$p" ] && ! dpkg -s "$p" >/dev/null 2>&1 && echo "$p"; done < $W/packages.list); fi
   if [ -n "$miss" ]; then
     mkdir -p /var/lib/matryoshka; echo "$miss" > /var/lib/matryoshka/pending-packages
     echo "Не установлены (нет в образе): $(echo $miss | tr '\n' ' ')"
@@ -116,5 +117,6 @@ if ! update-grub >/tmp/matryoshka-grub.log 2>&1; then
 fi
 grep -q "живая система" /boot/grub/grub.cfg && say "В меню загрузки есть пункт «Матрёшка — живая система»" || echo "ВНИМАНИЕ: пункта живой системы в меню нет (журнал /tmp/matryoshka-grub.log)"; grep -i "живая\|error\|ошибк" /tmp/matryoshka-grub.log | tail -n 5
 cat $W/VERSION > /etc/matryoshka-version
+[ -x /usr/lib/matryoshka/apply-look.sh ] && /usr/lib/matryoshka/apply-look.sh || true
 rm -rf $W
 echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО. Перезагрузите компьютер."

@@ -1,5 +1,14 @@
 [services][matryoshka-taskmanager.desktop]
-_launch=Ctrl+Shift+Esc\tCtrl+Alt+Del
+_launch=Ctrl+Shift+Esc,Ctrl+Shift+Esc,Диспетчер задач
+
+[services][matryoshka-cad.desktop]
+_launch=Ctrl+Alt+Del,Ctrl+Alt+Del,Меню безопасности
+
+[services][matryoshka-files.desktop]
+_launch=Meta+E,Meta+E,Файлы
+
+[services][matryoshka-clip.desktop]
+_launch=Meta+V,Meta+V,Буфер обмена
 
 [services][org.kde.plasma-systemmonitor.desktop]
 _launch=none
@@ -8,11 +17,10 @@ _launch=none
 Log Out=Ctrl+Alt+Shift+Del,Ctrl+Alt+Del,Выйти из системы
 
 [kwin]
-Kill Window=Ctrl+Alt+Esc,Ctrl+Alt+Esc,Принудительно закрыть окно
+Kill Window=Meta+Shift+Esc,Ctrl+Alt+Esc,Принудительно закрыть окно
 
 [services][supersmart-exit.desktop]
 _launch=Meta+Esc
 
-
 [plasmashell]
-show-on-mouse-pos=Meta+V,Meta+V,Показать историю буфера обмена у курсора
+show-on-mouse-pos=none,Meta+V,Показать историю буфера обмена у курсора

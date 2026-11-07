@@ -1,9 +1,11 @@
 panels().forEach(function(p){p.remove()});
+var t = new Panel;
+t.location = "top"; t.height = 34; t.floating = true; t.opacity = "translucent";
+t.addWidget("org.kde.plasma.kickoff");
+t.addWidget("org.kde.plasma.panelspacer");
+t.addWidget("org.kde.plasma.digitalclock");
+t.addWidget("org.kde.plasma.panelspacer");
+t.addWidget("org.kde.plasma.systemtray");
 var p = new Panel;
-p.location = "bottom"; p.height = 48; p.floating = false;
-p.addWidget("org.kde.plasma.kickoff");
+p.location = "bottom"; p.height = 68; p.floating = true; p.lengthMode = "fit"; p.alignment = "center"; p.opacity = "translucent";
 p.addWidget("org.kde.plasma.icontasks");
-p.addWidget("org.kde.plasma.marginsseparator");
-p.addWidget("org.kde.plasma.systemtray");
-p.addWidget("org.kde.plasma.digitalclock");
-p.addWidget("org.kde.plasma.showdesktop");

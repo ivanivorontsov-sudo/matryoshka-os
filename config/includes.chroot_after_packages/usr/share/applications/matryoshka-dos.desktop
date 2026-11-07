@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=DOS-программы
+Comment=DOSBox-X: свои программы, Norton Commander и старый CAD кладутся вами
+Exec=matryoshka-dos
+Icon=dosbox-x
+Categories=Utility;Emulator;

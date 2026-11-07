@@ -1,0 +1,52 @@
+import os, subprocess
+
+FILE = os.path.expanduser("~/.config/kglobalshortcutsrc")
+
+def read():
+    if not os.path.exists(FILE):
+        return []
+    with open(FILE, encoding="utf-8", errors="replace") as f:
+        return f.read().splitlines(True)
+
+def write_groups(groups):
+    lines = read()
+    text = "".join(lines)
+    for group, keys in groups.items():
+        header = "[%s]\n" % group
+        body = "".join("%s=%s\n" % (k, v) for k, v in keys.items())
+        block = header + body
+        start = text.find(header)
+        if start < 0:
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += "\n" + block
+            continue
+        rest = text[start + len(header):]
+        nxt = rest.find("\n[")
+        end = start + len(header) + (len(rest) if nxt < 0 else nxt + 1)
+        text = text[:start] + block + text[end:]
+    os.makedirs(os.path.dirname(FILE), exist_ok=True)
+    with open(FILE, "w", encoding="utf-8") as f:
+        f.write(text)
+
+def scheme_groups(scheme):
+    if scheme == "linux":
+        cad, task, kill, logout, files = "Meta+Shift+Del", "Ctrl+Shift+Esc", "Ctrl+Alt+Esc", "Ctrl+Alt+Del", "none"
+    else:
+        cad, task, kill, logout, files = "Ctrl+Alt+Del", "Ctrl+Shift+Esc", "Meta+Shift+Esc", "Ctrl+Alt+Shift+Del", "Meta+E"
+    return {
+        "services][matryoshka-cad.desktop": {"_launch": "%s,%s,Меню безопасности" % (cad, cad)},
+        "services][matryoshka-taskmanager.desktop": {"_launch": "%s,%s,Диспетчер задач" % (task, task)},
+        "services][matryoshka-files.desktop": {"_launch": "%s,%s,Файлы" % (files, files)},
+        "ksmserver": {"Log Out": "%s,Ctrl+Alt+Del,Выйти из системы" % logout},
+        "kwin": {"Kill Window": "%s,Ctrl+Alt+Esc,Принудительно закрыть окно" % kill},
+    }
+
+def apply(scheme):
+    write_groups(scheme_groups(scheme))
+    try:
+        subprocess.run(["kquitapp6", "kglobalaccel"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(["kglobalaccel"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+    return scheme

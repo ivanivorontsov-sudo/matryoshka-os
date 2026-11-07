@@ -2,7 +2,7 @@
 Name=Матрёшка
 Type=Service
 MimeType=all/allfiles;inode/directory;
-Actions=link;encLink;toShared;openWin;installAndroid;scan
+Actions=link;encLink;toShared;openWin;installAndroid;scan;installArchive
 X-KDE-Submenu=Поделиться
 
 [Desktop Action toShared]
@@ -24,6 +24,11 @@ Exec=matryoshka-run %f
 Name=Проверить антивирусом
 Icon=security-high
 Exec=konsole --hold -e matryoshka-av scan %F
+
+[Desktop Action installArchive]
+Name=Установить программу из архива
+Icon=archive-insert
+Exec=matryoshka-pkginstall %f
 
 [Desktop Action link]
 Name=Получить ссылку (открывается в любом браузере)

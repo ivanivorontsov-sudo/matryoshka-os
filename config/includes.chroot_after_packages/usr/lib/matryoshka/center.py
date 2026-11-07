@@ -37,6 +37,19 @@ class Center(QWidget):
         v.addWidget(btn("Тонкая настройка KDE (шрифты, курсоры, значки, жесты)", lambda: subprocess.Popen(["systemsettings"])))
         hl = QCheckBox("Подсвечивать щелчки мыши (для показа экрана и обучения)"); hl.setChecked(C.run(["kreadconfig6", "--file", "kwinrc", "--group", "Plugins", "--key", "mouseclickEnabled"]).stdout.strip() == "true")
         hl.toggled.connect(lambda x: (C.kwrite("kwinrc", "Plugins", "mouseclickEnabled", "true" if x else "false"), C.run(["busctl", "--user", "call", "org.kde.KWin", "/KWin", "org.kde.KWin", "reconfigure"]))); v.addWidget(hl)
+        hk = QComboBox(); hk.addItem("Сочетания как в Windows (Ctrl+Alt+Del — меню)", "windows"); hk.addItem("Сочетания как в Linux (Ctrl+Alt+Del — выход)", "linux")
+        hk.setCurrentIndex(0 if self.s.get("hotkeys", "windows") != "linux" else 1)
+        def hset():
+            self.s["hotkeys"] = hk.currentData(); self.s["hotkeys_v"] = 1; self.save()
+            import hotkeys; hotkeys.apply(hk.currentData())
+        hk.activated.connect(lambda _: hset()); f.addRow("Клавиши", hk)
+        kw = QCheckBox("Разблокировать KWallet при входе и подставлять пароли"); kw.setChecked(bool(self.s.get("kwallet", True)))
+        def kwset(x):
+            self.s["kwallet"] = x; self.save()
+            import session; session.kwallet(x)
+        kw.toggled.connect(kwset); v.addWidget(kw)
+        se = QCheckBox("Улучшатель звука при входе (наушники)"); se.setChecked(bool(self.s.get("sound_enhance", True)))
+        se.toggled.connect(lambda x: (self.s.update(sound_enhance=x), self.save())); v.addWidget(se)
     def p_launcher(self, v):
         v.addWidget(QLabel("<h2>Главный экран</h2>Любой лаунчер: встроенный СуперСмарт, обычный рабочий стол Linux, программа Windows (.exe) или Android-лаунчер (.apk). Выбор сохраняется и применяется при каждом входе. СуперСмарт сам не появляется, если выбран другой главный экран.", wordWrap=True))
         l = self.s["launcher"]; k = QComboBox()
@@ -52,6 +65,22 @@ class Center(QWidget):
             self.s["launcher"] = {"kind": k.currentData(), "target": tgt.text(), "chosen": True}; self.s["launcher_v"] = 2; self.save()
             QMessageBox.information(self, "Главный экран", "Сохранено. Применится при следующем входе.")
         v.addWidget(btn("Сохранить", ok)); v.addWidget(btn("Открыть СуперСмарт сейчас", lambda: subprocess.Popen(["supersmart"])))
+        v.addWidget(QLabel("<h3>Дополнительный лаунчер</h3>Можно выключить полностью или запускать Android-лаунчер в обычном окне. По умолчанию выключен.", wordWrap=True))
+        ex = QComboBox()
+        for i, n in (("off", "Выключен"), ("supersmart", "СуперСмарт"), ("apk", "Android-лаунчер (APK)")):
+            ex.addItem(n, i)
+        cur = self.s.get("extra_launcher", "off")
+        ex.setCurrentIndex(["off", "supersmart", "apk"].index(cur) if cur in ("off", "supersmart", "apk") else 0)
+        apk = QLineEdit(self.s.get("extra_launcher_apk", "")); apk.setPlaceholderText("имя пакета, например com.teslacoilsw.launcher")
+        boot = QCheckBox("Запускать Android при входе"); boot.setChecked(bool(self.s.get("waydroid_autostart")))
+        ask = QCheckBox("Спрашивать при входе, что открыть"); ask.setChecked(bool(self.s.get("startup_chooser")))
+        v.addWidget(ex); v.addWidget(apk); v.addWidget(boot); v.addWidget(ask)
+        def exok():
+            self.s["extra_launcher"] = ex.currentData(); self.s["extra_launcher_apk"] = apk.text().strip(); self.s["waydroid_autostart"] = boot.isChecked(); self.s["startup_chooser"] = ask.isChecked(); self.save()
+            QMessageBox.information(self, "Лаунчер", "Сохранено. Применится при следующем входе.")
+        v.addWidget(btn("Сохранить дополнительный лаунчер", exok))
+        v.addWidget(btn("Автозапуск всех программ", lambda: subprocess.Popen(["matryoshka-autostart"])))
+        v.addWidget(btn("Android в обычном окне", lambda: subprocess.Popen(["python3", "/usr/lib/matryoshka/waydroid_ctl.py", "show"])))
     def p_net(self, v):
         v.addWidget(QLabel("<h2>Сеть</h2>По умолчанию сеть выключена: система ничего никуда не отправляет. Включайте, только когда нужно.", wordWrap=True))
         st = QLabel(); v.addWidget(st)
@@ -92,10 +121,14 @@ class Center(QWidget):
                 o.setPlainText("Проверяю %s… Окно можно закрыть." % d)
                 C.Task(self, [sys.executable, "/usr/lib/matryoshka/av.py", "scan", d], lambda c, t: o.setPlainText(t[-8000:] or "Угроз не найдено"), timeout=3600, out=o.setPlainText)
         def lai():
-            if QMessageBox.question(self, "Умный антивирус", "Скачать локальную ИИ (Ollama + модель Qwen 2.5 по объёму памяти, 1–5 ГБ)? Она работает без интернета и ничего не отправляет. Работает с низким приоритетом.") != QMessageBox.StandardButton.Yes: return
-            o.setPlainText("Скачиваю…"); QApplication.processEvents(); r = C.root("ai-install"); o.setPlainText(r.stdout[-2000:] + r.stderr[-1500:])
-            m = open("/etc/matryoshka-ai.conf").read().split("=", 1)[1].strip() if os.path.exists("/etc/matryoshka-ai.conf") else ""
-            if m: self.s.update(ai="local", local_model=m, local_url="http://127.0.0.1:11434"); self.save()
+            if QMessageBox.question(self, "Умный антивирус", "Скачать локальную ИИ (Ollama, лицензия MIT, и модель Qwen 2.5 Apache-2.0 по объёму памяти, около 2 ГБ)? Окно останется отзывчивым. Модель ничего не отправляет в сеть.") != QMessageBox.StandardButton.Yes: return
+            o.setPlainText("Скачиваю… окно можно свернуть.")
+            def done(c, t):
+                o.setPlainText(t[-4000:])
+                if os.path.exists("/etc/matryoshka-ai.conf"):
+                    m = open("/etc/matryoshka-ai.conf").read().split("=", 1)[1].strip()
+                    if m: self.s.update(ai="local", local_model=m, local_url="http://127.0.0.1:11434"); self.save()
+            C.Task(self, C.root_argv("ai-install"), done, timeout=7200, out=o.setPlainText)
         v.addWidget(btn("Умный антивирус (локальная ИИ) — скачать", lai)); v.addWidget(btn("Удалить локальную ИИ", lambda: o.setPlainText(C.root("ai-remove").stdout)))
         v.addWidget(btn("Проверить автозапуск, процессы и сеть", lambda: (o.setPlainText("Спрашиваю нейросеть…"), C.Task(self, [sys.executable, "/usr/lib/matryoshka/av.py", "audit"], lambda c, t: o.setPlainText(t[-6000:]), timeout=180))))
         fw = QCheckBox("Сетевой фильтр программ OpenSnitch (спрашивает о каждом новом подключении)"); fw.setChecked(C.run(["systemctl", "is-enabled", "opensnitch"]).stdout.strip() == "enabled"); fw.toggled.connect(lambda x: o.setPlainText(C.root("snitch-on" if x else "snitch-off").stdout)); v.addWidget(fw)
@@ -236,6 +269,7 @@ class Center(QWidget):
         v.addWidget(btn("Включить драйвер Goodix (экспериментальный)", lambda: gx("on"))); v.addWidget(btn("Выключить драйвер Goodix", lambda: gx("off")))
         v.addWidget(QLabel("<h3>Лицо</h3>Howdy 2.6.1 (пакет boltgolt с Launchpad) с dlib. Работает только на экране входа и блокировки, пароль подходит всегда. Если у камеры нет инфракрасного режима, защиту можно обмануть фотографией.", wordWrap=True))
         v.addWidget(btn("Какая камера будет использована", lambda: r("face-cameras")))
+        v.addWidget(btn("Окно записи лица (несколько снимков)", lambda: subprocess.Popen(["matryoshka-face-gui"])))
         v.addWidget(btn("1. Записать лицо (смотрите в камеру)", lambda: r("face-add")))
         v.addWidget(btn("2. Включить вход по лицу", lambda: r("face-login-on"))); v.addWidget(btn("Выключить вход по лицу", lambda: r("face-login-off")))
         v.addWidget(btn("Проверить, узнаёт ли меня", lambda: r("face-check"))); v.addWidget(btn("Удалить снимки лица", lambda: r("face-clear")))

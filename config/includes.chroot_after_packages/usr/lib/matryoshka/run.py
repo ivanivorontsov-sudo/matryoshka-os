@@ -40,12 +40,9 @@ def pick_splits(d):
     return out
 
 def install_apks(apks):
-    if "RUNNING" not in C.run(["waydroid", "status"]).stdout:
-        subprocess.Popen(["waydroid", "session", "start"])
-        for _ in range(90):
-            if "RUNNING" in C.run(["waydroid", "status"]).stdout: break
-            __import__("time").sleep(2)
-        __import__("time").sleep(8)
+    import waydroid_ctl
+    if not waydroid_ctl.ensure():
+        return 3
     C.root("waydroid-share")
     if len(apks) == 1:
         return subprocess.run(["waydroid", "app", "install", apks[0]]).returncode
@@ -65,16 +62,8 @@ def exe_kind(path):
         return "win"
 
 def dos(path):
-    name = os.path.splitext(os.path.basename(path))[0]
-    d = os.path.join(C.CONF, "dos"); os.makedirs(d, exist_ok=True)
-    conf = os.path.join(d, name + ".conf")
-    if not os.path.exists(conf):
-        open(conf, "w").write("[sdl]\nautolock=true\n[dosbox]\nmemsize=32\n[cpu]\ncycles=auto\n[sblaster]\nsbtype=sb16\n[autoexec]\nmount c \"%s\"\nc:\ncall \"%s\"\nexit\n" % (os.path.dirname(path), os.path.basename(path)))
-        desk = next((p for p in (os.path.join(C.HOME, "Рабочий стол"), os.path.join(C.HOME, "Desktop")) if os.path.isdir(p)), None)
-        if desk:
-            lf = os.path.join(desk, name + " (DOS).desktop")
-            open(lf, "w").write("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -conf \"%s\"\nIcon=dosbox-x\n" % (name, conf)); os.chmod(lf, 0o755)
-    return subprocess.call(["dosbox-x", "-conf", conf])
+    import dosbox
+    return dosbox.launch(path, C.HOME)
 
 def main(path):
     res = {"malicious": False, "activator": False} if os.path.exists("/run/matryoshka-sandbox") else av.scan(path)
@@ -129,6 +118,8 @@ def main(path):
         return rc
     if ext == "pon":
         return subprocess.call(["konsole", "--hold", "-e", "ponyatny", path])
+    if ext in ("gz", "tgz", "bz2", "xz", "tar") or path.lower().endswith((".tar.gz", ".tar.bz2", ".tar.xz", ".tgz")):
+        return subprocess.call(["matryoshka-pkginstall", os.path.abspath(path)])
     if ext == "deb":
         return subprocess.call(["matryoshka-pkginstall", os.path.abspath(path)])
     os.chmod(path, os.stat(path).st_mode | 0o111)

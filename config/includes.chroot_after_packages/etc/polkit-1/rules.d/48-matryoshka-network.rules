@@ -1,5 +1,23 @@
 polkit.addRule(function(action, subject) {
-    if ((action.id == "org.freedesktop.NetworkManager.enable-disable-network" || action.id == "org.freedesktop.NetworkManager.enable-disable-wifi" || action.id == "org.freedesktop.NetworkManager.network-control" || action.id == "org.freedesktop.NetworkManager.settings.modify.system" || action.id == "org.freedesktop.NetworkManager.wifi.share.open" || action.id == "org.freedesktop.NetworkManager.wifi.share.protected") && subject.local && subject.isInGroup("sudo")) {
-        return polkit.Result.YES;
+    if (!subject.local || !subject.active) return;
+    if (!subject.isInGroup("sudo") && !subject.isInGroup("wheel")) return;
+    var id = action.id;
+    var ok = false;
+    if (id.indexOf("org.freedesktop.NetworkManager.") === 0) ok = true;
+    if (id.indexOf("org.freedesktop.resolve1.") === 0) ok = true;
+    if (id.indexOf("org.freedesktop.hostname1.") === 0) ok = true;
+    if (id.indexOf("org.freedesktop.timedate1.") === 0) ok = true;
+    if (id.indexOf("org.freedesktop.packagekit.") === 0) ok = true;
+    if (id.indexOf("org.freedesktop.fwupd.") === 0) ok = true;
+    if (id === "org.freedesktop.systemd1.manage-units" || id === "org.freedesktop.systemd1.manage-unit-files") ok = true;
+    if (id === "org.freedesktop.policykit.exec") {
+        var p = action.lookup("program") || "";
+        if (p === "/usr/lib/matryoshka/root.sh" || p === "/usr/lib/matryoshka/admin-grant" || p === "/usr/sbin/matryoshka-gxfp" || p === "/usr/sbin/matryoshka-face" || p === "/usr/lib/matryoshka-upgrade/upgrade.sh" || p === "/usr/lib/matryoshka/upgrade.sh") ok = true;
     }
+    if (!ok) return;
+    try {
+        var out = polkit.spawn(["/usr/lib/matryoshka/consent-check", subject.user, subject.session]);
+        if (("" + out).indexOf("ok") >= 0) return polkit.Result.YES;
+    } catch (e) {}
+    return polkit.Result.AUTH_ADMIN;
 });
