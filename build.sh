@@ -25,8 +25,21 @@ if [ ! -d $V/model-ru ] || [ "$miss" = 1 ]; then sudo rm -rf /opt/matryoshka-voi
 if grep -q '/updates ' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
   sudo sed -i 's#/updates #-security #g' /usr/lib/live/build/lb_chroot_archives
 fi
+if ! grep -q '%no-protection' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
+  sudo sed -i 's/%secring/%no-protection\n\t\t\t\t\t      %secring/' /usr/lib/live/build/lb_chroot_archives
+fi
 if grep -q 'gpg --batch --gen-key' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
   sudo sed -i 's/gpg --batch --gen-key/gpg --batch --pinentry-mode loopback --gen-key/; s/gpg --no-default-keyring/gpg --batch --pinentry-mode loopback --no-default-keyring/g' /usr/lib/live/build/lb_chroot_archives
   sudo sed -i 's#mkdir -p chroot/root/.gnupg#mkdir -p chroot/root/.gnupg\n\t\t\t\t\techo allow-loopback-pinentry > chroot/root/.gnupg/gpg-agent.conf#' /usr/lib/live/build/lb_chroot_archives
 fi
+sudo sed -i 's#deb file:/root/packages ./#deb [trusted=yes] file:/root/packages ./#' /usr/lib/live/build/lb_chroot_archives
+sudo python3 - << 'PY'
+from pathlib import Path
+p = Path("/usr/lib/live/build/lb_chroot_linux-image")
+text = p.read_text()
+old = """\t\tmkdir -p cache/contents.chroot\n\t\twget ${WGET_OPTIONS} ${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}.gz -O - | gunzip -c > cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES}\n\n\t\tFIRMWARE_PACKAGES=\"\"\n\t\tFIRMWARE_PACKAGES=\"$(awk '/^lib\\/firmware/ { print $2 }' cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES} | sort -u)\"\n"""
+new = """\t\tmkdir -p cache/contents.chroot\n\t\t: > cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES}\n\t\tfor _AREA in ${LB_PARENT_ARCHIVE_AREAS}\n\t\tdo\n\t\t\twget ${WGET_OPTIONS} ${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/${_AREA}/Contents-${LB_ARCHITECTURES}.gz -O - | gunzip -c >> cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES}\n\t\tdone\n\n\t\tFIRMWARE_PACKAGES=\"\"\n\t\tFIRMWARE_PACKAGES=\"$(awk '/^(usr\\/)?lib\\/firmware/ { print $2 }' cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES} | sort -u)\"\n"""
+if old in text:
+    p.write_text(text.replace(old, new, 1))
+PY
 sudo env MKSQUASHFS_OPTIONS="-processors 2 -mem 1G" nice -n 19 lb build

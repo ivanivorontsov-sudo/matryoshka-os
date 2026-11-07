@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-0.1.4}; O=${2:-.}; KV=${KV:-6.12.113+deb13-amd64}; D=$(dirname "$(readlink -f "$0")")
+V=${1:-0.1.4}; O=${2:-.}; KV=${KV:-6.12.115+deb13.1-amd64}; D=$(dirname "$(readlink -f "$0")")
 S=${GXFP_SRC:-/workspace/gxfp}
 [ -d "$S" ] || git clone -q https://github.com/Metrohan/gxfp5130-linux "$S"
 git -C "$S" checkout -q aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23

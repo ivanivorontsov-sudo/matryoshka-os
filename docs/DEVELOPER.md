@@ -13,7 +13,7 @@
 | matryoshka-upgrade | 1.0.8 | копия и обновление на месте |
 | matryoshka-face | 1.0.2 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
 | matryoshka-gxfp | 0.1.4 | драйвер Goodix GXFP5130, по желанию |
-| matryoshka-fixes | 1.1.3 | Wine, Electron, шрифты. libndk_translation не входит |
+| matryoshka-fixes | 1.1.4 | Wine, Electron, шрифты. libndk_translation не входит |
 
 Ключ выпуска `45A2D53B7751F4A8` не создаётся заново. Если закрытого ключа нет в среде сборки, суммы публикуются без подписи `SHA256SUMS.asc`.
 
