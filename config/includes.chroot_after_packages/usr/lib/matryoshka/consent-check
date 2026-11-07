@@ -1,0 +1,12 @@
+#!/bin/sh
+id=$1
+sid=$2
+case "$id" in
+  ""|*[!0-9]*) id=$(id -u "$id" 2>/dev/null) || exit 1 ;;
+esac
+[ -n "$sid" ] || exit 1
+f=/run/matryoshka-consent/$id
+[ -f "$f" ] || exit 1
+read -r got < "$f" || exit 1
+[ "$got" = "$sid" ] || exit 1
+echo ok

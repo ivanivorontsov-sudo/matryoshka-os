@@ -33,6 +33,25 @@ class Tile(QToolButton):
         self.hover = False
         self.clicked.connect(lambda: (C.launch(self.app), self.window().done()))
         self.setToolTip(app["name"])
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.menu)
+    def menu(self, pos):
+        from PyQt6.QtWidgets import QMenu
+        m = QMenu(self)
+        m.addAction("Открыть", lambda: (C.launch(self.app), self.window().done()))
+        m.addAction("Удалить", self.uninstall)
+        m.exec(self.mapToGlobal(pos))
+    def uninstall(self):
+        from PyQt6.QtWidgets import QMessageBox
+        r = C.run(["dpkg", "-S", self.app["file"]])
+        pkg = r.stdout.split(":")[0].strip()
+        if not pkg:
+            QMessageBox.information(self, "Удаление", "Это не пакет системы. Удалите его в «Программы».")
+            return
+        if QMessageBox.question(self, "Удаление", "Удалить пакет %s?" % pkg) != QMessageBox.StandardButton.Yes:
+            return
+        x = C.root("remove-app", pkg)
+        QMessageBox.information(self, "Удаление", (x.stdout + x.stderr)[-1500:] or "готово")
     def enterEvent(self, e): self.hover = True; self.update()
     def leaveEvent(self, e): self.hover = False; self.update()
     def paintEvent(self, e):
@@ -148,10 +167,16 @@ class Bar(QWidget):
 def main():
     if "--exit" in sys.argv: stop_all(); return
     app = QApplication(sys.argv); C.qt_ru(app); app.setApplicationName("supersmart"); app.setDesktopFileName("supersmart")
-    if "--menu" not in sys.argv and ("--android" in sys.argv or C.settings().get("supersmart_android", True)) and android_ready() and os.environ.get("XDG_SESSION_TYPE") == "wayland":
-        subprocess.Popen(["waydroid", "show-full-ui"]); w = Bar(); w.show()
-        sys.exit(app.exec())
-    w = Home("--home" in sys.argv); w.showFullScreen()
+    if "--android" in sys.argv:
+        subprocess.Popen(["python3", "/usr/lib/matryoshka/waydroid_ctl.py", "show"]); return
+    w = Home("--home" in sys.argv)
+    g = app.primaryScreen().availableGeometry() if app.primaryScreen() else None
+    if g:
+        w.setMinimumSize(max(900, g.width() // 2), max(600, g.height() // 2))
+        w.setGeometry(g)
+    w.showFullScreen()
+    if g:
+        w.setGeometry(g)
     if not android_ready(): C.notify("СуперСмарт", "Настоящий Android-рабочий стол появится после установки Android-слоя: Центр → Android-магазины. Выход отсюда — кнопка «На рабочий стол» или Win+Esc.")
     sys.exit(app.exec())
 

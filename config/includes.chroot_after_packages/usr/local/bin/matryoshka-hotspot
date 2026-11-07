@@ -1,7 +1,27 @@
 #!/bin/sh
+PREV=/run/matryoshka-wifi-prev
+wifi_dev() { nmcli -t -f DEVICE,TYPE device | awk -F: '$2=="wifi"{print $1; exit}'; }
 case "$1" in
-  off) nmcli connection down Hotspot ;;
-  *) P=$(kdialog --title "Точка доступа" --password "Пароль сети (не менее 8 символов):") || exit 0
-     [ ${#P} -ge 8 ] || { kdialog --sorry "Пароль короче 8 символов"; exit 1; }
-     nmcli device wifi hotspot ssid "Matryoshka-$(hostname)" password "$P" && kdialog --msgbox "Точка доступа Matryoshka-$(hostname) включена. Выключить: matryoshka-hotspot off" || kdialog --sorry "Не удалось: адаптер Wi-Fi может не поддерживать режим точки доступа (проверьте: iw list | grep AP)" ;;
+  off)
+    dev=$(wifi_dev)
+    nmcli connection down Hotspot >/dev/null 2>&1 || true
+    nmcli connection delete Hotspot >/dev/null 2>&1 || true
+    resolvectl flush-caches >/dev/null 2>&1 || true
+    if [ -n "$dev" ]; then nmcli device disconnect "$dev" >/dev/null 2>&1 || true; sleep 1; fi
+    if [ -s "$PREV" ]; then nmcli connection up "$(cat "$PREV")" && exit 0; fi
+    [ -n "$dev" ] && nmcli device connect "$dev"
+    ;;
+  *)
+    dev=$(wifi_dev)
+    cur=$(nmcli -t -f NAME,TYPE,DEVICE connection show --active | awk -F: -v d="$dev" '$2=="802-11-wireless" && $3==d {print $1; exit}')
+    [ -n "$cur" ] && [ "$cur" != "Hotspot" ] && printf '%s\n' "$cur" > "$PREV"
+    P=$(kdialog --title "Точка доступа" --password "Пароль сети (не менее 8 символов):") || exit 0
+    [ ${#P} -ge 8 ] || { kdialog --sorry "Пароль короче 8 символов"; exit 1; }
+    if nmcli device wifi hotspot ssid "Matryoshka-$(hostname)" password "$P"; then
+      nmcli connection modify Hotspot connection.autoconnect no >/dev/null 2>&1 || true
+      kdialog --msgbox "Точка доступа Matryoshka-$(hostname) включена. Выключить: matryoshka-hotspot off"
+    else
+      kdialog --sorry "Не удалось: адаптер Wi-Fi может не поддерживать режим точки доступа (проверьте: iw list | grep AP)"
+    fi
+    ;;
 esac

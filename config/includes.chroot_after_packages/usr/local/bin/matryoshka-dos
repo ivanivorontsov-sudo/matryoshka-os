@@ -1,0 +1,10 @@
+#!/bin/sh
+d="$HOME/DOS"
+mkdir -p "$d/NC" "$d/CAD" "$d/Программы"
+cat > "$d/README.txt" <<'E'
+Сюда кладутся ваши DOS-программы. Norton Commander и Festa в систему не входят: это чужие программы, их нужно иметь у себя на законном основании.
+NC: скопируйте NC.EXE в DOS/NC и откройте его двойным щелчком.
+CAD, в том числе Festa: положите файлы в DOS/CAD и откройте EXE. Запуск идёт через DOSBox-X (окно, мышь, Sound Blaster 16, 64 МБ).
+E
+kdialog --title "DOS" --msgbox "Папка DOS открыта. Norton Commander и Festa не встроены: положите свои легальные копии в подпапки NC и CAD и откройте EXE."
+exec dolphin "$d"

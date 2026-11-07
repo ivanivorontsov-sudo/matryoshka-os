@@ -1,11 +1,12 @@
 #!/bin/sh
 set -e
-V=${1:-0.1.2}; O=${2:-.}; KV=${KV:-6.12.113+deb13-amd64}; D=$(dirname "$(readlink -f "$0")")
+V=${1:-0.1.4}; O=${2:-.}; KV=${KV:-6.12.113+deb13-amd64}; D=$(dirname "$(readlink -f "$0")")
 S=${GXFP_SRC:-/workspace/gxfp}
 [ -d "$S" ] || git clone -q https://github.com/Metrohan/gxfp5130-linux "$S"
 git -C "$S" checkout -q aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23
 git -C "$S" checkout -q -- libfprint/libfprint/drivers/gxfp.c
 sed -i 's/^  dev_class->nr_enroll_stages = DEFAULT_ENROLL_SAMPLES;$/&\n  dev_class->temp_hot_seconds = -1;/' "$S/libfprint/libfprint/drivers/gxfp.c"
+sed -i 's/img_class->algorithm = FPI_DEVICE_ALGO_SIGFM;/img_class->algorithm = FPI_DEVICE_ALGO_SIGFM;\n  img_class->bz3_threshold = 12;/' "$S/libfprint/libfprint/drivers/gxfp.c"
 grep -q "temp_hot_seconds = -1" "$S/libfprint/libfprint/drivers/gxfp.c"
 make -C "$S/kernel" KERNELDIR=/usr/src/linux-headers-$KV -j4 >/dev/null
 cmake -S "$S/userspace" -B "$S/build/userspace" -DCMAKE_BUILD_TYPE=Release >/dev/null

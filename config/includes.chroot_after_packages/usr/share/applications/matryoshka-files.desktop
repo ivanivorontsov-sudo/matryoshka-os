@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Файлы
+Exec=dolphin
+Icon=folder
+NoDisplay=true
+Categories=System;

@@ -26,6 +26,9 @@ class Wiz(QWizard):
         v.addWidget(QLabel("Страна (для предупреждений антивируса о законах)")); v.addWidget(self.country)
         self.ai = QComboBox(); self.ai.addItem("Бесплатный API (LLM7)", "api"); self.ai.addItem("Чат на сайте нейросети", "chat"); self.ai.addItem("Локальная модель (Ollama)", "local")
         v.addWidget(QLabel("Чем антивирус объясняет находки")); v.addWidget(self.ai)
+        self.localai = QCheckBox("Скачать среднюю локальную модель Qwen 2.5 (Apache-2.0, около 2 ГБ) в фоне")
+        self.localai.setChecked(False)
+        v.addWidget(self.localai)
         self.inf = QCheckBox("Настроить «Бесконечную память» (облака + диск в одной зашифрованной папке)"); v.addWidget(self.inf)
         tip = QLabel("Совет: KeePassXC (уже установлен) хранит пароли, коды 2FA (TOTP) и ключи доступа (passkeys). KDE Connect связывает телефон: файлы, буфер обмена, уведомления — по зашифрованному каналу."); tip.setWordWrap(True); v.addWidget(tip)
         self.bio = QCheckBox("Настроить вход по отпечатку пальца или лицу"); v.addWidget(self.bio)
@@ -78,6 +81,8 @@ class Wiz(QWizard):
         self.tm.stop(); self.pd.close()
         open(C.os.path.join(C.CONF, "firstrun.done"), "w").close()
         if self.inf.isChecked(): C.subprocess.Popen(["matryoshka-cloud"])
+        if self.localai.isChecked() and C.net_on():
+            C.subprocess.Popen(["bash", "-c", "/usr/lib/matryoshka/admin-gate ai-install > /tmp/matryoshka-ai.log 2>&1; notify-send -a Матрёшка 'Локальная модель' 'Загрузка Qwen завершена или записана в /tmp/matryoshka-ai.log'"], start_new_session=True)
         if self.bio.isChecked(): C.subprocess.Popen(["matryoshka-center", "9"])
         if self.dev.isChecked(): C.subprocess.Popen(["matryoshka-dev"])
         super().accept()

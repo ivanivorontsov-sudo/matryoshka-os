@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Автозапуск
+Comment=Какие программы запускаются при входе
+Exec=matryoshka-autostart
+Icon=preferences-system-login
+Categories=Settings;System;

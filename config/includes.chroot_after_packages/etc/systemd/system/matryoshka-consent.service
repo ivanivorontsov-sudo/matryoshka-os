@@ -1,0 +1,11 @@
+[Unit]
+Description=Matryoshka one-time admin consent
+After=polkit.service
+
+[Service]
+ExecStart=/usr/lib/matryoshka/consentd.sh
+Restart=on-failure
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

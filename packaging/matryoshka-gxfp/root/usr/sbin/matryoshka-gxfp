@@ -8,7 +8,8 @@ PSK=/var/lib/fprintd/gxfp/psk_raw32.bin
 MOK=/var/lib/matryoshka-mok
 sign() {
   K=$1; KV=$2
-  [ -f "$K" ] && [ -f $MOK/MOK.key ] && [ -f $MOK/MOK.der ] || return 0
+  [ -f "$K" ] || return 0
+  if [ ! -f $MOK/MOK.key ] || [ ! -f $MOK/MOK.der ]; then echo "Ключ MOK не найден в $MOK. Новый ключ не создаётся."; return 0; fi
   mokutil --sb-state 2>/dev/null | grep -q enabled || return 0
   tail -c 28 "$K" | grep -q "Module signature appended" && return 0
   for S in /usr/src/linux-headers-$KV/scripts/sign-file /usr/lib/linux-kbuild-*/scripts/sign-file; do

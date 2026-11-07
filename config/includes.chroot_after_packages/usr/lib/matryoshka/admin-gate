@@ -1,0 +1,7 @@
+#!/bin/sh
+uid=$(id -u)
+sid=${XDG_SESSION_ID:-}
+if [ -n "$sid" ] && /usr/lib/matryoshka/consent-check "$uid" "$sid" >/dev/null 2>&1; then
+  exec sudo -n /usr/lib/matryoshka/admin-run "$@"
+fi
+exec pkexec /usr/lib/matryoshka/admin-grant "$@"

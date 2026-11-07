@@ -1,0 +1,15 @@
+#!/bin/sh
+uid=${PKEXEC_UID:-}
+[ -n "$uid" ] || exit 1
+user=$(id -nu "$uid") || exit 1
+id -nG "$user" | tr ' ' '\n' | grep -qx sudo || exit 1
+sid=$(loginctl list-sessions --no-legend | awk -v u="$uid" '$2==u {print $1; exit}')
+[ -n "$sid" ] || exit 1
+remote=$(loginctl show-session "$sid" -p Remote --value)
+active=$(loginctl show-session "$sid" -p Active --value)
+[ "$remote" = "no" ] && [ "$active" = "yes" ] || exit 1
+mkdir -p /run/matryoshka-consent
+printf '%s\n' "$sid" > "/run/matryoshka-consent/$uid"
+chmod 755 /run/matryoshka-consent
+chmod 644 "/run/matryoshka-consent/$uid"
+exec /usr/lib/matryoshka/root.sh "$@"

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Поиск Матрёшки
+X-KDE-PluginInfo-Name=matryoshka-layout
+X-KDE-ServiceTypes=Plasma/Runner
+Type=Service
+Icon=search
+X-Plasma-API=DBus2
+X-Plasma-DBusRunner-Service=org.matryoshka.runner
+X-Plasma-DBusRunner-Path=/runner
+X-KDE-PluginInfo-EnabledByDefault=true

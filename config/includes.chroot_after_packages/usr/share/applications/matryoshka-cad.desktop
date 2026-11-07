@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Меню безопасности
+Comment=Файлы, диспетчер задач, блокировка, питание
+Exec=matryoshka-cad
+Icon=system-lock-screen
+Categories=System;Security;
+X-KDE-Shortcuts=Ctrl+Alt+Del

@@ -57,7 +57,8 @@ case "$cmd" in
     u="$H"; mkdir -p "$u/Общее" "$u/.local/share/waydroid/data/media/0/Общее"; chown "$U": "$u/Общее"
     mountpoint -q "$u/.local/share/waydroid/data/media/0/Общее" || mount --bind "$u/Общее" "$u/.local/share/waydroid/data/media/0/Общее" ;;
   android-init) modprobe binder_linux 2>/dev/null; I=""; for d in /usr/share/waydroid-extra/images /etc/waydroid-extra/images; do [ -f $d/system.img ] && [ -f $d/vendor.img ] && { I=$d; break; }; done; { if [ -n "$I" ]; then waydroid init -f -i "$I"; else waydroid init -s VANILLA; fi; } && { lspci | grep -qi nvidia && { grep -q swiftshader /var/lib/waydroid/waydroid_base.prop 2>/dev/null || printf 'ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n' >> /var/lib/waydroid/waydroid_base.prop; waydroid upgrade --offline; }; true; } && systemctl enable --now waydroid-container ;;
-  android-stores) waydroid init -f -s GAPPS && { lspci | grep -qi nvidia && { grep -q swiftshader /var/lib/waydroid/waydroid_base.prop 2>/dev/null || printf 'ro.hardware.gralloc=default\nro.hardware.egl=swiftshader\n' >> /var/lib/waydroid/waydroid_base.prop; waydroid upgrade --offline; }; true; } && systemctl enable --now waydroid-container && systemctl restart waydroid-container ;;
+  android-stores) echo "Проприетарные GApps не устанавливаются. Сервисы Google ставятся только как microG, по вашей кнопке, с сайта проекта." ;;
+  android-grant-microg) waydroid shell -- pm grant com.android.vending android.permission.FAKE_PACKAGE_SIGNATURE || true; waydroid shell -- pm grant com.google.android.gms android.permission.FAKE_PACKAGE_SIGNATURE || true; echo "разрешения microG запрошены" ;;
   android-id) waydroid shell -- sh -c "sqlite3 /data/data/com.google.android.gsf/databases/gservices.db \"select value from main where name='android_id';\"" ;;
   android-grant) waydroid shell -- appops set ru.vk.store REQUEST_INSTALL_PACKAGES allow; waydroid shell -- settings put secure install_non_market_apps 1; true ;;
   sandbox-grant)
@@ -70,7 +71,7 @@ case "$cmd" in
   fwupd-enable) touch /var/lib/matryoshka/fwupd-consent; sed -i 's/^Enabled=.*/Enabled=true/' /etc/fwupd/remotes.d/lvfs.conf ;;
   bio)
     case "$1" in
-      finger-login-on) for p in sddm kde; do grep -q pam_fprintd /etc/pam.d/$p || sed -i '0,/^auth/s//auth\tsufficient\tpam_fprintd.so max-tries=2 timeout=10\nauth/' /etc/pam.d/$p; done ;;
+      finger-login-on) for p in sddm kde; do grep -q pam_fprintd /etc/pam.d/$p || sed -i '0,/^auth/s//auth\tsufficient\tpam_fprintd.so max-tries=3 timeout=15\nauth/' /etc/pam.d/$p; done ;;
       finger-login-off) sed -i '/pam_fprintd/d' /etc/pam.d/sddm /etc/pam.d/kde ;;
       finger-sudo-on) grep -q pam_fprintd /etc/pam.d/sudo || sed -i '0,/^@include common-auth/s//auth\tsufficient\tpam_fprintd.so max-tries=2 timeout=10\n@include common-auth/' /etc/pam.d/sudo ;;
       finger-sudo-off) sed -i '/pam_fprintd/d' /etc/pam.d/sudo ;;
@@ -118,7 +119,7 @@ case "$cmd" in
     id ollama >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin -m -d /var/lib/ollama ollama
     printf '[Unit]\nDescription=Local AI for Matryoshka antivirus\nAfter=network.target\n[Service]\nUser=ollama\nEnvironment=OLLAMA_HOST=127.0.0.1:11434\nEnvironment=OLLAMA_KEEP_ALIVE=2m\nExecStart=/usr/local/bin/ollama serve\nNice=19\nIOSchedulingClass=idle\nCPUWeight=10\nMemoryHigh=60%%\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/matryoshka-ai.service
     systemctl daemon-reload && systemctl enable --now matryoshka-ai.service; sleep 3
-    mem=$(awk '/MemTotal/{print int($2/1048576)}' /proc/meminfo); m=qwen2.5:1.5b; [ "$mem" -ge 8 ] && m=qwen2.5:3b; [ "$mem" -ge 16 ] && m=qwen2.5:7b
+    mem=$(awk '/MemTotal/{print int($2/1048576)}' /proc/meminfo); m=qwen2.5:3b; [ "$mem" -lt 6 ] && m=qwen2.5:1.5b
     OLLAMA_HOST=127.0.0.1:11434 ollama pull $m && echo "MODEL=$m" > /etc/matryoshka-ai.conf && echo "Готово: модель $m" ;;
   ai-remove) systemctl disable --now matryoshka-ai.service; rm -f /etc/systemd/system/matryoshka-ai.service /usr/local/bin/ollama /etc/matryoshka-ai.conf; rm -rf /opt/ollama /var/lib/ollama; userdel ollama 2>/dev/null; echo удалено ;;
   os-update)

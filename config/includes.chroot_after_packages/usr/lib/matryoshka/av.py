@@ -34,7 +34,15 @@ def scan(path):
     y = C.run(["yara", "-w", "-r", RULES, path], timeout=120)
     res["yara"] = sorted({l.split()[0] for l in y.stdout.splitlines() if l.strip()})
     hack = [x for x in res["clam"] + res["yara"] if re.search(r"hacktool|kms|activat|crack|keygen", x, re.I)]
-    res["activator"] = bool(ACT.search(os.path.basename(path))) or bool(hack)
+    body = False
+    try:
+        chunk = open(path, "rb").read(2 << 20)
+        if b"\0" in chunk[:800]:
+            low = chunk.lower()
+            body = b"kmspico" in low or b"hwidgen" in low
+    except Exception:
+        body = False
+    res["activator"] = bool(ACT.search(os.path.basename(path))) or bool(hack) or body
     real = [x for x in res["clam"] + res["yara"] if x not in hack]
     res["confirmed"] = [x for x in res["clam"] if x not in hack and not re.match(r"(Heuristics|PUA)\.", x)]
     res["heuristic"] = [x for x in real if x not in res["confirmed"]]
@@ -146,16 +154,42 @@ if __name__ == "__main__":
     elif a and a[0] == "explain":
         res = scan(a[1]); print(("УГРОЗА" if res["malicious"] else "АКТИВАТОР" if res["activator"] else "чисто"), *(res["clam"] + res["yara"])); print(ask_ai(res))
     elif a and a[0] == "scan":
+        import time
+        import aveta
         bad = 0
-        for root in [x for x in a[1:] if x != "--dialog"]:
-            files = [root] if os.path.isfile(root) else [os.path.join(r, f) for r, _, fs in os.walk(root) for f in fs]
-            for f in files:
-                res = scan(f)
-                if res.get("confirmed"): print("УГРОЗА (сигнатура): %s\n  правила: %s" % (f, ", ".join(res["confirmed"] + res["heuristic"])), flush=True)
-                elif res["malicious"]: print("ПОДОЗРЕНИЕ (эвристика, не подтверждено): %s\n  правила: %s" % (f, ", ".join(res["heuristic"])), flush=True)
-                elif res["activator"]: print("АКТИВАТОР%s: %s" % (" (только по имени файла)" if res["by_name"] else "", f), flush=True)
-                if res["malicious"] or res["activator"]:
-                    bad += 1
-                    if "--dialog" in a and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")): dialog(res)
+        roots = [x for x in a[1:] if x != "--dialog"]
+        files = []
+        total = 0
+        for root in roots:
+            if os.path.isfile(root):
+                files.append(root); total += os.path.getsize(root)
+            else:
+                for r, _, fs in os.walk(root):
+                    for name in fs:
+                        p = os.path.join(r, name)
+                        files.append(p)
+                        try: total += os.path.getsize(p)
+                        except OSError: pass
+        bench = os.path.join("/tmp", "matryoshka-av-bench")
+        open(bench, "wb").write(b"A" * (1 << 20))
+        t0 = time.time()
+        C.run(["clamscan", "--no-summary", bench], timeout=60)
+        sample = max(0.05, time.time() - t0)
+        try: os.remove(bench)
+        except OSError: pass
+        eta = aveta.estimate(len(files), total, 1 << 20, sample, 1, sample)
+        print("Файлов: %d, объём: %d МБ, оценка: около %d с" % (len(files), total // 1048576, eta), flush=True)
+        started = time.time()
+        for i, f in enumerate(files, 1):
+            res = scan(f)
+            if res.get("confirmed"): print("УГРОЗА (сигнатура): %s\n  правила: %s" % (f, ", ".join(res["confirmed"] + res["heuristic"])), flush=True)
+            elif res["malicious"]: print("ПОДОЗРЕНИЕ (эвристика, не подтверждено): %s\n  правила: %s" % (f, ", ".join(res["heuristic"])), flush=True)
+            elif res["activator"]: print("АКТИВАТОР%s: %s" % (" (только по имени файла)" if res["by_name"] else "", f), flush=True)
+            if res["malicious"] or res["activator"]:
+                bad += 1
+                if "--dialog" in a and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")): dialog(res)
+            if i == 1 or i % 25 == 0 or i == len(files):
+                left = aveta.refine(i, len(files), time.time() - started, eta)
+                print("проверено %d/%d, осталось около %d с" % (i, len(files), left), flush=True)
         print("Проверено. Находок: %d" % bad)
         sys.exit(1 if bad else 0)

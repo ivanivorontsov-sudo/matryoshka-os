@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Буфер обмена
+Comment=Щелчок по записи сразу вставляет её
+Exec=copyq toggle
+Icon=edit-paste
+Categories=Utility;
+X-KDE-Shortcuts=Meta+V
+NoDisplay=true
