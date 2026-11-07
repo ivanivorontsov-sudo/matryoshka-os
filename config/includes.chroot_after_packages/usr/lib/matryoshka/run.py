@@ -63,19 +63,7 @@ def exe_kind(path):
 
 def dos(path):
     import dosbox
-    name = os.path.splitext(os.path.basename(path))[0]
-    drive = os.path.join(C.HOME, "DOS")
-    os.makedirs(drive, exist_ok=True)
-    folder = os.path.dirname(path)
-    d = os.path.join(C.CONF, "dos"); os.makedirs(d, exist_ok=True)
-    conf = os.path.join(d, name + ".conf")
-    dosbox.write_conf(conf, drive, folder, os.path.basename(path))
-    desk = next((p for p in (os.path.join(C.HOME, "Рабочий стол"), os.path.join(C.HOME, "Desktop")) if os.path.isdir(p)), None)
-    if desk:
-        lf = os.path.join(desk, name + " (DOS).desktop")
-        if not os.path.exists(lf):
-            open(lf, "w").write("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -conf \"%s\"\nIcon=dosbox-x\n" % (name, conf)); os.chmod(lf, 0o755)
-    return subprocess.call(["dosbox-x", "-conf", conf])
+    return dosbox.launch(path, C.HOME)
 
 def main(path):
     res = {"malicious": False, "activator": False} if os.path.exists("/run/matryoshka-sandbox") else av.scan(path)

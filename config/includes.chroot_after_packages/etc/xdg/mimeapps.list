@@ -8,6 +8,7 @@ application/vnd.openxmlformats-officedocument.wordprocessingml.document=matryosh
 application/msword=matryoshka-office.desktop
 application/x-dosexec=matryoshka-run.desktop
 application/x-bat=matryoshka-run.desktop
+application/x-dos-com=matryoshka-run.desktop
 text/x-ponyatny=matryoshka-run.desktop
 application/x-msi=matryoshka-run.desktop
 application/x-ole-storage=matryoshka-run.desktop

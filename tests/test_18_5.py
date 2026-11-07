@@ -31,11 +31,17 @@ class T(unittest.TestCase):
         self.assertEqual(archiveinst.classify([]), "empty")
 
     def test_dos_conf(self):
-        text = dosbox.conf_text("/home/ivan/DOS", "/home/ivan/DOS/CAD", "FESTA.EXE")
+        text = dosbox.session_text("/home/ivan/DOS/CAD", "FESTA.EXE", "/home/ivan/DOS", "/home/ivan", "/home/ivan/Общее", "/home/ivan/DOS/Печать")
         self.assertIn("cycles=max", text)
         self.assertIn("sb16", text)
+        self.assertIn("keyboardlayout=ru", text)
+        self.assertIn("country=7,866", text)
+        self.assertIn("printoutput=ps", text)
+        self.assertIn("mouse_emulation=always", text)
+        self.assertIn('mount c "/home/ivan/DOS/CAD"', text)
+        self.assertIn('mount e "/home/ivan"', text)
         self.assertIn("FESTA.EXE", text)
-        self.assertNotIn("exit", text.split("[autoexec]")[-1])
+        self.assertNotIn("\nexit", text.split("[autoexec]")[-1])
 
     def test_newer(self):
         self.assertFalse(pkgplan.newer("1.0", "1.0"))
