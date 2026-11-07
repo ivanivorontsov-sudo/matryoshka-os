@@ -1,5 +1,7 @@
 #!/bin/sh
 set -e
+rm -f /etc/apt/sources.list.d/local-matryoshka.list
+rm -rf /srv/local-packages
 for i in 1 2 3 4 5 6; do apt-get update && break; sleep 30; done || true
 dpkg --add-architecture i386
 for i in 1 2 3 4 5 6; do apt-get update && break; sleep 30; done
