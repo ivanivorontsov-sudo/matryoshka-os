@@ -25,4 +25,8 @@ if [ ! -d $V/model-ru ] || [ "$miss" = 1 ]; then sudo rm -rf /opt/matryoshka-voi
 if grep -q '/updates ' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
   sudo sed -i 's#/updates #-security #g' /usr/lib/live/build/lb_chroot_archives
 fi
+if grep -q 'gpg --batch --gen-key' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
+  sudo sed -i 's/gpg --batch --gen-key/gpg --batch --pinentry-mode loopback --gen-key/; s/gpg --no-default-keyring/gpg --batch --pinentry-mode loopback --no-default-keyring/g' /usr/lib/live/build/lb_chroot_archives
+  sudo sed -i 's#mkdir -p chroot/root/.gnupg#mkdir -p chroot/root/.gnupg\n\t\t\t\t\techo allow-loopback-pinentry > chroot/root/.gnupg/gpg-agent.conf#' /usr/lib/live/build/lb_chroot_archives
+fi
 sudo env MKSQUASHFS_OPTIONS="-processors 2 -mem 1G" nice -n 19 lb build
