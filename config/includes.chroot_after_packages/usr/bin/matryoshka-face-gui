@@ -1,0 +1,194 @@
+#!/usr/bin/python3
+import json, os, subprocess, sys, tempfile
+from PyQt6.QtCore import QThread, QTimer, Qt, pyqtSignal
+from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QPlainTextEdit, QMessageBox
+
+T = "/usr/sbin/matryoshka-face"
+DATA = "/usr/lib/security/howdy/dlib-data"
+SHOTS = 5
+
+
+class Job(QThread):
+    done = pyqtSignal(str)
+
+    def __init__(self, args):
+        super().__init__()
+        self.args = args
+
+    def run(self):
+        try:
+            r = subprocess.run(["pkexec", T] + self.args, capture_output=True, text=True, timeout=180)
+            out = "\n".join(l for l in (r.stdout + r.stderr).splitlines() if "WARN" not in l and "GStreamer" not in l)
+            if r.returncode in (126, 127):
+                out = out or "Пароль не введён"
+            self.done.emit(out.strip() or "Готово")
+        except Exception as e:
+            self.done.emit("Ошибка: %s" % e)
+
+
+class W(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Вход по лицу")
+        self.resize(640, 720)
+        v = QVBoxLayout(self)
+        v.addWidget(QLabel("<h2>Вход по лицу</h2>Несколько снимков подряд, разные углы. Пароль работает всегда. Без инфракрасной камеры защиту можно обмануть фотографией.", wordWrap=True))
+        self.view = QLabel("Камера появится здесь")
+        self.view.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.view.setMinimumHeight(280)
+        self.view.setStyleSheet("background:#1c2230;color:#fff4e0;border-radius:16px")
+        v.addWidget(self.view)
+        self.bs = []
+        for t, a in (("Снять 5 ракурсов автоматически", "multi"),
+                     ("Включить вход по лицу", ["on"]),
+                     ("Проверить, узнаёт ли меня", ["check"]),
+                     ("Показать записанные снимки", ["list"]),
+                     ("Удалить все снимки лица", ["clear"]),
+                     ("Выключить вход по лицу", ["off"])):
+            b = QPushButton(t)
+            b.clicked.connect(lambda _, a=a: self.go(a))
+            v.addWidget(b)
+            self.bs.append(b)
+        self.o = QPlainTextEdit(readOnly=True)
+        v.addWidget(self.o)
+        self.j = None
+        self.cap = None
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.frame)
+        self.stable = 0
+        self.got = []
+        self.prev = None
+        self.pause = 0
+
+    def go(self, a):
+        if a == "multi":
+            self.start_multi()
+            return
+        if a == ["clear"] and QMessageBox.question(self, "Вход по лицу", "Удалить все снимки лица?") != QMessageBox.StandardButton.Yes:
+            return
+        for b in self.bs:
+            b.setEnabled(False)
+        self.o.setPlainText("Смотрите в камеру..." if a[0] in ("add", "check") else "Подождите...")
+        self.j = Job(a)
+        self.j.done.connect(self.fin)
+        self.j.start()
+
+    def fin(self, t):
+        self.o.setPlainText(t)
+        for b in self.bs:
+            b.setEnabled(True)
+
+    def start_multi(self):
+        try:
+            import cv2
+            self.cv2 = cv2
+        except Exception:
+            self.o.setPlainText("Нет OpenCV. Нажмите «Записать лицо» в Центре.")
+            return
+        self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            self.o.setPlainText("Камера не открылась.")
+            return
+        self.cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        self.stable = 0
+        self.got = []
+        self.prev = None
+        self.pause = 0
+        for b in self.bs:
+            b.setEnabled(False)
+        self.o.setPlainText("Смотрите в камеру. Снимок 1 из %d." % SHOTS)
+        self.timer.start(80)
+
+    def encode(self, frame, box):
+        import dlib
+        x, y, w, h = box
+        det = dlib.get_frontal_face_detector()
+        sp = dlib.shape_predictor(os.path.join(DATA, "shape_predictor_5_face_landmarks.dat"))
+        rec = dlib.face_recognition_model_v1(os.path.join(DATA, "dlib_face_recognition_resnet_model_v1.dat"))
+        gray = self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2GRAY)
+        faces = det(gray, 1)
+        if not faces:
+            return None
+        lm = sp(frame, faces[0])
+        enc = rec.compute_face_descriptor(frame, lm, 1)
+        return [float(x) for x in enc]
+
+    def frame(self):
+        ok, frame = self.cap.read()
+        if not ok:
+            return
+        if self.pause > 0:
+            self.pause -= 1
+            self.show_frame(frame, None)
+            return
+        gray = self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2GRAY)
+        faces = self.cascade.detectMultiScale(gray, 1.2, 5, minSize=(80, 80))
+        box = None
+        if len(faces):
+            box = max(faces, key=lambda b: b[2] * b[3])
+            cx, cy = box[0] + box[2] / 2, box[1] + box[3] / 2
+            if self.prev and abs(cx - self.prev[0]) < 24 and abs(cy - self.prev[1]) < 24:
+                self.stable += 1
+            else:
+                self.stable = 0
+            self.prev = (cx, cy)
+        else:
+            self.stable = 0
+        self.show_frame(frame, box)
+        if self.stable >= 8 and box is not None and len(self.got) < SHOTS:
+            try:
+                data = self.encode(frame, box)
+            except Exception as e:
+                self.stop_cam()
+                self.o.setPlainText("Не удалось посчитать снимок: %s" % e)
+                return
+            if data:
+                self.got.append({"label": "ракурс %d" % (len(self.got) + 1), "data": data})
+                self.stable = 0
+                self.pause = 10
+                self.o.setPlainText("Снимок %d из %d. Чуть поверните голову." % (len(self.got), SHOTS))
+            if len(self.got) >= SHOTS:
+                self.stop_cam()
+                self.store()
+
+    def show_frame(self, frame, box):
+        img = frame.copy()
+        if box is not None:
+            x, y, w, h = [int(v) for v in box]
+            self.cv2.rectangle(img, (x, y), (x + w, y + h), (232, 56, 79), 2)
+        rgb = self.cv2.cvtColor(img, self.cv2.COLOR_BGR2RGB)
+        q = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.strides[0], QImage.Format.Format_RGB888)
+        self.view.setPixmap(QPixmap.fromImage(q).scaled(self.view.width(), self.view.height(), Qt.AspectRatioMode.KeepAspectRatio))
+
+    def stop_cam(self):
+        self.timer.stop()
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+        for b in self.bs:
+            b.setEnabled(True)
+
+    def store(self):
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        json.dump(self.got, open(path, "w"))
+        os.chmod(path, 0o600)
+        self.o.setPlainText("Сохраняю %d снимков…" % len(self.got))
+        for b in self.bs:
+            b.setEnabled(False)
+        self.j = Job(["import", os.environ.get("USER", ""), path])
+        self.j.done.connect(self.fin)
+        self.j.start()
+
+    def closeEvent(self, e):
+        self.stop_cam()
+        e.accept()
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setDesktopFileName("matryoshka-face")
+    w = W()
+    w.show()
+    sys.exit(app.exec())

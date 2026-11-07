@@ -14,7 +14,7 @@ class Android(QWidget):
         super().__init__(); self.setWindowTitle("Android-магазины"); self.resize(620, 560)
         v = QVBoxLayout(self)
         l = QLabel("Сервисы Google ставятся только как microG (свободная замена, Apache-2.0) с официального выпуска GitHub — по вашей кнопке, в образ они не вшиты. Проприетарные GApps не скачиваются и не распространяются. RuStore — с сайта rustore.ru одной кнопкой: лицензия магазина не позволяет вложить его в систему. Некоторые банковские приложения в Waydroid не запускаются."); l.setWordWrap(True); v.addWidget(l)
-        for t, f in (("1. Установить microG (официальный выпуск)", self.init), ("2. Зарегистрировать устройство в Google", self.reg), ("3. Установить RuStore с официального сайта", self.rustore), ("Поддержка ARM-приложений (необязательно, не входит в систему)", self.arm)):
+        for t, f in (("1. Установить microG (официальный выпуск)", self.init), ("2. Зарегистрировать устройство в Google", self.reg), ("3. Установить RuStore с официального сайта", self.rustore), ("Скачать libndk_translation (ARM-программы, не входит в систему)", self.ndk), ("libhoudini для Intel (необязательно, тоже не входит)", self.arm)):
             b = QPushButton(t); b.clicked.connect(f); v.addWidget(b)
         self.o = QTextEdit(readOnly=True); v.addWidget(self.o, 1)
     def log(self, s): self.o.append(s); QApplication.processEvents()
@@ -23,6 +23,13 @@ class Android(QWidget):
         if not C.net_on(): self.log("Включите сеть."); return
         self.log("Скачиваю microG. Окно можно свернуть.")
         C.Task(self, [sys.executable, "/usr/lib/matryoshka/microg.py"], lambda c, t: self.o.setPlainText(t[-4000:]), timeout=3600, out=lambda t: self.o.setPlainText(t[-4000:]))
+    def ndk(self):
+        from PyQt6.QtWidgets import QMessageBox
+        if not C.net_on(): QMessageBox.warning(self, "libndk_translation", "Нужна сеть: архив скачивается с GitHub по вашей кнопке. В образ он не входит."); return
+        t = "libndk_translation — проприетарный переводчик ARM→x86. Лицензия разрешает распространение только вместе с продажей процессора AMD, поэтому Матрёшка его не содержит.\n\nКнопка скачает официальный архив пребилдов (тот же, что использует waydroid_script), проверит SHA-256 и поставит его в уже установленный Android. Окно Android может быть закрыто. Повторный запуск ничего не ломает. При ошибке файлы вернутся как были.\n\nСкачать и установить сейчас?"
+        if QMessageBox.question(self, "libndk_translation", t) != QMessageBox.StandardButton.Yes: return
+        self.log("Скачиваю libndk_translation. Окно можно свернуть.")
+        C.Task(self, C.root_argv("ndk-install"), lambda c, t: self.o.setPlainText(t[-5000:] + ("\nГотово." if c == 0 else "\nНе установлено, код %d." % c)), timeout=1800, out=lambda t: self.o.setPlainText(t[-5000:]))
     def arm(self):
         from PyQt6.QtWidgets import QMessageBox
         if not C.net_on(): QMessageBox.warning(self, "ARM-приложения", "Нужна сеть: компоненты скачиваются из интернета. Включите сеть и повторите."); return

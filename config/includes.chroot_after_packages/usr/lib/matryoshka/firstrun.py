@@ -33,6 +33,8 @@ class Wiz(QWizard):
         tip = QLabel("Совет: KeePassXC (уже установлен) хранит пароли, коды 2FA (TOTP) и ключи доступа (passkeys). KDE Connect связывает телефон: файлы, буфер обмена, уведомления — по зашифрованному каналу."); tip.setWordWrap(True); v.addWidget(tip)
         self.bio = QCheckBox("Настроить вход по отпечатку пальца или лицу"); v.addWidget(self.bio)
         self.dev = QCheckBox("Вы программист? Показать каталог языков, SDK и инструментов"); v.addWidget(self.dev)
+        hint = QLabel("ARM-программы Android (многие APK) нуждаются в libndk_translation. Его нельзя вложить в систему из-за лицензии. После первого запуска его можно скачать одной кнопкой: «Android-магазины» → «Скачать libndk_translation». Окно Android при этом может быть закрыто."); hint.setWordWrap(True); v.addWidget(hint)
+        self.ndk = QCheckBox("Скачать и установить libndk_translation сейчас (это ваше действие, около 17 МБ)"); self.ndk.setChecked(False); v.addWidget(self.ndk)
         pages = [p1, p2, p3]
         self.finger = None
         fp = C.run(["fprintd-list", C.os.environ.get("USER", "ivan")], timeout=15)
@@ -85,6 +87,8 @@ class Wiz(QWizard):
             C.subprocess.Popen(["bash", "-c", "/usr/lib/matryoshka/admin-gate ai-install > /tmp/matryoshka-ai.log 2>&1; notify-send -a Матрёшка 'Локальная модель' 'Загрузка Qwen завершена или записана в /tmp/matryoshka-ai.log'"], start_new_session=True)
         if self.bio.isChecked(): C.subprocess.Popen(["matryoshka-center", "9"])
         if self.dev.isChecked(): C.subprocess.Popen(["matryoshka-dev"])
+        if getattr(self, "ndk", None) is not None and self.ndk.isChecked() and C.net_on():
+            C.subprocess.Popen(["/usr/lib/matryoshka/admin-gate", "ndk-install"], start_new_session=True)
         super().accept()
 
 if __name__ == "__main__":

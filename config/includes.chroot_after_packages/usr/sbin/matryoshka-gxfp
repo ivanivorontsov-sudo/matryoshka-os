@@ -1,0 +1,87 @@
+#!/bin/sh
+L=/usr/lib/matryoshka-gxfp
+F=/etc/matryoshka/gxfp-on
+OFF=/etc/matryoshka/gxfp-off
+DI=/etc/systemd/system/fprintd.service.d/50-matryoshka-gxfp.conf
+PSK=/var/lib/fprintd/gxfp/psk_raw32.bin
+[ "$(id -u)" = 0 ] || exec pkexec "$0" "$@"
+MOK=/var/lib/matryoshka-mok
+sign() {
+  K=$1; KV=$2
+  [ -f "$K" ] || return 0
+  if [ ! -f $MOK/MOK.key ] || [ ! -f $MOK/MOK.der ]; then echo "Ключ MOK не найден в $MOK. Новый ключ не создаётся."; return 0; fi
+  mokutil --sb-state 2>/dev/null | grep -q enabled || return 0
+  tail -c 28 "$K" | grep -q "Module signature appended" && return 0
+  for S in /usr/src/linux-headers-$KV/scripts/sign-file /usr/lib/linux-kbuild-*/scripts/sign-file; do
+    [ -x "$S" ] && { "$S" sha256 $MOK/MOK.key $MOK/MOK.der "$K" && echo "Модуль подписан ключом MOK" && return 0; }
+  done
+  echo "Не найдена программа sign-file (пакет linux-headers-$KV)"; return 1
+}
+load() {
+  [ -c /dev/gxfp ] && return 0
+  K=$L/gxfp-$(uname -r).ko
+  [ -f "$K" ] || { echo "Нет модуля для ядра $(uname -r)"; return 1; }
+  sign "$K" "$(uname -r)"
+  timeout 20 insmod "$K" || { mokutil --sb-state 2>/dev/null | grep -q enabled && echo "Включён Secure Boot: неподписанный модуль не загружается"; return 1; }
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -c /dev/gxfp ] && return 0; sleep 1; done
+  echo "Устройство /dev/gxfp не появилось"; return 1
+}
+case "$1" in
+  on)
+    grep -qs GXFP5130 /sys/bus/acpi/devices/*/hid || { echo "Сканер GXFP5130 не найден на этом компьютере"; exit 1; }
+    load || exit 1
+    if [ ! -s "$PSK" ]; then
+      W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
+      timeout 60 $L/bin/gxfp_psk_tool --build-bb010002 "$W/blob.bin" --out-psk-raw32 "$W/psk.bin" &&
+      [ "$(wc -c < "$W/psk.bin")" -eq 32 ] && timeout 60 $L/bin/gxfp_psk_tool --upload-bb010002 "$W/blob.bin" &&
+      install -d -m 700 /var/lib/fprintd/gxfp && install -m 600 "$W/psk.bin" "$PSK" || { echo "Не удалось записать ключ в сканер"; rmmod gxfp 2>/dev/null; exit 1; }
+    fi
+    mkdir -p /etc/matryoshka "$(dirname "$DI")"; touch "$F"; rm -f "$OFF"
+    printf '[Service]\nEnvironment=LD_LIBRARY_PATH=%s/lib\nDeviceAllow=/dev/gxfp rw\n' "$L" > "$DI"
+    systemctl daemon-reload; systemctl enable matryoshka-gxfp.service >/dev/null 2>&1; systemctl restart fprintd 2>/dev/null
+    echo "Драйвер включён. Добавьте палец: fprintd-enroll или Параметры → Пользователи";;
+  off)
+    rm -f "$F" "$DI"; mkdir -p /etc/matryoshka; touch "$OFF"; systemctl disable matryoshka-gxfp.service >/dev/null 2>&1
+    systemctl daemon-reload; systemctl stop fprintd 2>/dev/null; rmmod gxfp 2>/dev/null
+    echo "Драйвер выключен";;
+  boot) [ -e "$F" ] && load; exit 0;;
+  sign)
+    if [ -n "$2" ]; then sign "$L/gxfp-$2.ko" "$2"; else for K in $L/gxfp-*.ko; do V=${K##*/gxfp-}; sign "$K" "${V%.ko}"; done; fi; exit 0;;
+  auto)
+    [ -e "$F" ] && { load; exit 0; }
+    [ -e "$OFF" ] && exit 0
+    grep -qs GXFP5130 /sys/bus/acpi/devices/*/hid || exit 0
+    mokutil --sb-state 2>/dev/null | grep -q enabled && [ ! -f $MOK/MOK.key ] && exit 0
+    [ -f "$L/gxfp-$(uname -r).ko" ] || exit 0
+    exec "$0" on;;
+  debug)
+    [ -e "$DI" ] || { echo "Сначала: matryoshka-gxfp on"; exit 1; }
+    DD=/etc/systemd/system/fprintd.service.d/60-matryoshka-gxfp-debug.conf
+    if [ "$2" = off ]; then rm -f "$DD"; else printf '[Service]\nEnvironment=G_MESSAGES_DEBUG=all FP_GXFP_LOG=1\n' > "$DD"; fi
+    systemctl daemon-reload; systemctl restart fprintd 2>/dev/null
+    [ "$2" = off ] && echo "Отладка выключена" || echo "Отладка включена. Повторите fprintd-enroll и fprintd-verify, затем: matryoshka-gxfp diag";;
+  diag)
+    R=/tmp/gxfp-diag.txt
+    { date; uname -r; mokutil --sb-state 2>&1; "$0" status; ls -l "$PSK" 2>&1
+      cat /sys/bus/acpi/devices/GXFP5130*/status 2>&1
+      dpkg -l fprintd libfprint-2-2 matryoshka-gxfp 2>&1 | tail -n 3
+      systemctl cat fprintd 2>&1 | grep -E "Environment|DeviceAllow"
+      P=$(pidof fprintd); [ -n "$P" ] && grep -E "libfprint" /proc/$P/maps | awk '{print $6}' | sort -u
+      ls -l /tmp/gxfp-capture 2>&1; journalctl -k -b --no-pager -g gxfp 2>&1 | tail -n 80
+      journalctl -b -u fprintd --no-pager 2>&1 | grep -i -E "gxfp|sigfm|score|match|stage|minutiae|keypoint|quality|error|warn|retry" | tail -n 300
+    } > "$R" 2>&1
+    chmod 644 "$R"; echo "Готово: $R";;
+  capture)
+    [ -s "$PSK" ] || { echo "Нет ключа: matryoshka-gxfp on"; exit 1; }
+    load || exit 1
+    C=/tmp/gxfp-capture; mkdir -p "$C"; cd "$C" || exit 1
+    systemctl stop fprintd 2>/dev/null
+    echo "Приложите палец к сканеру"
+    FP_GXFP_LOG=1 timeout 40 $L/bin/gxfp_capture --psk-raw32 "$PSK" > "$C/log.txt" 2>&1; R=$?
+    tail -n 5 "$C/log.txt"
+    [ -s finger.pgm ] && mv -f finger.pgm "finger-$(date +%H%M%S).pgm"
+    chmod -R a+rX "$C"; ls -l "$C"
+    systemctl start fprintd 2>/dev/null; exit $R;;
+  status) [ -e "$F" ] && echo on || echo off; [ -c /dev/gxfp ] && echo "/dev/gxfp есть";;
+  *) echo "matryoshka-gxfp on|off|auto|sign [ядро]|status|debug [off]|diag|capture"; exit 1;;
+esac

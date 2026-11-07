@@ -1,9 +1,12 @@
 #!/bin/sh
 set -e
 I=config/includes.chroot_after_packages
-sudo apt-get install -y live-build clamav curl unzip git nodejs npm
+sudo apt-get install -y live-build clamav curl unzip git nodejs npm python3-venv python3-pip
 mkdir -p $I/usr/share/matryoshka/clamav $I/usr/share/matryoshka/yara $I/usr/share/matryoshka/hosts $I/usr/share/matryoshka/apk $I/opt/ivan
-sudo freshclam --datadir=$I/usr/share/matryoshka/clamav --user=root || true
+DB=$(readlink -f $I/usr/share/matryoshka/clamav)
+mkdir -p "$DB"
+chmod 755 "$DB"
+sudo freshclam --stdout --datadir="$DB" --user=root || true
 curl -sL -o /tmp/yara.zip https://github.com/YARAHQ/yara-forge/releases/download/20261018/yara-forge-rules-core.zip
 unzip -o -j /tmp/yara.zip '*yara-rules-core.yar' -d $I/usr/share/matryoshka/yara
 curl -sL https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts -o $I/usr/share/matryoshka/hosts/stevenblack

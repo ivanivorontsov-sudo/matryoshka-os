@@ -51,7 +51,7 @@
 
 ## Android
 
-Образы Waydroid — официальные VANILLA, без GApps. microG ставится кнопкой из `github.com/microg/GmsCore` (Apache-2.0), в образ не вкладывается. RuStore не вкладывается: дистрибуция APK магазином не разрешена явно, остаётся установка с `static.rustore.ru` с проверкой сертификата. `libndk_translation` не вкладывается: лицензия ARM-to-AMD разрешает распространение только вместе с продажей процессора AMD и исполнение только на нём. Пользователь может сам запустить загрузчик `waydroid_script` для libhoudini или libndk.
+Образы Waydroid — официальные VANILLA, без GApps. microG ставится кнопкой из `github.com/microg/GmsCore` (Apache-2.0), в образ не вкладывается. RuStore не вкладывается: дистрибуция APK магазином не разрешена явно, остаётся установка с `static.rustore.ru` с проверкой сертификата. `libndk_translation` не вкладывается: лицензия ARM-to-AMD разрешает распространение только вместе с продажей процессора AMD. Кнопка «Скачать libndk_translation» в «Android-магазинах» и флажок первого запуска скачивают архив `68734c5` с GitHub (тот же пребилд, что у waydroid_script), сверяют SHA-256 `a142d1586c9eafb5edf62277110f2128bc03066179a6783bcaa33ee322e1cbd0`, ставят его в overlay Waydroid и проверяют свойства. Повтор ничего не меняет. При ошибке каталог и `waydroid_base.prop` возвращаются. Окно Android может быть закрыто.
 
 ## DOS
 
