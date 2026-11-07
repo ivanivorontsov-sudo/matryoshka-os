@@ -10,7 +10,11 @@ def allowed(uid):
     return r.stdout.strip() == "active"
 
 def main():
-    ui = UInput({e.EV_KEY: [e.KEY_LEFTCTRL, e.KEY_LEFTSHIFT, e.KEY_V]}, name="matryoshka-voice")
+    try:
+        ui = UInput({e.EV_KEY: [e.KEY_LEFTCTRL, e.KEY_LEFTSHIFT, e.KEY_V]}, name="matryoshka-voice")
+    except Exception as ex:
+        print("голосовой ввод с клавиатуры недоступен:", ex)
+        return
     if os.path.exists(SOCK): os.remove(SOCK)
     s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM); s.bind(SOCK); os.chmod(SOCK, 0o666)
     while True:
