@@ -1,0 +1,31 @@
+#!/bin/bash
+set -u
+OUT="${1:-$HOME/matryoshka-keys-diag.txt}"
+sec() { printf '\n===== %s =====\n' "$1"; }
+{
+  sec "Система"
+  date; uname -r; cat /etc/matryoshka-version 2>/dev/null; echo "XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-}"
+  sec "Параметры ядра"
+  cat /proc/cmdline
+  sec "Подсветка /sys/class/backlight"
+  for d in /sys/class/backlight/*; do
+    [ -e "$d" ] || { echo "нет устройств подсветки"; break; }
+    echo "$d type=$(cat "$d/type" 2>/dev/null) brightness=$(cat "$d/brightness" 2>/dev/null) max=$(cat "$d/max_brightness" 2>/dev/null)"
+  done
+  sec "Huawei WMI"
+  for f in /sys/devices/platform/huawei-wmi/*; do
+    [ -f "$f" ] && echo "$(basename "$f")=$(cat "$f" 2>/dev/null)"
+  done
+  lsmod | grep -E '^(huawei|video|wmi|intel_hid|i915|xe|amdgpu|nouveau|nvidia)' || true
+  sec "Устройства ввода"
+  grep -E '^N: Name=' /proc/bus/input/devices
+  sec "Служба горячих клавиш"
+  busctl --user status org.kde.kglobalaccel 2>&1 | grep -E '^(PID|Comm|Unit|UserUnit)=' || echo "org.kde.kglobalaccel не найдена на шине"
+  systemctl --user is-active plasma-kglobalaccel.service plasma-powerdevil.service 2>&1
+  sec "Сочетания PowerDevil"
+  sed -n '/^\[org_kde_powerdevil\]/,/^\[/p' "$HOME/.config/kglobalshortcutsrc" 2>/dev/null
+  sec "Журнал ядра"
+  journalctl -k -b --no-pager 2>/dev/null | grep -iE 'backlight|huawei|wmi|acpi.*video|brightness' | tail -n 40
+} > "$OUT" 2>&1
+echo "Отчёт сохранён: $OUT"
+echo "Чтобы проверить, приходят ли сами нажатия, выполните: sudo libinput debug-events --show-keycodes и нажмите F1/F2 (и Fn+F1/F2)."

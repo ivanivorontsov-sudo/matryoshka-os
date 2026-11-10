@@ -42,11 +42,55 @@ def scheme_groups(scheme):
         "kwin": {"Kill Window": "%s,Ctrl+Alt+Esc,Принудительно закрыть окно" % kill},
     }
 
+BRIGHTNESS = {"Increase Screen Brightness": "Monitor Brightness Up", "Decrease Screen Brightness": "Monitor Brightness Down"}
+
+def reload_daemon():
+    if os.environ.get("XDG_SESSION_TYPE") != "x11":
+        return
+    try:
+        subprocess.run(["systemctl", "--user", "restart", "plasma-kglobalaccel.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+def ensure_daemon():
+    if os.environ.get("XDG_SESSION_TYPE") != "x11":
+        return
+    try:
+        r = subprocess.run(["busctl", "--user", "status", "org.kde.kglobalaccel"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+        if r.returncode != 0:
+            subprocess.run(["systemctl", "--user", "start", "plasma-kglobalaccel.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+def brightness_fix():
+    text = "".join(read())
+    header = "[org_kde_powerdevil]\n"
+    start = text.find(header)
+    if start < 0:
+        return False
+    rest = text[start + len(header):]
+    nxt = rest.find("\n[")
+    body = rest if nxt < 0 else rest[:nxt + 1]
+    keys = {}
+    changed = False
+    for line in body.splitlines():
+        k, sep, v = line.partition("=")
+        if not sep or k not in BRIGHTNESS:
+            continue
+        parts = v.split(",")
+        if parts[0].strip() in ("", "none"):
+            parts[0] = BRIGHTNESS[k]
+            if len(parts) > 1 and parts[1].strip() in ("", "none"):
+                parts[1] = BRIGHTNESS[k]
+            keys[k] = ",".join(parts)
+            changed = True
+    if changed:
+        old = dict(line.partition("=")[::2] for line in body.splitlines() if "=" in line)
+        old.update(keys)
+        write_groups({"org_kde_powerdevil": old})
+    return changed
+
 def apply(scheme):
     write_groups(scheme_groups(scheme))
-    try:
-        subprocess.run(["kquitapp6", "kglobalaccel"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.Popen(["kglobalaccel"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    except OSError:
-        pass
+    reload_daemon()
     return scheme

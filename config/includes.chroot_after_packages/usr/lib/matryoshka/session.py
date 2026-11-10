@@ -159,6 +159,13 @@ def on_login():
         kwallet(bool(s.get("kwallet", True)))
     except Exception:
         pass
+    try:
+        import hotkeys
+        hotkeys.ensure_daemon()
+        if hotkeys.brightness_fix():
+            hotkeys.reload_daemon()
+    except Exception:
+        pass
     if s.get("hotkeys_v") != 1:
         try:
             import hotkeys
