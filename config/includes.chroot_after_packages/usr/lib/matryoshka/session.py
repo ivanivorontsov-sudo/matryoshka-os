@@ -21,12 +21,46 @@ def restore_audio():
     if sink and vol:
         C.run(["pactl", "set-sink-volume", sink, vol], timeout=8)
 
+def current_output():
+    d = pactl("get-default-sink").strip()
+    for x in sinks():
+        if x["name"] == d:
+            return d, x["port"]
+    return d, ""
+
+EE_STATE = {"key": None}
+
+def ee_ready(wait=10):
+    for _ in range(wait * 4):
+        if C.run(["busctl", "--user", "status", "com.github.wwmm.easyeffects"], timeout=3).returncode == 0:
+            return True
+        time.sleep(0.25)
+    return False
+
+def apply_profile(force=False):
+    if not shutil.which("easyeffects"):
+        return
+    s = C.settings()
+    sink, port = current_output()
+    name = audiodev.preset_for(s, sink, port)
+    key = (sink, port, name)
+    if key == EE_STATE["key"] and not force:
+        return
+    EE_STATE["key"] = key
+    if not ee_ready(1):
+        return
+    if name:
+        C.run(["easyeffects", "--load-preset", name], timeout=10)
+        C.run(["easyeffects", "--bypass", "2"], timeout=10)
+    else:
+        C.run(["easyeffects", "--bypass", "1"], timeout=10)
+
 def watch_audio():
     def loop():
         p = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, text=True)
         last = 0
         for line in p.stdout:
-            if "sink" not in line:
+            if "sink" not in line and "'change' on server" not in line:
                 continue
             now = time.time()
             if now - last < 1.2:
@@ -37,15 +71,19 @@ def watch_audio():
                 default = pactl("get-default-sink").strip()
                 audiodev.remember(data, sinks(), default)
                 audiodev.save_audio(AUDIO, data)
+                apply_profile()
             except Exception:
                 pass
     threading.Thread(target=loop, daemon=True).start()
 
 def sound_enhance():
     s = C.settings()
-    if not s.get("sound_enhance", True) or not shutil.which("easyeffects"):
+    if not shutil.which("easyeffects"):
         return
-    name = s.get("sound_preset") or "Пространство-наушники"
+    if not s.get("sound_enhance", True):
+        if C.run(["busctl", "--user", "status", "com.github.wwmm.easyeffects"], timeout=3).returncode == 0:
+            C.run(["easyeffects", "--quit"], timeout=10)
+        return
     dst = os.path.expanduser("~/.config/easyeffects/output")
     if os.path.isdir(PRESET):
         os.makedirs(dst, exist_ok=True)
@@ -54,8 +92,19 @@ def sound_enhance():
             to = os.path.join(dst, fn)
             if not os.path.exists(to):
                 shutil.copy(src, to)
-    subprocess.Popen(["easyeffects", "--gapplication-service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    subprocess.Popen(["easyeffects", "--load-preset", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    if not ee_ready(0):
+        subprocess.Popen(["easyeffects", "--gapplication-service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    if ee_ready(15):
+        apply_profile(force=True)
+
+def restart_audio():
+    C.run(["systemctl", "--user", "restart", "wireplumber", "pipewire", "pipewire-pulse"], timeout=30)
+    time.sleep(2)
+    restore_audio()
+    if C.settings().get("sound_enhance", True) and shutil.which("easyeffects"):
+        C.run(["easyeffects", "--quit"], timeout=10)
+        time.sleep(1)
+        sound_enhance()
 
 def copyq():
     if not shutil.which("copyq"):

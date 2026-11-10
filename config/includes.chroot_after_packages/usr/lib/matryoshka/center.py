@@ -1,4 +1,4 @@
-import sys, os, json, secrets, subprocess, shutil
+import sys, os, json, secrets, subprocess, shutil, threading
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QInputDialog, QApplication, QWidget, QListWidget, QStackedWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QComboBox,
                              QLineEdit, QTextBrowser, QFileDialog, QMessageBox, QFormLayout, QCheckBox, QListWidgetItem, QScrollArea, QFrame, QDialog, QDialogButtonBox)
@@ -50,8 +50,30 @@ class Center(QWidget):
             self.s["kwallet"] = x; self.save()
             import session; session.kwallet(x)
         kw.toggled.connect(kwset); v.addWidget(kw)
-        se = QCheckBox("Улучшатель звука при входе (наушники)"); se.setChecked(bool(self.s.get("sound_enhance", True)))
-        se.toggled.connect(lambda x: (self.s.update(sound_enhance=x), self.save())); v.addWidget(se)
+        v.addWidget(QLabel("<h3>Звук</h3>Обработка EasyEffects включается отдельно для наушников и для динамиков и переключается сама при смене выхода.", wordWrap=True))
+        se = QCheckBox("Обработка звука (EasyEffects)"); se.setChecked(bool(self.s.get("sound_enhance", True))); v.addWidget(se)
+        sf = QFormLayout(); v.addLayout(sf)
+        def presets():
+            d = os.path.expanduser("~/.config/easyeffects/output")
+            names = set(os.path.splitext(x)[0] for x in os.listdir(d) if x.endswith(".json")) if os.path.isdir(d) else set()
+            names |= set(os.path.splitext(x)[0] for x in os.listdir("/etc/skel/.config/easyeffects/output") if x.endswith(".json")) if os.path.isdir("/etc/skel/.config/easyeffects/output") else set()
+            return sorted(names)
+        combos = {}
+        for key, label, default in (("sound_phones", "Наушники", self.s.get("sound_preset", "Пространство-наушники")), ("sound_speakers", "Динамики ноутбука", "")):
+            cb = QComboBox(); cb.addItem("Без обработки", "")
+            for n in presets(): cb.addItem(n, n)
+            cur = self.s.get(key, default); i = cb.findData(cur); cb.setCurrentIndex(i if i >= 0 else 0)
+            sf.addRow(label, cb); combos[key] = cb
+        def sapply(*_):
+            self.s["sound_enhance"] = se.isChecked()
+            for k, cb in combos.items(): self.s[k] = cb.currentData()
+            self.save()
+            import session; threading.Thread(target=session.sound_enhance, daemon=True).start()
+        se.toggled.connect(sapply); [cb.activated.connect(sapply) for cb in combos.values()]
+        def srestart():
+            import session; threading.Thread(target=session.restart_audio, daemon=True).start()
+            QMessageBox.information(self, "Звук", "Звук перезапускается, через несколько секунд он заработает. Программы со звуком, возможно, придётся запустить заново.")
+        v.addWidget(btn("Звук завис — перезапустить звук", srestart))
     def p_launcher(self, v):
         v.addWidget(QLabel("<h2>Главный экран</h2>Любой лаунчер: встроенный СуперСмарт, обычный рабочий стол Linux, программа Windows (.exe) или Android-лаунчер (.apk). Выбор сохраняется и применяется при каждом входе. СуперСмарт сам не появляется, если выбран другой главный экран.", wordWrap=True))
         l = self.s["launcher"]; k = QComboBox()

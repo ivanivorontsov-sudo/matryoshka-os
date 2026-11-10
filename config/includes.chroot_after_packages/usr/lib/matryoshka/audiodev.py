@@ -70,3 +70,16 @@ def restore_plan(data, sinks):
             break
     vol = data.get("volumes", {}).get(vol_key(sink, port), "") if sink else ""
     return sink, vol
+
+PHONES = ("headphone", "headset", "наушник", "гарнитур", "bluez", "bluetooth", "a2dp", "usb")
+
+def output_kind(sink, port):
+    t = ("%s %s" % (sink or "", port or "")).lower()
+    return "phones" if any(k in t for k in PHONES) else "speakers"
+
+def preset_for(settings, sink, port):
+    if not settings.get("sound_enhance", True):
+        return ""
+    if output_kind(sink, port) == "phones":
+        return settings.get("sound_phones", settings.get("sound_preset", "Пространство-наушники"))
+    return settings.get("sound_speakers", "")
