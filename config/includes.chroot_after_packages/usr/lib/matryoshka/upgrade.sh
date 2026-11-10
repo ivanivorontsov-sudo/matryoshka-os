@@ -92,8 +92,14 @@ if [ -s $W/packages.list ]; then
       elif [ -n "$debs" ] && DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --allow-downgrades -o Dpkg::Options::=--force-confnew $debs >>/tmp/matryoshka-apt.log 2>&1; then
         say "Программы установлены из файлов: $(echo $debs | wc -w)"
       else
-        echo "ВНИМАНИЕ: часть программ не установилась (журнал /tmp/matryoshka-apt.log):"; tail -n 10 /tmp/matryoshka-apt.log
         DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --no-download -f >>/tmp/matryoshka-apt.log 2>&1
+        dpkg --configure -a >/dev/null 2>&1
+        n=0; bad=""
+        for p in $ok; do
+          if DEBIAN_FRONTEND=noninteractive apt-get "${AO[@]}" install -y --allow-downgrades -o Dpkg::Options::=--force-confnew "$p" >>/tmp/matryoshka-apt.log 2>&1; then n=$((n + 1)); else bad="$bad $p"; fi
+        done
+        say "Программы установлены по одной: $n"
+        [ -n "$bad" ] && echo "ВНИМАНИЕ: без сети не установились (поставятся сами при подключении к интернету):$bad"
         dpkg --configure -a >/dev/null 2>&1
       fi
     else echo "ВНИМАНИЕ: встроенное хранилище не читается"; fi
