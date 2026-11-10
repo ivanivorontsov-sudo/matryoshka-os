@@ -12,6 +12,17 @@ cams() {
   done
 }
 pick() { cams | sort | head -1; }
+fixperm() {
+  M=/usr/lib/security/howdy/models
+  [ -d "$M" ] || return 0
+  chown root:root "$M"; chmod 755 "$M"
+  for f in "$M"/*.dat; do
+    [ -f "$f" ] || continue
+    u=$(basename "$f" .dat)
+    g=$(id -gn "$u" 2>/dev/null) || { chown root:root "$f"; chmod 600 "$f"; continue; }
+    chown "root:$g" "$f"; chmod 640 "$f"
+  done
+}
 stable() {
   for l in /dev/v4l/by-path/* /dev/v4l/by-id/*; do
     [ -L "$l" ] && [ "$(readlink -f "$l")" = "$1" ] && { echo "$l"; return; }
@@ -25,6 +36,7 @@ setdev() {
 }
 case "$1" in
   cameras) cams;;
+  fixperm) fixperm;;
   fixpath)
     cur=$(sed -n 's/^device_path = //p' "$C")
     case "$cur" in /dev/v4l/*) [ -e "$cur" ] && exit 0;; esac
@@ -43,14 +55,15 @@ case "$1" in
     if [ "$1" = rgb ]; then sed -i 's/^dark_threshold = .*/dark_threshold = 80/' "$C"; echo "ВНИМАНИЕ: инфракрасной камеры нет, используется обычная ($dev). Такую защиту можно обмануть фотографией. Пароль работает всегда."; else echo "Инфракрасная камера: $dev"; fi
     [ -x "$AUTH" ] || { echo "Нет $AUTH (нужна Матрёшка 18.6)"; exit 1; }
     "$AUTH" face on >/dev/null || exit 1
+    fixperm
     echo "Вход по лицу включён для экрана входа. Введённый пароль проверяется сразу, без ожидания камеры. Для входа по лицу оставьте поле пароля пустым и нажмите Enter. Добавьте лицо: matryoshka-face add";;
   off) if [ -x "$AUTH" ]; then "$AUTH" face off >/dev/null; else for p in sddm kde; do [ -f /etc/pam.d/$p ] && sed -i '/howdy/d' /etc/pam.d/$p; done; fi; echo "Вход по лицу выключен";;
-  add) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || { echo "matryoshka-face add ПОЛЬЗОВАТЕЛЬ"; exit 1; }; grep -q "^device_path = /dev" "$C" || "$0" on >/dev/null; SUDO_USER="$u" howdy -U "$u" add -y;;
-  import) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] && [ -f "$3" ] || exit 1; python3 /usr/lib/matryoshka-face/import.py "$u" "$3";;
-  clear) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; SUDO_USER="$u" howdy -U "$u" clear -y;;
+  add) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || { echo "matryoshka-face add ПОЛЬЗОВАТЕЛЬ"; exit 1; }; grep -q "^device_path = /dev" "$C" || "$0" on >/dev/null; SUDO_USER="$u" howdy -U "$u" add -y; r=$?; fixperm; exit $r;;
+  import) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] && [ -f "$3" ] || exit 1; python3 /usr/lib/matryoshka-face/import.py "$u" "$3"; r=$?; fixperm; exit $r;;
+  clear) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; SUDO_USER="$u" howdy -U "$u" clear -y; r=$?; fixperm; exit $r;;
   test) howdy test;;
   check) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || exit 1; SUDO_USER="$u" howdy -U "$u" list >/dev/null 2>&1 || { echo "Лицо ещё не записано"; exit 2; }; echo "Смотрите в камеру..."; if PYTHONWARNINGS=ignore timeout 30 python3 /lib/security/howdy/compare.py "$u" >/dev/null 2>&1; then echo "Лицо узнано"; else echo "Лицо не узнано, попробуйте записать ещё снимок"; exit 3; fi;;
   list) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; SUDO_USER="$u" howdy -U "$u" list 2>&1 | grep -v WARN;;
   status) grep "^device_path" "$C"; grep -l howdy /etc/pam.d/* 2>/dev/null;;
-  *) echo "matryoshka-face on|off|fixpath|add [пользователь]|import пользователь файл|clear|check|list|cameras|test|status"; exit 1;;
+  *) echo "matryoshka-face on|off|fixpath|fixperm|add [пользователь]|import пользователь файл|clear|check|list|cameras|test|status"; exit 1;;
 esac
