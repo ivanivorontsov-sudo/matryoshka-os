@@ -164,9 +164,9 @@ case "$1" in
   prep)
     PD=/etc/systemd/system/fprintd.service.d/62-matryoshka-gxfp-prep.conf
     case "$2" in
-      hp) rm -f "$PD";;
-      raw) mkdir -p "${PD%/*}"; printf '[Service]\nEnvironment=FP_GXFP_PREP=raw\n' > "$PD";;
-      *) [ -f "$PD" ] && echo raw || echo hp; exit 0;;
+      raw) rm -f "$PD";;
+      hp) mkdir -p "${PD%/*}"; printf '[Service]\nEnvironment=FP_GXFP_PREP=hp\n' > "$PD";;
+      *) grep -q 'FP_GXFP_PREP=hp' "$PD" 2>/dev/null && echo hp || echo raw; exit 0;;
     esac
     systemctl daemon-reload; systemctl try-restart fprintd 2>/dev/null; echo "Обработка снимка: $2. Отпечатки нужно добавить заново.";;
   layout)

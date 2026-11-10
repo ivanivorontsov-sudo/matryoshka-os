@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-0.1.10}; O=${2:-.}; KV=${KV:-6.12.115+deb13.1-amd64}; D=$(dirname "$(readlink -f "$0")")
+V=${1:-0.1.11}; O=${2:-.}; KV=${KV:-6.12.115+deb13.1-amd64}; D=$(dirname "$(readlink -f "$0")")
 S=${GXFP_SRC:-/workspace/gxfp}
 [ -d "$S" ] || git clone -q https://github.com/Metrohan/gxfp5130-linux "$S"
 git -C "$S" checkout -q aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23
@@ -13,6 +13,7 @@ patch -d "$S" -p1 -s < "$D/dump-images.patch"
 patch -d "$S" -p1 -s < "$D/threshold-score.patch"
 patch -d "$S" -p1 -s < "$D/image-prep.patch"
 patch -d "$S" -p1 -s < "$D/layout-delay.patch"
+patch -d "$S" -p1 -s < "$D/match-defaults.patch"
 grep -q "bz3_threshold = 12" "$S/libfprint/libfprint/drivers/gxfp.c"
 make -C "$S/kernel" KERNELDIR=/usr/src/linux-headers-$KV -j4 >/dev/null
 cmake -S "$S/userspace" -B "$S/build/userspace" -DCMAKE_BUILD_TYPE=Release >/dev/null
