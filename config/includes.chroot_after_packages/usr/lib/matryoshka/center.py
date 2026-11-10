@@ -1,7 +1,7 @@
 import sys, os, json, secrets, subprocess, shutil
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (QInputDialog, QApplication, QWidget, QListWidget, QStackedWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QComboBox,
-                             QLineEdit, QTextBrowser, QFileDialog, QMessageBox, QFormLayout, QCheckBox, QListWidgetItem)
+                             QLineEdit, QTextBrowser, QFileDialog, QMessageBox, QFormLayout, QCheckBox, QListWidgetItem, QScrollArea, QFrame, QDialog, QDialogButtonBox)
 import common as C
 
 def btn(t, f):
@@ -16,10 +16,12 @@ class Center(QWidget):
         h.addWidget(self.nav); h.addWidget(self.stack, 1)
         for name, f in (("🎨 Вид и режим", self.p_look), ("🏠 Главный экран", self.p_launcher), ("🌐 Сеть", self.p_net), ("🛡 Защита", self.p_av),
                         ("📦 Программы", self.p_apps), ("🔌 Драйверы", self.p_drivers), ("♻ Восстановление", self.p_restore),
-                        ("💽 Установка на диск", self.p_install), ("🔒 Приватность", self.p_privacy), ("👆 Вход по пальцу и лицу", self.p_bio)):
-            self.nav.addItem(name); w = QWidget(); v = QVBoxLayout(w); v.setAlignment(Qt.AlignmentFlag.AlignTop); f(v); self.stack.addWidget(w)
+                        ("💽 Установка на диск", self.p_install), ("🔒 Приватность", self.p_privacy), ("👆 Вход по пальцу и лицу", self.p_bio), ("👥 Пользователи", self.p_users)):
+            self.nav.addItem(name); w = QWidget(); v = QVBoxLayout(w); v.setAlignment(Qt.AlignmentFlag.AlignTop); f(v)
+            sa = QScrollArea(); sa.setWidgetResizable(True); sa.setFrameShape(QFrame.Shape.NoFrame); sa.setWidget(w); self.stack.addWidget(sa)
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex); self.nav.setCurrentRow(0)
         if len(sys.argv) > 1 and sys.argv[1].isdigit(): self.nav.setCurrentRow(int(sys.argv[1]))
+        if len(sys.argv) > 1 and sys.argv[1] == "users": self.nav.setCurrentRow(self.nav.count() - 1)
     def save(self): C.save("settings", self.s)
     def closeEvent(self, e):
         C.cancel_tasks(self); e.accept()
@@ -304,6 +306,59 @@ class Center(QWidget):
         v.addWidget(btn("2. Включить вход по лицу", lambda: r("face-login-on"))); v.addWidget(btn("Выключить вход по лицу", lambda: r("face-login-off")))
         fl = QCheckBox("Узнавать лицо на экране блокировки сразу, без Enter"); fl.setChecked(st.get("FACE_LOCK", st.get("FACE_LOGIN", "0")) == "1"); fl.toggled.connect(lambda x: r("face-lock-on" if x else "face-lock-off")); v.addWidget(fl)
         v.addWidget(btn("Проверить, узнаёт ли меня", lambda: r("face-check"))); v.addWidget(btn("Удалить снимки лица", lambda: r("face-clear")))
+    def p_users(self, v):
+        v.addWidget(QLabel("<h2>Пользователи</h2>Добавление пользователя с именем и типом учётной записи, смена типа, запись лица и отпечатка для каждого пользователя. Нужны права администратора.", wordWrap=True))
+        lst = QListWidget(); lst.setMinimumHeight(180); v.addWidget(lst)
+        o = self.out(v)
+        import pwd, grp
+        def users():
+            try: adm = set(grp.getgrnam("sudo").gr_mem)
+            except KeyError: adm = set()
+            return [(p.pw_name, p.pw_gecos.split(",")[0], p.pw_name in adm) for p in sorted(pwd.getpwall(), key=lambda p: p.pw_uid) if p.pw_uid >= 1000 and p.pw_uid < 60000 and not p.pw_shell.endswith(("nologin", "false"))]
+        def fill():
+            lst.clear()
+            for login, name, admin in users():
+                it = QListWidgetItem("%s  —  %s  (%s)" % (name or login, login, "администратор" if admin else "обычный")); it.setData(256, login); lst.addItem(it)
+        def cur():
+            it = lst.currentItem()
+            if not it: QMessageBox.information(self, "Пользователи", "Выберите пользователя в списке."); return None
+            return it.data(256)
+        def res(x):
+            o.setPlainText((x.stdout + x.stderr)[-2000:] or "готово"); fill()
+        def add():
+            d = QDialog(self); d.setWindowTitle("Новый пользователь"); f = QFormLayout(d)
+            nm = QLineEdit(); lg = QLineEdit(); pw = QLineEdit(); pw2 = QLineEdit()
+            pw.setEchoMode(QLineEdit.EchoMode.Password); pw2.setEchoMode(QLineEdit.EchoMode.Password)
+            tp = QComboBox(); tp.addItem("Обычный", "standard"); tp.addItem("Администратор", "admin")
+            def auto(t):
+                if not lg.isModified():
+                    lg.setText("".join(ch for ch in "".join(C.TR.get(c, c) for c in t.lower().split(" ")[0]) if ch.isascii() and (ch.isalnum() or ch in "-_"))[:32])
+            nm.textChanged.connect(auto)
+            f.addRow("Полное имя", nm); f.addRow("Имя для входа", lg); f.addRow("Тип учётной записи", tp); f.addRow("Пароль", pw); f.addRow("Пароль ещё раз", pw2)
+            bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel); bb.accepted.connect(d.accept); bb.rejected.connect(d.reject); f.addRow(bb)
+            if d.exec() != QDialog.DialogCode.Accepted: return
+            if pw.text() != pw2.text() or not pw.text(): QMessageBox.warning(self, "Пользователи", "Пароли пустые или не совпадают."); return
+            res(C.root("user-add", lg.text().strip(), nm.text().strip(), tp.currentData(), inp=pw.text() + "\n"))
+        def rename():
+            u = cur()
+            if not u: return
+            t, ok = QInputDialog.getText(self, "Имя", "Полное имя для %s:" % u)
+            if ok: res(C.root("user-name", u, t.strip()))
+        def settype(t):
+            u = cur()
+            if u: res(C.root("user-type", u, t))
+        def face():
+            u = cur()
+            if u: subprocess.Popen(["matryoshka-face-gui", "--user", u])
+        def finger():
+            u = cur()
+            if not u: return
+            if u == os.environ.get("USER"): subprocess.Popen(["konsole", "--hold", "-e", "fprintd-enroll"])
+            else: subprocess.Popen(["konsole", "--hold", "-e", "pkexec", "fprintd-enroll", u])
+        for t, fn in (("Добавить пользователя…", add), ("Изменить полное имя…", rename), ("Сделать администратором", lambda: settype("admin")), ("Сделать обычным пользователем", lambda: settype("standard")),
+                      ("Записать лицо для выбранного пользователя", face), ("Записать отпечаток для выбранного пользователя", finger), ("Пользователи KDE (пароль, аватар, удаление)", lambda: subprocess.Popen(["systemsettings", "kcm_users"]))):
+            v.addWidget(btn(t, fn))
+        fill()
     def p_privacy(self, v):
         v.addWidget(QLabel("<h2>Приватность</h2>Здесь видно всё, что может ходить в сеть. Без вашего включения сети не работает ничего.", wordWrap=True))
         o = self.out(v)

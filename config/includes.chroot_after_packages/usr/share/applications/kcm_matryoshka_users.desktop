@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Matryoshka Users
+Name[ru]=Пользователи Матрёшки
+GenericName[ru]=Пользователи, лицо и отпечаток
+Comment[ru]=Добавить пользователя с именем и типом учётной записи, записать лицо и отпечаток
+Icon=system-users
+Exec=matryoshka-center users
+Categories=Qt;KDE;Settings;X-KDE-settings-system;
+X-KDE-System-Settings-Parent-Category=system-administration
+Keywords=users;accounts;face;fingerprint
+Keywords[ru]=пользователи;учётная запись;администратор;лицо;отпечаток
+OnlyShowIn=KDE;

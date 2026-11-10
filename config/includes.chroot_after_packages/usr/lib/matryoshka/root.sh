@@ -35,6 +35,36 @@ case "$cmd" in
   set-password)
     IFS= read -r pw
     if [ -z "$pw" ]; then passwd -d "$U"; else printf '%s:%s\n' "$U" "$pw" | chpasswd; fi ;;
+  user-add|user-type|user-name|user-info)
+    login="${1:-}"
+    [[ "$login" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "Имя входа: латинские строчные буквы, цифры, - и _, до 32 символов"; exit 2; }
+    case "$cmd" in
+      user-add)
+        name="${2:-}"; type="${3:-standard}"
+        [[ "$name" != *[:,=]* ]] && [ ${#name} -le 64 ] || { echo "В имени нельзя использовать : , ="; exit 2; }
+        id "$login" >/dev/null 2>&1 && { echo "Пользователь $login уже есть"; exit 3; }
+        IFS= read -r pw
+        [ ${#pw} -ge 1 ] || { echo "Нужен пароль"; exit 2; }
+        useradd -m -U -s /bin/bash -c "$name" -K HOME_MODE=0700 "$login" || exit 1
+        printf '%s:%s\n' "$login" "$pw" | chpasswd || { userdel -r "$login" 2>/dev/null; exit 1; }
+        for g in audio video plugdev netdev bluetooth users render input lpadmin scanner cdrom; do getent group "$g" >/dev/null && usermod -aG "$g" "$login"; done
+        [ "$type" = admin ] && usermod -aG sudo "$login"
+        echo "Создан пользователь $login ($name), тип: $([ "$type" = admin ] && echo администратор || echo обычный)" ;;
+      user-type)
+        id "$login" >/dev/null 2>&1 || exit 3
+        if [ "${2:-}" = admin ]; then usermod -aG sudo "$login"; /usr/lib/matryoshka/admin-groups.sh >/dev/null 2>&1 || true; echo "$login — администратор"
+        else
+          [ "$login" = "$U" ] && { echo "Нельзя снять права администратора с себя"; exit 4; }
+          n=$(getent group sudo | cut -d: -f4 | tr ',' '\n' | grep -vxc "$login" || true)
+          [ "$n" -ge 1 ] || { echo "Должен остаться хотя бы один администратор"; exit 4; }
+          gpasswd -d "$login" sudo >/dev/null 2>&1; echo "$login — обычный пользователь"
+        fi ;;
+      user-name)
+        name="${2:-}"; [[ "$name" != *[:,=]* ]] && [ ${#name} -le 64 ] || exit 2
+        usermod -c "$name" "$login" && echo "Имя сохранено: $name" ;;
+      user-info) id "$login"; getent passwd "$login" | cut -d: -f5 ;;
+    esac
+    systemctl try-restart accounts-daemon.service 2>/dev/null || true ;;
   firstrun-done) mkdir -p /var/lib/matryoshka; touch /var/lib/matryoshka/firstrun.done ;;
   set-name) n="$1"; [ ${#n} -le 64 ] && usermod -c "$n" "$U" ;;
   autologin)
