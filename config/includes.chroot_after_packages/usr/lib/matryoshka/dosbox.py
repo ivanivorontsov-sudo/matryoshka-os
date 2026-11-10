@@ -1,4 +1,4 @@
-import glob, os, shutil, subprocess, sys
+import glob, os, shutil, subprocess, sys, zlib
 
 def q(path):
     return path.replace('"', "").replace("\\", "/")
@@ -13,7 +13,7 @@ def run_line(name):
 def session_text(program_dir, program, dos_root, home, shared, print_dir):
     program_dir, dos_root, home, shared, print_dir = (q(p) for p in (program_dir, dos_root, home, shared, print_dir))
     name = program.replace('"', "")
-    run = run_line(name) if name else "echo DOS готов. Диски: C программа, D DOS, E дом, F общее.\n"
+    run = run_line(name) if name else "echo C: program, D: DOS, E: home, F: shared\n"
     return """[sdl]
 fullscreen=false
 autolock=false
@@ -87,16 +87,40 @@ dos=high,umb
 numlock=off
 [autoexec]
 @echo off
-mount c "{program_dir}" -freesize 2048
-mount d "{dos_root}" -freesize 2048
-mount e "{home}" -freesize 2048
-mount f "{shared}" -freesize 2048
+mount -q c "{program_dir}" -freesize 2048
+mount -q d "{dos_root}" -freesize 2048
+mount -q e "{home}" -freesize 2048
+mount -q f "{shared}" -freesize 2048
 set TEMP=C:\\
 set TMP=C:\\
 set BLASTER=A220 I7 D1 H5 P330 T6
 path c:\\;d:\\;z:\\;z:\\system;z:\\bin;z:\\dos;z:\\4dos;z:\\textutil
 c:
 {run}""".format(program_dir=program_dir, dos_root=dos_root, home=home, shared=shared, print_dir=print_dir, run=run)
+
+def link_base(home):
+    for b in (os.path.join(home, ".config", "matryoshka", "dos", "links"), os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "matryoshka-dos-%d" % os.getuid())):
+        if b.isascii() and " " not in b:
+            return b
+    return "/tmp/matryoshka-dos-%d" % os.getuid()
+
+def ascii_link(base, key, target):
+    if target.isascii() and " " not in target and '"' not in target:
+        return target
+    os.makedirs(base, exist_ok=True)
+    link = os.path.join(base, key)
+    if os.path.islink(link) and os.readlink(link) == target:
+        return link
+    tmp = link + ".new"
+    if os.path.lexists(tmp):
+        os.remove(tmp)
+    os.symlink(target, tmp)
+    os.replace(tmp, link)
+    return link
+
+def dos_name(name):
+    base, ext = os.path.splitext(name)
+    return name.isascii() and " " not in name and 0 < len(base) <= 8 and len(ext) <= 4
 
 def conf_text(drive, folder, program):
     return session_text(folder, program, drive, drive, drive, drive + "/Печать")
@@ -146,14 +170,29 @@ def launch(program=None, home=None, timeout=None):
         name = ""
         tag = "shell"
     conf_dir = os.path.join(home, ".config", "matryoshka", "dos")
+    label = tag
+    if not tag.isascii() or " " in tag:
+        tag = "prog%08x" % (zlib.crc32(program.encode()) if program else 0)
     conf = os.path.join(conf_dir, tag + ".conf")
-    write_conf(conf, session_text(program_dir, name, dos_root, home, shared, prints))
+    base = os.path.join(link_base(home), tag)
+    text = session_text(ascii_link(base, "c", program_dir), name, ascii_link(base, "d", dos_root), ascii_link(base, "e", home), ascii_link(base, "f", shared), ascii_link(base, "p", prints))
+    if name and not dos_name(name):
+        ext = os.path.splitext(name)[1].upper()
+        if ext not in (".EXE", ".COM", ".BAT"):
+            ext = ".EXE"
+        run_dir = os.path.join(base, "run")
+        os.makedirs(run_dir, exist_ok=True)
+        for old in os.listdir(run_dir):
+            os.remove(os.path.join(run_dir, old))
+        os.symlink(program, os.path.join(run_dir, "RUN" + ext))
+        text = text.replace("c:\n" + run_line(name), "mount -q y \"%s\"\nc:\n%s" % (run_dir, run_line("y:\\RUN" + ext)), 1)
+    write_conf(conf, text)
     desk = next((p for p in (os.path.join(home, "Рабочий стол"), os.path.join(home, "Desktop")) if os.path.isdir(p)), None)
     if desk and name:
-        lf = os.path.join(desk, tag + " (DOS).desktop")
+        lf = os.path.join(desk, label + " (DOS).desktop")
         if not os.path.exists(lf):
             with open(lf, "w", encoding="utf-8") as f:
-                f.write("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -conf \"%s\"\nIcon=dosbox-x\n" % (tag, conf))
+                f.write("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -conf \"%s\"\nIcon=dosbox-x\n" % (label, conf))
             os.chmod(lf, 0o755)
     env = dict(os.environ, LANG=os.environ.get("LANG") or "ru_RU.UTF-8")
     proc = subprocess.Popen(["dosbox-x", "-nopromptfolder", "-fastlaunch", "-conf", conf], env=env)

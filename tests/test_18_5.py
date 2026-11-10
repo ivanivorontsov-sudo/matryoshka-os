@@ -30,6 +30,19 @@ class T(unittest.TestCase):
         self.assertEqual(archiveinst.classify(["Makefile", "main.c"]), "source")
         self.assertEqual(archiveinst.classify([]), "empty")
 
+    def test_dos_ascii_links(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as h:
+            d = os.path.join(h, "Программы")
+            os.makedirs(d)
+            link = dosbox.ascii_link(os.path.join(h, "l"), "c", d)
+            self.assertTrue(link.isascii())
+            self.assertEqual(os.path.realpath(link), os.path.realpath(d))
+            self.assertEqual(dosbox.ascii_link(os.path.join(h, "l"), "e", "/home/ivan"), "/home/ivan")
+        self.assertTrue(dosbox.dos_name("NC.EXE"))
+        self.assertFalse(dosbox.dos_name("ПРОГА.EXE"))
+        self.assertFalse(dosbox.dos_name("LONGNAME1.EXE"))
+
     def test_dos_conf(self):
         text = dosbox.session_text("/home/ivan/DOS/CAD", "FESTA.EXE", "/home/ivan/DOS", "/home/ivan", "/home/ivan/Общее", "/home/ivan/DOS/Печать")
         self.assertIn("cycles=max", text)
@@ -38,8 +51,8 @@ class T(unittest.TestCase):
         self.assertIn("country=7,866", text)
         self.assertIn("printoutput=ps", text)
         self.assertIn("mouse_emulation=always", text)
-        self.assertIn('mount c "/home/ivan/DOS/CAD"', text)
-        self.assertIn('mount e "/home/ivan"', text)
+        self.assertIn('mount -q c "/home/ivan/DOS/CAD"', text)
+        self.assertIn('mount -q e "/home/ivan"', text)
         self.assertIn("FESTA.EXE", text)
         self.assertNotIn("\nexit", text.split("[autoexec]")[-1])
         auto = text.split("[autoexec]")[-1]
