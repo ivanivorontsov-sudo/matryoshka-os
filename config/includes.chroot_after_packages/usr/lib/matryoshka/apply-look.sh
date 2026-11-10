@@ -28,5 +28,5 @@ if [ -f "$t" ]; then
   fi
 fi
 mkdir -p /etc
-printf '18.5\n' > /etc/matryoshka-version
+[ -s /usr/share/matryoshka/VERSION ] && [ ! -s /etc/matryoshka-version ] && cp /usr/share/matryoshka/VERSION /etc/matryoshka-version
 exit 0
