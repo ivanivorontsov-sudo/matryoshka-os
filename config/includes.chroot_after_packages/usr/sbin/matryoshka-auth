@@ -2,6 +2,7 @@
 set -u
 CONF=/etc/matryoshka/auth.conf
 STATE=/var/lib/matryoshka/auth
+GREETER_CONF=/etc/sddm.conf.d/10-matryoshka-greeter.conf
 HOWDY=/lib/security/howdy/pam.py
 FP_LOCK_ARGS="max-tries=5 timeout=-1"
 FP_LOGIN_ARGS="max-tries=3 timeout=15"
@@ -51,7 +52,7 @@ migrate() {
   grep -qs pam_fprintd /etc/pam.d/sudo && fs=1
   grep -qs howdy /etc/pam.d/sddm && fc=1
   mkdir -p "$(dirname "$CONF")"
-  printf 'FINGER_LOCK=%s\nFINGER_LOGIN=%s\nFINGER_SUDO=%s\nFINGER_POLKIT=%s\nFACE_LOGIN=%s\n' "$lock" "$fl" "$fs" "$fa" "$fc" > "$CONF"
+  printf 'FINGER_LOCK=%s\nFINGER_LOGIN=%s\nFINGER_SUDO=%s\nFINGER_POLKIT=%s\nFACE_LOGIN=%s\nGREETER_RU=1\n' "$lock" "$fl" "$fs" "$fa" "$fc" > "$CONF"
 }
 
 setkey() {
@@ -117,18 +118,33 @@ apply_admin() {
   for name in common-auth su login sudo-i; do [ -f "/etc/pam.d/$name" ] && sed -i "/howdy/d" "/etc/pam.d/$name"; done
 }
 
+apply_greeter() {
+  local l=ru_RU.UTF-8
+  if [ "$(get GREETER_RU 1)" != 1 ]; then rm -f "$GREETER_CONF"; return 0; fi
+  if ! locale -a 2>/dev/null | grep -qix 'ru_RU.utf8'; then
+    if [ -f /etc/locale.gen ]; then
+      grep -q '^ru_RU.UTF-8 UTF-8' /etc/locale.gen || { sed -i 's/^#[[:space:]]*\(ru_RU.UTF-8 UTF-8\)/\1/' /etc/locale.gen; grep -q '^ru_RU.UTF-8 UTF-8' /etc/locale.gen || echo 'ru_RU.UTF-8 UTF-8' >> /etc/locale.gen; }
+      command -v locale-gen >/dev/null && locale-gen >/dev/null 2>&1
+    fi
+  fi
+  mkdir -p "$(dirname "$GREETER_CONF")"
+  printf '[General]\nGreeterEnvironment=LANG=%s,LANGUAGE=ru_RU:ru,LC_MESSAGES=%s\n' "$l" "$l" > "$GREETER_CONF.new"
+  if cmp -s "$GREETER_CONF.new" "$GREETER_CONF"; then rm -f "$GREETER_CONF.new"; else mv -f "$GREETER_CONF.new" "$GREETER_CONF"; chmod 644 "$GREETER_CONF"; fi
+}
+
 apply() {
   migrate
   apply_sddm
   apply_lock
   apply_admin
+  apply_greeter
   return 0
 }
 
 status() {
   migrate
   local k
-  for k in FINGER_LOCK FINGER_LOGIN FINGER_SUDO FINGER_POLKIT FACE_LOGIN; do echo "$k=$(get $k 0)"; done
+  for k in FINGER_LOCK FINGER_LOGIN FINGER_SUDO FINGER_POLKIT FACE_LOGIN GREETER_RU; do echo "$k=$(get $k 0)"; done
   enrolled && echo "отпечатки записаны: да" || echo "отпечатки записаны: нет"
   grep -l -E 'pam_fprintd|howdy|matryoshka-login' /etc/pam.d/* 2>/dev/null | sed 's/^/PAM: /'
 }
@@ -148,5 +164,6 @@ case "${1:-}" in
     v=$(onoff "${2:-}"); setkey FINGER_POLKIT "$v"; apply
     [ "$v" = 1 ] && echo "Окна запроса прав администратора принимают отпечаток. Если палец не приложить, через 10 секунд можно ввести пароль." || echo "Окна запроса прав снова спрашивают только пароль";;
   face) v=$(onoff "${2:-}"); setkey FACE_LOGIN "$v"; apply; echo готово;;
-  *) echo "matryoshka-auth apply|status|finger on|off|finger-lock on|off|finger-login on|off|finger-sudo on|off|finger-polkit on|off|face on|off"; exit 1;;
+  greeter-ru) v=$(onoff "${2:-}"); setkey GREETER_RU "$v"; apply; echo готово;;
+  *) echo "matryoshka-auth apply|status|finger on|off|finger-lock on|off|finger-login on|off|finger-sudo on|off|finger-polkit on|off|face on|off|greeter-ru on|off"; exit 1;;
 esac
