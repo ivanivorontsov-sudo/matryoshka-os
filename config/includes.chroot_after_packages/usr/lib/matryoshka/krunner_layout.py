@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-import os, sys
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+import os, subprocess, sys
 import dbus
 import dbus.service
 from dbus.mainloop.glib import DBusGMainLoop
@@ -45,7 +44,7 @@ class Runner(dbus.service.Object):
             if s <= 0:
                 continue
             mid = "app:" + a["file"]
-            props = {"actions": dbus.Array(["uninstall"], signature="s")}
+            props = {"actions": dbus.Array(["info", "uninstall"], signature="s")}
             out.append((mid, a["name"], a.get("icon") or "application-x-executable", 100, float(s) / 100.0, props))
             if len(out) >= 8:
                 break
@@ -62,18 +61,15 @@ class Runner(dbus.service.Object):
             return
         if mid.startswith("app:"):
             path = mid[4:]
-            if act == "uninstall":
-                r = C.run(["dpkg", "-S", path])
-                pkg = r.stdout.split(":")[0].strip()
-                if pkg:
-                    C.root("remove-app", pkg)
+            if act in ("uninstall", "info"):
+                subprocess.Popen(["python3", "/usr/lib/matryoshka/appinfo.py", "--remove" if act == "uninstall" else "--info", path], start_new_session=True, env=C.clean_env())
                 return
             apps = [a for a in C.desktop_apps() if a["file"] == path]
             if apps:
                 C.launch(apps[0])
     @dbus.service.method("org.kde.krunner1", in_signature="", out_signature="a(sss)")
     def Actions(self):
-        return [("uninstall", "Удалить", "edit-delete")]
+        return [("info", "О приложении и версия", "help-about"), ("uninstall", "Удалить", "edit-delete")]
 
 def main():
     DBusGMainLoop(set_as_default=True)

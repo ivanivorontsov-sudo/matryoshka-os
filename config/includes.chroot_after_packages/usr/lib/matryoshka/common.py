@@ -187,10 +187,13 @@ def notify(title, text):
     run(["notify-send", "-a", "Матрёшка", title, text]) if os.path.exists("/usr/bin/notify-send") else run(["kdialog", "--title", title, "--passivepopup", text, "6"])
 
 def desktop_apps():
-    apps, seen = [], set()
-    dirs = ["/usr/share/applications", os.path.join(HOME, ".local/share/applications")]
+    apps, seen, ids = [], set(), set()
+    dirs = [os.path.join(HOME, ".local/share/applications"), "/usr/local/share/applications", "/usr/share/applications", os.path.join(HOME, ".local/share/flatpak/exports/share/applications"), "/var/lib/flatpak/exports/share/applications"]
     for d in dirs:
         for p in sorted(glob.glob(d + "/*.desktop")):
+            if os.path.basename(p) in ids:
+                continue
+            ids.add(os.path.basename(p))
             c = configparser.ConfigParser(interpolation=None, strict=False)
             try:
                 c.read(p, encoding="utf-8")
@@ -205,13 +208,22 @@ def desktop_apps():
             if not name or name in seen:
                 continue
             seen.add(name)
-            apps.append(dict(name=name, exec=e.get("Exec", ""), icon=e.get("Icon", ""), cat=e.get("Categories", ""), file=p,
+            apps.append(dict(name=name, exec=e.get("Exec", ""), icon=e.get("Icon", ""), cat=e.get("Categories", ""), file=p, terminal=e.get("Terminal", "false") == "true", path=e.get("Path", ""),
                              kw=(e.get("Keywords[ru]", "") + ";" + e.get("Keywords", "") + ";" + (e.get("GenericName[ru]") or e.get("GenericName", ""))).lower()))
     return apps
 
+def clean_env():
+    env = dict(os.environ)
+    if env.get("QT_QPA_PLATFORM") == "offscreen":
+        env.pop("QT_QPA_PLATFORM")
+    return env
+
 def launch(app):
     cmd = re.sub(r"%[a-zA-Z]", "", app["exec"]).strip()
-    subprocess.Popen(shlex.split(cmd), start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    args = shlex.split(cmd)
+    if app.get("terminal"):
+        args = ["konsole", "-e"] + args
+    subprocess.Popen(args, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=clean_env(), cwd=app.get("path") or HOME)
 
 EN = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`"
 RU = "йцукенгшщзхъфывапролджэячсмитьбюё"
