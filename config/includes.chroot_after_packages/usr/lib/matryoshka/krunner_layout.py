@@ -11,7 +11,7 @@ KCMS = (
     ("kcm_users", "пользователи", "users accounts fingerprint лицо отпечаток"),
     ("kcm_keyboard", "клавиатура", "keyboard layout раскладка"),
     ("kcm_soundtheme", "звук", "sound audio volume наушники"),
-    ("kcm_networkmanagement", "сеть", "network wifi vpn"),
+    ("kcm_networkmanagement", "сеть", "network wifi"),
     ("kcm_powerdevilprofilesconfig", "питание", "power battery батарея"),
     ("kcm_kscreen", "экран", "display monitor экран"),
     ("kcm_lookandfeel", "оформление", "theme look appearance вид"),

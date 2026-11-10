@@ -134,8 +134,6 @@ marble
 mokutil
 needrestart
 network-manager
-network-manager-openvpn
-network-manager-strongswan
 ntfs-3g
 okular
 opensbi
@@ -228,7 +226,6 @@ vlc
 whiptail
 wine
 wine64
-wireguard-tools
 wireplumber
 wl-clipboard
 xclip
@@ -265,7 +262,6 @@ kio-admin
 appstream
 rsync
 gnupg
-openvpn
 dislocker
 libblockdev-crypto3
 udisks2
