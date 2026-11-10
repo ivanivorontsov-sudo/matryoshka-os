@@ -1,0 +1,152 @@
+#!/bin/bash
+set -u
+CONF=/etc/matryoshka/auth.conf
+STATE=/var/lib/matryoshka/auth
+HOWDY=/lib/security/howdy/pam.py
+FP_LOCK_ARGS="max-tries=5 timeout=-1"
+FP_LOGIN_ARGS="max-tries=3 timeout=15"
+FP_ADMIN_ARGS="max-tries=2 timeout=10"
+[ "$(id -u)" = 0 ] || exec pkexec "$0" "$@"
+
+mod() {
+  local d
+  for d in /usr/lib/x86_64-linux-gnu/security /lib/x86_64-linux-gnu/security /usr/lib/security /lib/security; do
+    [ -e "$d/$1" ] && return 0
+  done
+  return 1
+}
+
+vendor() {
+  if [ -f "/usr/lib/pam.d/$1" ]; then echo "/usr/lib/pam.d/$1"; elif [ -f "/etc/pam.d/$1" ] && ! owned "$1"; then echo "/etc/pam.d/$1"; fi
+}
+
+owned() { [ -f "$STATE/owned" ] && grep -qx "$1" "$STATE/owned"; }
+
+own() { mkdir -p "$STATE"; owned "$1" || echo "$1" >> "$STATE/owned"; }
+
+disown_file() {
+  [ -f "$STATE/owned" ] || return 0
+  grep -vx "$1" "$STATE/owned" > "$STATE/owned.new"; mv "$STATE/owned.new" "$STATE/owned"
+}
+
+put() {
+  local f=$1 t
+  t=$(mktemp "/etc/pam.d/.$f.XXXXXX") || return 1
+  cat > "$t"; chmod 644 "$t"
+  if [ -f "/etc/pam.d/$f" ] && cmp -s "$t" "/etc/pam.d/$f"; then rm -f "$t"; else mv -f "$t" "/etc/pam.d/$f"; fi
+}
+
+get() {
+  local k=$1 d=$2 v
+  v=$(sed -n "s/^$k=\([01]\)$/\1/p" "$CONF" 2>/dev/null | tail -n 1)
+  echo "${v:-$d}"
+}
+
+enrolled() { find /var/lib/fprint -mindepth 2 -type f 2>/dev/null | grep -q .; }
+
+migrate() {
+  [ -f "$CONF" ] && return 0
+  local fl=0 fs=0 fa=0 fc=0 lock=1
+  grep -qs pam_fprintd /etc/pam.d/sddm && fl=1
+  grep -qs pam_fprintd /etc/pam.d/sudo && fs=1
+  grep -qs howdy /etc/pam.d/sddm && fc=1
+  mkdir -p "$(dirname "$CONF")"
+  printf 'FINGER_LOCK=%s\nFINGER_LOGIN=%s\nFINGER_SUDO=%s\nFINGER_POLKIT=%s\nFACE_LOGIN=%s\n' "$lock" "$fl" "$fs" "$fa" "$fc" > "$CONF"
+}
+
+setkey() {
+  migrate
+  if grep -q "^$1=" "$CONF"; then sed -i "s/^$1=.*/$1=$2/" "$CONF"; else echo "$1=$2" >> "$CONF"; fi
+}
+
+strip_bio() { [ -f "$1" ] && sed -i '/howdy/d; /pam_fprintd/d' "$1"; return 0; }
+
+login_stack() {
+  local face=$1 finger=$2 bio=() n i
+  [ "$face" = 1 ] && [ -f "$HOWDY" ] && mod pam_python.so && bio+=("pam_python.so $HOWDY")
+  [ "$finger" = 1 ] && mod pam_fprintd.so && bio+=("pam_fprintd.so $FP_LOGIN_ARGS")
+  n=${#bio[@]}
+  printf 'auth\t[success=%d default=ignore]\tpam_unix.so nullok\n' $((n + 1))
+  for ((i = 0; i < n; i++)); do printf 'auth\t[success=%d default=ignore]\t%s\n' $((n - i)) "${bio[$i]}"; done
+  printf 'auth\trequisite\tpam_deny.so\n'
+  printf 'auth\trequired\tpam_permit.so\n'
+}
+
+apply_sddm() {
+  local face finger f=/etc/pam.d/sddm
+  [ -f "$f" ] || return 0
+  face=$(get FACE_LOGIN 0); finger=$(get FINGER_LOGIN 0)
+  strip_bio "$f"
+  if [ "$face" = 1 ] || [ "$finger" = 1 ]; then
+    login_stack "$face" "$finger" | put matryoshka-login; own matryoshka-login
+    sed -i 's/^@include[[:space:]]\+common-auth[[:space:]]*$/@include matryoshka-login/' "$f"
+  else
+    sed -i 's/^@include[[:space:]]\+matryoshka-login[[:space:]]*$/@include common-auth/' "$f"
+    owned matryoshka-login && { rm -f /etc/pam.d/matryoshka-login; disown_file matryoshka-login; }
+  fi
+  grep -q '^@include[[:space:]]\+\(common-auth\|matryoshka-login\)' "$f" || echo "ВНИМАНИЕ: в /etc/pam.d/sddm нет строки common-auth, вход проверьте вручную"
+}
+
+apply_lock() {
+  local v lock
+  [ -f /etc/pam.d/kde ] && ! owned kde && strip_bio /etc/pam.d/kde
+  v=$(vendor kde-fingerprint)
+  [ -n "$v" ] || return 0
+  lock=$(get FINGER_LOCK 1)
+  if [ "$lock" = 1 ]; then
+    sed "s#^\(auth[[:space:]]\+required[[:space:]]\+pam_fprintd\.so\).*#\1 $FP_LOCK_ARGS#" "$v" | put kde-fingerprint
+  else
+    sed "s#^auth[[:space:]]\+required[[:space:]]\+pam_fprintd\.so.*#auth\trequired\tpam_deny.so#" "$v" | put kde-fingerprint
+  fi
+  own kde-fingerprint
+}
+
+apply_admin() {
+  local name key v f
+  for name in sudo polkit-1; do
+    if [ "$name" = sudo ]; then key=FINGER_SUDO; else key=FINGER_POLKIT; fi
+    f=/etc/pam.d/$name
+    if [ "$(get $key 0)" = 1 ] && mod pam_fprintd.so; then
+      if [ ! -f "$f" ]; then v=$(vendor "$name"); [ -n "$v" ] || continue; cp "$v" "$f"; own "$name"; fi
+      sed -i '/pam_fprintd/d' "$f"
+      sed -i "0,/^@include[[:space:]]\+common-auth/s//auth\tsufficient\tpam_fprintd.so $FP_ADMIN_ARGS\n@include common-auth/" "$f"
+    else
+      if owned "$name"; then rm -f "$f"; disown_file "$name"; else strip_bio "$f"; fi
+    fi
+  done
+  for name in common-auth su login sudo-i; do [ -f "/etc/pam.d/$name" ] && sed -i "/howdy/d" "/etc/pam.d/$name"; done
+}
+
+apply() {
+  migrate
+  apply_sddm
+  apply_lock
+  apply_admin
+  return 0
+}
+
+status() {
+  migrate
+  local k
+  for k in FINGER_LOCK FINGER_LOGIN FINGER_SUDO FINGER_POLKIT FACE_LOGIN; do echo "$k=$(get $k 0)"; done
+  enrolled && echo "отпечатки записаны: да" || echo "отпечатки записаны: нет"
+  grep -l -E 'pam_fprintd|howdy|matryoshka-login' /etc/pam.d/* 2>/dev/null | sed 's/^/PAM: /'
+}
+
+onoff() { case "$1" in on) echo 1;; off) echo 0;; *) echo "нужно on или off" >&2; exit 2;; esac; }
+
+case "${1:-}" in
+  apply) apply;;
+  status) status;;
+  finger)
+    v=$(onoff "${2:-}"); setkey FINGER_LOGIN "$v"; setkey FINGER_LOCK "$v"; apply
+    [ "$v" = 1 ] && echo "Отпечаток включён для экрана входа и блокировки. На экране входа оставьте поле пароля пустым, нажмите Enter и приложите палец." || echo "Отпечаток выключен для экрана входа и блокировки";;
+  finger-lock) v=$(onoff "${2:-}"); setkey FINGER_LOCK "$v"; apply; echo готово;;
+  finger-login) v=$(onoff "${2:-}"); setkey FINGER_LOGIN "$v"; apply; echo готово;;
+  finger-sudo) v=$(onoff "${2:-}"); setkey FINGER_SUDO "$v"; apply; echo готово;;
+  finger-polkit)
+    v=$(onoff "${2:-}"); setkey FINGER_POLKIT "$v"; apply
+    [ "$v" = 1 ] && echo "Окна запроса прав администратора принимают отпечаток. Если палец не приложить, через 10 секунд можно ввести пароль." || echo "Окна запроса прав снова спрашивают только пароль";;
+  face) v=$(onoff "${2:-}"); setkey FACE_LOGIN "$v"; apply; echo готово;;
+  *) echo "matryoshka-auth apply|status|finger on|off|finger-lock on|off|finger-login on|off|finger-sudo on|off|finger-polkit on|off|face on|off"; exit 1;;
+esac

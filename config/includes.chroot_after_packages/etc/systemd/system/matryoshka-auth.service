@@ -1,0 +1,10 @@
+[Unit]
+Description=Matryoshka login, lock screen and fingerprint configuration
+After=local-fs.target
+Before=display-manager.service
+[Service]
+Type=oneshot
+ExecStart=-/usr/sbin/matryoshka-auth apply
+TimeoutStartSec=120
+[Install]
+WantedBy=multi-user.target

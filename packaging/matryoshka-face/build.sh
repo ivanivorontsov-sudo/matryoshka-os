@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-1.0.2}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")"); W=${FACE_WORK:-/workspace/face}
+V=${1:-1.0.3}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")"); W=${FACE_WORK:-/workspace/face}
 HDEB=$W/howdy_2.6.1_all.deb; HSUM=c104329d8c7f54508b317ac7fb9782eae4104187bac657ee8a80aeeeb406c84f
 mkdir -p "$W"
 [ -f "$HDEB" ] || curl -fsSL -o "$HDEB" https://launchpad.net/~boltgolt/+archive/ubuntu/howdy/+files/howdy_2.6.1_all.deb

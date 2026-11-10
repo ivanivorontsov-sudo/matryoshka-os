@@ -1,6 +1,6 @@
 #!/bin/sh
 C=/usr/lib/security/howdy/config.ini
-LINE='auth\tsufficient\tpam_python.so /lib/security/howdy/pam.py'
+AUTH=/usr/sbin/matryoshka-auth
 [ "$(id -u)" = 0 ] || exec pkexec "$0" "$@"
 cams() {
   for d in /dev/video*; do
@@ -19,10 +19,10 @@ case "$1" in
     set -- $c; dev=$2
     sed -i "s#^device_path = .*#device_path = $dev#" "$C"
     if [ "$1" = rgb ]; then sed -i 's/^dark_threshold = .*/dark_threshold = 80/' "$C"; echo "ВНИМАНИЕ: инфракрасной камеры нет, используется обычная ($dev). Такую защиту можно обмануть фотографией. Пароль работает всегда."; else echo "Инфракрасная камера: $dev"; fi
-    for p in sddm kde; do [ -f /etc/pam.d/$p ] || continue; grep -q howdy /etc/pam.d/$p && continue; grep -q "^@include common-auth" /etc/pam.d/$p || { echo "В /etc/pam.d/$p нет common-auth, пропускаю"; continue; }; cp -a /etc/pam.d/$p /etc/pam.d/.$p.matryoshka-face.bak; sed -i "0,/^@include common-auth/s#^@include common-auth#$LINE\n@include common-auth#" /etc/pam.d/$p; done
-    for p in common-auth sudo polkit-1 su login sudo-i; do [ -f /etc/pam.d/$p ] && sed -i '/howdy/d' /etc/pam.d/$p; done
-    echo "Вход по лицу включён для экрана входа и блокировки. Добавьте лицо: matryoshka-face add";;
-  off) for p in sddm kde; do [ -f /etc/pam.d/$p ] && sed -i '/howdy/d' /etc/pam.d/$p; done; echo "Вход по лицу выключен";;
+    [ -x "$AUTH" ] || { echo "Нет $AUTH (нужна Матрёшка 18.6)"; exit 1; }
+    "$AUTH" face on >/dev/null || exit 1
+    echo "Вход по лицу включён для экрана входа. Введённый пароль проверяется сразу, без ожидания камеры. Для входа по лицу оставьте поле пароля пустым и нажмите Enter. Добавьте лицо: matryoshka-face add";;
+  off) if [ -x "$AUTH" ]; then "$AUTH" face off >/dev/null; else for p in sddm kde; do [ -f /etc/pam.d/$p ] && sed -i '/howdy/d' /etc/pam.d/$p; done; fi; echo "Вход по лицу выключен";;
   add) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || { echo "matryoshka-face add ПОЛЬЗОВАТЕЛЬ"; exit 1; }; grep -q "^device_path = /dev" "$C" || "$0" on >/dev/null; SUDO_USER="$u" howdy -U "$u" add -y;;
   import) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] && [ -f "$3" ] || exit 1; python3 /usr/lib/matryoshka-face/import.py "$u" "$3";;
   clear) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; SUDO_USER="$u" howdy -U "$u" clear -y;;
