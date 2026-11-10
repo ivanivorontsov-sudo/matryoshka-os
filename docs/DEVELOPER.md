@@ -10,7 +10,7 @@
 
 | Пакет | Версия 18.6 | Назначение |
 |---|---|---|
-| matryoshka-upgrade | 1.0.9 | копия и обновление на месте |
+| matryoshka-upgrade | 1.1.0 | копия и обновление на месте |
 | matryoshka-face | 1.0.3 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
 | matryoshka-gxfp | 0.1.5 | драйвер Goodix GXFP5130, по желанию |
 | matryoshka-fixes | 1.1.4 | Wine, Electron, шрифты. libndk_translation не входит |
@@ -19,8 +19,8 @@
 
 ## Обновление 18.5 → 18.6
 
-1. Скачать `matryoshka-upgrade_1.0.9_all.deb` и `matryoshka-update-18.6.tar.gz` вместе с файлом `.sha256`.
-2. `sudo apt install ./matryoshka-upgrade_1.0.9_all.deb`
+1. Скачать `matryoshka-upgrade_1.1.0_all.deb` и `matryoshka-update-18.6.tar.gz` вместе с файлом `.sha256`.
+2. `sudo apt install ./matryoshka-upgrade_1.1.0_all.deb`
 3. «Копия и обновление Матрёшки»: шаг 1 — копия, шаг 2 — архив обновления.
 4. Перезагрузка. При загрузке `matryoshka-auth.service` пересобирает настройки PAM из `/etc/matryoshka/auth.conf` и переносит прежние настройки 18.5.
 

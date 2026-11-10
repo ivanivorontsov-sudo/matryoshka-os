@@ -27,11 +27,11 @@ cmd_plan() {
   r=$(rootdev); d=$(diskof "$r"); R=$(repo_for "$t") || exit 1
   mkdir -p "$R" 2>/dev/null || true
   free=$(df -B1 --output=avail "$(dirname "$R")" | tail -1)
-  local last; last=$(ls -1d "$R"/20* 2>/dev/null | tail -1)
+  local last="" x; for x in "$R"/20*; do case "$x" in *.partial|*.bad) ;; *) [ -f "$x/OK" ] && last=$x ;; esac; done
   need=$(need_bytes)
   [ -n "$last" ] && need=$(( need / 4 ))
   printf 'root=%s\ndisk=%s\nfs=%s\nrepo=%s\nfree=%s\nneed=%s\nlast=%s\nsame_disk=%s\n' "$r" "$d" "$(findmnt -no FSTYPE /)" "$R" "$free" "$need" "${last:-}" "$([ "$R" = "/$B" ] && echo 1 || echo 0)"
-  [ "$free" -ge "$need" ] || { echo "ОШИБКА: мало места: свободно $((free/1073741824)) ГБ, нужно около $((need/1073741824)) ГБ"; exit 3; }
+  [ "$free" -ge "$need" ] || { echo "ОШИБКА: мало места: свободно $((free/1073741824)) ГБ, нужно около $((need/1073741824)) ГБ. Удалите старую копию или используйте существующую для обновления"; exit 3; }
 }
 cmd_create() {
   local t="${1:-same}" R id prev D
@@ -59,7 +59,6 @@ cmd_create() {
   (cd "$D" && find root esp -type f -print0 2>/dev/null | xargs -0 -r sha256sum > manifest.sha256) || { rm -rf "$D"; die "не удалось посчитать суммы"; }
   mv "$D" "$R/$id"; D="$R/$id"
   cmd_verify "$D" || { mv "$D" "$D.bad"; die "проверка копии не прошла, копия помечена как негодная ($D.bad)"; }
-  for o in $(ls -1d "$R"/20* 2>/dev/null | grep -v "^$D$" | head -n -1); do rm -rf --one-file-system "$o"; done
   echo "КОПИЯ ГОТОВА И ПРОВЕРЕНА: $D"
 }
 cmd_verify() {
@@ -73,6 +72,55 @@ cmd_verify() {
     say "Отличий системных файлов от работающей системы: $n"
   fi
   date -Is > "$D/OK"; echo "проверено"; return 0
+}
+repos() {
+  local m
+  { echo "/$B"; findmnt -rno TARGET -t ext4,btrfs,exfat,ntfs,ntfs3,vfat,fuseblk,xfs 2>/dev/null | while read -r m; do m=$(printf '%b' "$m"); [ "$m" = / ] && m=""; echo "$m/$B"; echo "$m/matryoshka-backup"; done; } | while read -r r; do [ -d "$r" ] && readlink -f "$r"; done | awk '!s[$0]++'
+}
+valid_path() {
+  local d; d=$(readlink -f "$1" 2>/dev/null) || return 1
+  case "$d" in */"$B"/20[0-9][0-9]*|*/matryoshka-backup/20[0-9][0-9]*) ;; *) return 1 ;; esac
+  [ -d "$d" ] && [ ! -L "$1" ] && [ "$d" != / ] || return 1
+  echo "$d"
+}
+state_of() {
+  case "$1" in *.partial) echo незавершена ;; *.bad) echo негодная ;; *) [ -f "$1/OK" ] && echo проверена || echo не_проверена ;; esac
+}
+cmd_inventory() {
+  local r d sz ver dt own
+  while IFS= read -r r; do
+    for d in "$r"/20*; do
+      [ -d "$d" ] || continue
+      sz=$(cat "$d/size" 2>/dev/null || echo "")
+      ver=$(cat "$d/root/etc/matryoshka-version" "$d/root/usr/share/matryoshka/VERSION" 2>/dev/null | head -1)
+      dt=$(sed -n 's/^date=//p' "$d/meta" 2>/dev/null); [ -n "$dt" ] || dt=$(basename "$d")
+      own=no; [ "$(sed -n 's/^root_uuid=//p' "$d/meta" 2>/dev/null)" = "$(findmnt -no UUID /)" ] && own=yes
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$d" "$(state_of "$d")" "$dt" "${ver:-?}" "$sz" "$own" "$(df -B1 --output=avail "$r" | tail -1)"
+    done
+  done < <(repos)
+}
+cmd_sizes() {
+  local r all=() d n
+  while IFS= read -r r; do for d in "$r"/20*; do [ -d "$d" ] && all+=("$d"); done; done < <(repos)
+  [ ${#all[@]} -gt 0 ] || return 0
+  for d in "${all[@]}"; do n=$(du -sxB1 "$d" 2>/dev/null | cut -f1); [ -n "$n" ] && [ "$(id -u)" = 0 ] && echo "$n" > "$d/size"; printf 'full\t%s\t%s\n' "$d" "$n"; done
+  du -sxB1 "${all[@]}" 2>/dev/null | while IFS=$'\t' read -r n d; do printf 'unique\t%s\t%s\n' "$d" "$n"; done
+}
+cmd_delete() {
+  local d; [ "$(id -u)" = 0 ] || die "нужны права администратора"
+  d=$(valid_path "${1:-}") || die "это не папка резервной копии Матрёшки: ${1:-}"
+  [ "${2:-}" = --yes ] || die "удаление только с подтверждением --yes"
+  say "Удаляю резервную копию $d"
+  rm -rf --one-file-system "$d" || die "не удалось удалить $d"
+  echo "УДАЛЕНО: $d"; df -h --output=avail "$(dirname "$d")" | tail -1 | sed 's/^/Свободно теперь: /'
+}
+cmd_check() {
+  local d; d=$(valid_path "${1:-}") || { echo "это не папка резервной копии: ${1:-}"; return 1; }
+  [ -f "$d/OK" ] || { echo "копия не проверена: $d"; return 1; }
+  case "$d" in *.partial|*.bad) echo "копия незавершённая или негодная: $d"; return 1 ;; esac
+  [ -f "$d/root/etc/fstab" ] && [ -d "$d/root/usr/bin" ] && [ -f "$d/meta" ] || { echo "в копии нет системных папок: $d"; return 1; }
+  [ "$(sed -n 's/^root_uuid=//p' "$d/meta")" = "$(findmnt -no UUID /)" ] || { echo "копия сделана с другой системы (другой раздел): $d"; return 1; }
+  echo "$d"
 }
 cmd_list() {
   local R; R=$(repo_for "${1:-same}")
@@ -121,5 +169,9 @@ case "${1:-}" in
   last-ok) shift; cmd_last_ok "$@" ;;
   restore) shift; cmd_restore "$@" ;;
   find) find_backups ;;
-  *) echo "использование: sysbackup.sh plan|create [папка|same]|verify ПАПКА|list|last-ok|restore [ПАПКА [--yes]]"; exit 2 ;;
+  inventory) cmd_inventory ;;
+  sizes) cmd_sizes ;;
+  delete) shift; cmd_delete "$@" ;;
+  check) shift; cmd_check "$@" ;;
+  *) echo "использование: sysbackup.sh plan|create [папка|same]|verify ПАПКА|list|last-ok|inventory|sizes|check ПАПКА|delete ПАПКА --yes|restore [ПАПКА [--yes]]"; exit 2 ;;
 esac

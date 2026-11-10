@@ -12,9 +12,14 @@ isoclean() { if [ "$ISOMNT" = 1 ]; then umount $ISOM 2>/dev/null; rmdir $ISOM 2>
 grep -qw boot=live /proc/cmdline && die "обновление ставится на установленную систему, а не на флешку"
 [ -f "$BUNDLE" ] || die "файл обновления не найден"
 [ "$(findmnt -no FSTYPE /)" = ext4 ] || [ "$(findmnt -no FSTYPE /)" = btrfs ] || die "неизвестная файловая система"
-SB=/usr/lib/matryoshka/sysbackup.sh; [ -x "$SB" ] || SB="$(dirname "$0")/sysbackup.sh"
-LAST=$(bash "$SB" last-ok "$TARGET" 86400) || die "нет проверенной резервной копии за последние 24 часа ($LAST). Сначала шаг 1."
-say "Резервная копия: $LAST"
+SB="$(dirname "$(readlink -f "$0")")/sysbackup.sh"; [ -f "$SB" ] || SB=/usr/lib/matryoshka/sysbackup.sh
+if [ -n "${USE_BACKUP:-}" ]; then
+  LAST=$(bash "$SB" check "$USE_BACKUP") || die "выбранную копию использовать нельзя: $LAST"
+  say "Использую существующую копию (новая не создаётся): $LAST от $(sed -n 's/^date=//p' "$LAST/meta")"
+else
+  LAST=$(bash "$SB" last-ok "$TARGET" 86400) || die "нет проверенной резервной копии за последние 24 часа ($LAST). Сделайте копию на шаге 1 или выберите существующую на вкладке «Имеющиеся копии»."
+  say "Резервная копия: $LAST"
+fi
 got=$(sha256sum "$BUNDLE" | cut -d' ' -f1)
 [ -n "$SUM" ] && [ "$got" = "$SUM" ] || die "SHA256 файла обновления не совпал: $got"
 W=/var/lib/matryoshka/update; rm -rf $W; mkdir -p $W
