@@ -136,8 +136,27 @@ def chooser():
     v.addWidget(b)
     d.exec()
 
-def on_login():
+def layout_once(fresh):
     s = C.settings()
+    if s.get("layout_applied"):
+        return
+    if fresh:
+        for _ in range(60):
+            if C.run(["busctl", "--user", "status", "org.kde.plasmashell"], timeout=5).returncode == 0:
+                break
+            time.sleep(1)
+        else:
+            return
+        time.sleep(3)
+        C.apply_layout(s.get("layout") or "windows")
+    s = C.settings()
+    s["layout_applied"] = True
+    C.save("settings", s)
+
+def on_login():
+    fresh = not os.path.exists(os.path.join(C.CONF, "settings.json"))
+    s = C.settings()
+    threading.Thread(target=layout_once, args=(fresh,)).start()
     try:
         restore_audio()
         watch_audio()

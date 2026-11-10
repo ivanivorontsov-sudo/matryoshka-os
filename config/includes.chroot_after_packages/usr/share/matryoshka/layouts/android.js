@@ -6,4 +6,6 @@ t.addWidget("org.kde.plasma.panelspacer");
 t.addWidget("org.kde.plasma.systemtray");
 var d = new Panel;
 d.location = "bottom"; d.height = 52; d.floating = true; d.lengthMode = "fit"; d.alignment = "center";
-d.addWidget("org.kde.plasma.icontasks");
+var tk = d.addWidget("org.kde.plasma.icontasks");
+tk.currentConfigGroup = ["General"];
+tk.writeConfig("launchers", ["applications:firefox-esr.desktop", "applications:matryoshka-files.desktop", "applications:matryoshka-center.desktop"]);

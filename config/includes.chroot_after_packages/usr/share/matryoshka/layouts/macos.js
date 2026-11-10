@@ -8,4 +8,6 @@ t.addWidget("org.kde.plasma.systemtray");
 t.addWidget("org.kde.plasma.digitalclock");
 var d = new Panel;
 d.location = "bottom"; d.height = 60; d.floating = true; d.lengthMode = "fit"; d.alignment = "center";
-d.addWidget("org.kde.plasma.icontasks");
+var tk = d.addWidget("org.kde.plasma.icontasks");
+tk.currentConfigGroup = ["General"];
+tk.writeConfig("launchers", ["applications:firefox-esr.desktop", "applications:matryoshka-files.desktop", "applications:matryoshka-center.desktop"]);
