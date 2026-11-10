@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-1.0.8}; R=$(cd "$(dirname "$0")/../.." && pwd); I=$R/config/includes.chroot_after_packages; O=${2:-$R/out}
+V=${1:-1.0.9}; R=$(cd "$(dirname "$0")/../.." && pwd); I=$R/config/includes.chroot_after_packages; O=${2:-$R/out}
 mkdir -p $O; T=$(mktemp -d); P=$T/pkg
 mkdir -p $P/DEBIAN $P/usr/lib/matryoshka-upgrade $P/usr/bin $P/usr/share/applications
 for f in sysbackup.sh upgrade.sh fix-boot.sh sysupdate.py pkgplan.py; do install -m 755 $I/usr/lib/matryoshka/$f $P/usr/lib/matryoshka-upgrade/$f; done

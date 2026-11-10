@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 cmd="$1"; shift || true
+case "$cmd" in
+  drivers-install|update-all|os-update|apt-install|apt-remove|deb-install|remove-app|upgrade|sysbackup|fwupd-update|android-init|android-stores|android-arm|ndk-install|ai-install|snap-rollback)
+    if [ -z "${MATRYOSHKA_SCOPED:-}" ] && [ -d /run/systemd/system ] && command -v systemd-run >/dev/null && grep -q 'session-[^/]*\.scope' /proc/self/cgroup 2>/dev/null; then
+      export MATRYOSHKA_SCOPED=1; exec systemd-run --scope --quiet --collect --unit="matryoshka-root-$$" "$0" "$cmd" "$@"
+    fi ;;
+esac
 CU="${PKEXEC_UID:-${SUDO_UID:-}}"; [ -n "$CU" ] || CU=$(loginctl list-sessions --no-legend 2>/dev/null | awk '$4=="seat0"{print $2; exit}'); [ -n "$CU" ] || CU=1000
 U=$(id -nu "$CU" 2>/dev/null) || { echo "неизвестный пользователь"; exit 2; }; H=$(getent passwd "$U" | cut -d: -f6)
 case "$cmd" in

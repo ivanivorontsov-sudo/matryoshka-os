@@ -1,4 +1,7 @@
 #!/bin/bash
+if [ -z "${MATRYOSHKA_SCOPED:-}" ] && [ "$(id -u)" = 0 ] && [ -d /run/systemd/system ] && command -v systemd-run >/dev/null && grep -q 'session-[^/]*\.scope' /proc/self/cgroup 2>/dev/null; then
+  export MATRYOSHKA_SCOPED=1; exec systemd-run --scope --quiet --collect --unit="matryoshka-sysbackup-$$" /bin/bash "$0" "$@"
+fi
 set -uo pipefail
 B=.matryoshka-backup
 die() { echo "ОШИБКА: $*"; exit 1; }
