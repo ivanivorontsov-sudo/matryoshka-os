@@ -65,6 +65,13 @@ class Center(QWidget):
             self.s["hotkeys"] = hk.currentData(); self.s["hotkeys_v"] = 1; self.save()
             import hotkeys; hotkeys.apply(hk.currentData())
         hk.activated.connect(lambda _: hset()); f.addRow("Клавиши", hk)
+        import clipkeys
+        ck = QComboBox(); [ck.addItem(n, k) for k, n in clipkeys.NAMES.items()]
+        ck.setCurrentIndex(max(0, list(clipkeys.NAMES).index(self.s.get("clipboard", "windows")) if self.s.get("clipboard", "windows") in clipkeys.NAMES else 0))
+        def ckset():
+            self.s["clipboard"] = ck.currentData(); self.s["clipboard_v"] = 1; self.save()
+            clipkeys.apply(ck.currentData(), force=True)
+        ck.activated.connect(lambda _: ckset()); f.addRow("Копировать и вставить", ck)
         kw = QCheckBox("Разблокировать KWallet при входе и подставлять пароли"); kw.setChecked(bool(self.s.get("kwallet", True)))
         def kwset(x):
             self.s["kwallet"] = x; self.save()

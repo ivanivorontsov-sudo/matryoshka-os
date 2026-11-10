@@ -245,6 +245,14 @@ def on_login():
         waydroid_desktop.fix_user_files()
     except Exception:
         pass
+    try:
+        st = C.settings()
+        if st.get("clipboard_v") != 1:
+            import clipkeys
+            clipkeys.apply(st.get("clipboard", "windows"))
+            st = C.settings(); st["clipboard_v"] = 1; C.save("settings", st)
+    except Exception:
+        pass
     fresh = not os.path.exists(os.path.join(C.CONF, "settings.json"))
     s = C.settings()
     threading.Thread(target=layout_once, args=(fresh,)).start()

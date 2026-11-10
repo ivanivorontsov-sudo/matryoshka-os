@@ -15,3 +15,8 @@ Theme=breeze-dark
 LookAndFeelPackage=org.kde.breezedark.desktop
 widgetStyle=Breeze
 AnimationDurationFactor=1
+
+[Shortcuts]
+Copy=Ctrl+C; Ctrl+Ins
+Paste=Ctrl+V; Shift+Ins
+Cut=Ctrl+X; Shift+Del
