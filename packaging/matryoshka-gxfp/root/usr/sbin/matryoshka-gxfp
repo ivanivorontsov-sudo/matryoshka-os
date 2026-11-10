@@ -150,6 +150,17 @@ case "$1" in
     [ -s finger.pgm ] && mv -f finger.pgm "finger-$(date +%H%M%S).pgm"
     chmod -R a+rX "$C"; ls -l "$C"
     systemctl start fprintd 2>/dev/null; exit $R;;
+  threshold)
+    TD=/etc/systemd/system/fprintd.service.d/61-matryoshka-gxfp-threshold.conf
+    case "$2" in
+      ""|show) grep -ho 'FP_GXFP_THRESHOLD=[0-9]*' "$TD" 2>/dev/null || echo "FP_GXFP_THRESHOLD=12 (по умолчанию)"; exit 0;;
+      default) rm -f "$TD";;
+      *[!0-9]*) echo "matryoshka-gxfp threshold ЧИСЛО|default"; exit 1;;
+      *) [ "$2" -ge 4 ] && [ "$2" -le 400 ] || { echo "Порог от 4 до 400"; exit 1; }
+         mkdir -p "${TD%/*}"; printf '[Service]\nEnvironment=FP_GXFP_THRESHOLD=%s\n' "$2" > "$TD";;
+    esac
+    systemctl daemon-reload; systemctl try-restart fprintd 2>/dev/null; echo "Порог совпадения: ${2}";;
+  scores) journalctl -u fprintd --no-pager -o short-iso ${2:+--since "$2"} | grep -E "sigfm score|verify|enroll" | tail -n 80;;
   status) [ -e "$F" ] && echo on || echo off; [ -c /dev/gxfp ] && echo "/dev/gxfp есть";;
-  *) echo "matryoshka-gxfp on|off|auto|reset|watch|sign [ядро]|status|debug [off]|diag|capture"; exit 1;;
+  *) echo "matryoshka-gxfp on|off|auto|reset|watch|sign [ядро]|status|debug [off]|diag|capture|threshold [N|default]|scores [с какого времени]"; exit 1;;
 esac

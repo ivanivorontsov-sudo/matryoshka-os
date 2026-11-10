@@ -1,0 +1,28 @@
+diff -ru a/libfprint/libfprint/drivers/gxfp.c b/libfprint/libfprint/drivers/gxfp.c
+--- a/libfprint/libfprint/drivers/gxfp.c	2026-11-10 14:55:32.250539547 +1000
++++ b/libfprint/libfprint/drivers/gxfp.c	2026-11-10 14:55:41.066477778 +1000
+@@ -213,9 +213,12 @@
+   char errbuf[256] = { 0 };
+   const gchar *chardev_path;
+   const gchar *psk_env;
++  const gchar *thr_env = g_getenv ("FP_GXFP_THRESHOLD");
+   int r;
+ 
+   g_return_if_fail (self);
++  if (thr_env && g_ascii_strtoll (thr_env, NULL, 10) >= 4 && g_ascii_strtoll (thr_env, NULL, 10) <= 400)
++    fpi_image_device_set_bz3_threshold (dev, (gint) g_ascii_strtoll (thr_env, NULL, 10));
+ 
+   chardev_path = fpi_device_get_udev_data (FP_DEVICE (self), FPI_DEVICE_UDEV_SUBTYPE_CHARDEV);
+   if (!chardev_path || chardev_path[0] == '\0')
+diff -ru a/libfprint/libfprint/fpi-print.c b/libfprint/libfprint/fpi-print.c
+--- a/libfprint/libfprint/fpi-print.c	2026-11-10 14:55:32.254539520 +1000
++++ b/libfprint/libfprint/fpi-print.c	2026-11-10 14:55:32.254539520 +1000
+@@ -305,7 +305,7 @@
+                                              "error in sigfm_match_score");
+           return FPI_MATCH_ERROR;
+         }
+-      fp_dbg ("sigfm score %d/%d", score, bz3_threshold);
++      g_message ("sigfm score %d/%d (template %d of %u)", score, bz3_threshold, i + 1, template->prints->len);
+       if (score >= bz3_threshold)
+         return FPI_MATCH_SUCCESS;
+     }
