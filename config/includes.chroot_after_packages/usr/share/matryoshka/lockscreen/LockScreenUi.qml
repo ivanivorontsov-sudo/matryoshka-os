@@ -417,7 +417,7 @@ Item {
                 icon.name: "system-reboot"
                 text: i18nd("plasma_shell_org.kde.plasma.desktop", "Restart")
                 visible: sessionManagement.canReboot
-                onClicked: sessionManagement.requestReboot()
+                onClicked: sessionManagement.requestReboot(0)
                 Layout.fillHeight: true
             }
 
@@ -426,7 +426,7 @@ Item {
                 icon.name: "system-shutdown"
                 text: i18nd("plasma_shell_org.kde.plasma.desktop", "Shut Down")
                 visible: sessionManagement.canShutdown
-                onClicked: sessionManagement.requestShutdown()
+                onClicked: sessionManagement.requestShutdown(0)
                 Layout.fillHeight: true
             }
 

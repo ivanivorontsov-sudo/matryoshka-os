@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Раскладка экрана блокировки
+Name=Помощник экрана блокировки
 Exec=python3 /usr/lib/matryoshka/lock-layout.py
 X-KDE-autostart-phase=2
 NoDisplay=true
