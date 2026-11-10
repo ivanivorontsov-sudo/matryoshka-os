@@ -7,6 +7,8 @@ HOWDY=/lib/security/howdy/pam.py
 FP_LOCK_ARGS="max-tries=5 timeout=-1"
 FP_LOGIN_ARGS="max-tries=3 timeout=15"
 FP_ADMIN_ARGS="max-tries=2 timeout=10"
+CONFIRM=/usr/lib/matryoshka/pam_confirm.py
+NOASK_RULE=/etc/polkit-1/rules.d/47-matryoshka-noask.rules
 [ "$(id -u)" = 0 ] || exec pkexec "$0" "$@"
 
 mod() {
@@ -43,6 +45,12 @@ get() {
   echo "${v:-$d}"
 }
 
+mode() {
+  local v
+  v=$(sed -n 's/^ADMIN_MODE=\(password\|confirm\|none\)$/\1/p' "$CONF" 2>/dev/null | tail -n 1)
+  echo "${v:-confirm}"
+}
+
 enrolled() { find /var/lib/fprint -mindepth 2 -type f 2>/dev/null | grep -q .; }
 
 migrate() {
@@ -52,7 +60,7 @@ migrate() {
   grep -qs pam_fprintd /etc/pam.d/sudo && fs=1
   grep -qs howdy /etc/pam.d/sddm && fc=1
   mkdir -p "$(dirname "$CONF")"
-  printf 'FINGER_LOCK=%s\nFINGER_LOGIN=%s\nFINGER_SUDO=%s\nFINGER_POLKIT=%s\nFACE_LOGIN=%s\nGREETER_RU=1\n' "$lock" "$fl" "$fs" "$fa" "$fc" > "$CONF"
+  printf 'FINGER_LOCK=%s\nFINGER_LOGIN=%s\nFINGER_SUDO=%s\nFINGER_POLKIT=%s\nFACE_LOGIN=%s\nFACE_LOCK=%s\nGREETER_RU=1\nADMIN_MODE=confirm\n' "$lock" "$fl" "$fs" "$fa" "$fc" "$fc" > "$CONF"
 }
 
 setkey() {
@@ -100,21 +108,61 @@ apply_lock() {
     sed "s#^auth[[:space:]]\+required[[:space:]]\+pam_fprintd\.so.*#auth\trequired\tpam_deny.so#" "$v" | put kde-fingerprint
   fi
   own kde-fingerprint
+  v=$(vendor kde-smartcard)
+  if [ "$(get FACE_LOCK "$(get FACE_LOGIN 0)")" = 1 ] && [ -f "$HOWDY" ] && mod pam_python.so && [ -n "$v" ]; then
+    sed -e '/^#\?auth[[:space:]].*pam_sss\.so/d' -e '/^#auth[[:space:]]/d' -e "s#^\(auth[[:space:]]\+requisite[[:space:]]\+pam_nologin\.so.*\)#\1\nauth\trequired\tpam_python.so $HOWDY#" "$v" | put kde-smartcard
+    own kde-smartcard
+  elif owned kde-smartcard; then
+    rm -f /etc/pam.d/kde-smartcard; disown_file kde-smartcard
+  fi
+}
+
+admin_file() {
+  local name=$1 f=/etc/pam.d/$1 v
+  if [ ! -f "$f" ]; then v=$(vendor "$name"); [ -n "$v" ] || return 1; cp "$v" "$f"; own "$name"; fi
+  sed -i '/pam_fprintd/d; /pam_confirm\.py/d' "$f"
+}
+
+drop_admin_file() {
+  if owned "$1"; then rm -f "/etc/pam.d/$1"; disown_file "$1"; else [ -f "/etc/pam.d/$1" ] && sed -i '/pam_fprintd/d; /pam_confirm\.py/d' "/etc/pam.d/$1"; fi
+  return 0
 }
 
 apply_admin() {
-  local name key v f
+  local name f m fin conf lines
+  m=$(mode)
   for name in sudo polkit-1; do
-    if [ "$name" = sudo ]; then key=FINGER_SUDO; else key=FINGER_POLKIT; fi
-    f=/etc/pam.d/$name
-    if [ "$(get $key 0)" = 1 ] && mod pam_fprintd.so; then
-      if [ ! -f "$f" ]; then v=$(vendor "$name"); [ -n "$v" ] || continue; cp "$v" "$f"; own "$name"; fi
-      sed -i '/pam_fprintd/d' "$f"
-      sed -i "0,/^@include[[:space:]]\+common-auth/s//auth\tsufficient\tpam_fprintd.so $FP_ADMIN_ARGS\n@include common-auth/" "$f"
+    f=/etc/pam.d/$name; fin=0; conf=0
+    if [ "$name" = sudo ]; then [ "$(get FINGER_SUDO 0)" = 1 ] && fin=1
     else
-      if owned "$name"; then rm -f "$f"; disown_file "$name"; else strip_bio "$f"; fi
+      [ "$(get FINGER_POLKIT 0)" = 1 ] && fin=1
+      [ "$m" = confirm ] && [ -f "$CONFIRM" ] && mod pam_python.so && conf=1
+    fi
+    mod pam_fprintd.so || fin=0
+    if [ "$fin" = 1 ] || [ "$conf" = 1 ]; then
+      admin_file "$name" || continue
+      lines=""
+      [ "$conf" = 1 ] && lines=$(printf 'auth\t[success=done default=ignore]\tpam_python.so %s' "$CONFIRM")
+      [ "$fin" = 1 ] && lines="${lines:+$lines
+}$(printf 'auth\tsufficient\tpam_fprintd.so %s' "$FP_ADMIN_ARGS")"
+      awk -v ins="$lines" '!d && /^@include[ \t]+common-auth/ {print ins; d=1} {print}' "$f" > "$f.new" && cat "$f.new" > "$f"; rm -f "$f.new"
+    else
+      drop_admin_file "$name"
     fi
   done
+  if [ "$m" = none ]; then
+    mkdir -p "$(dirname "$NOASK_RULE")"
+    cat > "$NOASK_RULE.new" <<'R'
+polkit.addRule(function(action, subject) {
+    if (!subject.local || !subject.active) return;
+    if (!subject.isInGroup("sudo") && !subject.isInGroup("wheel")) return;
+    return polkit.Result.YES;
+});
+R
+    chmod 644 "$NOASK_RULE.new"; mv -f "$NOASK_RULE.new" "$NOASK_RULE"
+  else
+    rm -f "$NOASK_RULE"
+  fi
   for name in common-auth su login sudo-i; do [ -f "/etc/pam.d/$name" ] && sed -i "/howdy/d" "/etc/pam.d/$name"; done
 }
 
@@ -144,9 +192,10 @@ apply() {
 status() {
   migrate
   local k
-  for k in FINGER_LOCK FINGER_LOGIN FINGER_SUDO FINGER_POLKIT FACE_LOGIN GREETER_RU; do echo "$k=$(get $k 0)"; done
+  for k in FINGER_LOCK FINGER_LOGIN FINGER_SUDO FINGER_POLKIT FACE_LOGIN FACE_LOCK GREETER_RU; do echo "$k=$(get $k 0)"; done
+  echo "ADMIN_MODE=$(mode)"
   enrolled && echo "отпечатки записаны: да" || echo "отпечатки записаны: нет"
-  grep -l -E 'pam_fprintd|howdy|matryoshka-login' /etc/pam.d/* 2>/dev/null | sed 's/^/PAM: /'
+  grep -l -E 'pam_fprintd|howdy|matryoshka-login|pam_confirm' /etc/pam.d/* 2>/dev/null | sed 's/^/PAM: /'
 }
 
 onoff() { case "$1" in on) echo 1;; off) echo 0;; *) echo "нужно on или off" >&2; exit 2;; esac; }
@@ -163,7 +212,16 @@ case "${1:-}" in
   finger-polkit)
     v=$(onoff "${2:-}"); setkey FINGER_POLKIT "$v"; apply
     [ "$v" = 1 ] && echo "Окна запроса прав администратора принимают отпечаток. Если палец не приложить, через 10 секунд можно ввести пароль." || echo "Окна запроса прав снова спрашивают только пароль";;
-  face) v=$(onoff "${2:-}"); setkey FACE_LOGIN "$v"; apply; echo готово;;
+  face) v=$(onoff "${2:-}"); setkey FACE_LOGIN "$v"; setkey FACE_LOCK "$v"; apply; echo готово;;
+  face-lock) v=$(onoff "${2:-}"); setkey FACE_LOCK "$v"; apply; echo готово;;
+  admin-mode)
+    case "${2:-}" in password|confirm|none) ;; *) echo "нужно password, confirm или none" >&2; exit 2;; esac
+    setkey ADMIN_MODE "$2"; apply
+    case "$2" in
+      password) echo "Окна прав администратора спрашивают пароль (один раз за сеанс)";;
+      confirm) echo "Окна прав администратора просят только подтверждение кнопкой OK";;
+      none) echo "Действия администратора выполняются без вопросов. Это небезопасно: любая программа в вашем сеансе получит права root";;
+    esac;;
   greeter-ru) v=$(onoff "${2:-}"); setkey GREETER_RU "$v"; apply; echo готово;;
-  *) echo "matryoshka-auth apply|status|finger on|off|finger-lock on|off|finger-login on|off|finger-sudo on|off|finger-polkit on|off|face on|off|greeter-ru on|off"; exit 1;;
+  *) echo "matryoshka-auth apply|status|finger on|off|finger-lock on|off|finger-login on|off|finger-sudo on|off|finger-polkit on|off|face on|off|face-lock on|off|admin-mode password|confirm|none|greeter-ru on|off"; exit 1;;
 esac

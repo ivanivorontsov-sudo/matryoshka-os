@@ -254,7 +254,7 @@ class Center(QWidget):
             o.setHtml(html); go.setEnabled(not r["problems"])
         v.addWidget(btn("1. Проверить компьютер", check)); v.addWidget(go)
     def p_bio(self, v):
-        v.addWidget(QLabel("<h2>Вход по пальцу и лицу</h2>Отпечаток открывает экран входа и блокировки, лицо — экран входа. Введённый пароль проверяется сразу, камера и сканер его не задерживают. Чтобы войти пальцем или лицом на экране входа, оставьте поле пароля пустым и нажмите Enter. Отпечаток для окон прав администратора включается отдельно, по желанию. Для установки системы, шифрованных дисков и «Бесконечной памяти» всегда нужен пароль.", wordWrap=True))
+        v.addWidget(QLabel("<h2>Вход по пальцу и лицу</h2>Отпечаток открывает экран входа и блокировки. Лицо на экране блокировки узнаётся сразу, без Enter, а на экране входа — после пустого Enter. Введённый пароль проверяется сразу, камера и сканер его не задерживают. Чтобы войти пальцем или лицом на экране входа, оставьте поле пароля пустым и нажмите Enter. Отпечаток для окон прав администратора включается отдельно, по желанию. Для установки системы, шифрованных дисков и «Бесконечной памяти» всегда нужен пароль.", wordWrap=True))
         o = self.out(v)
         def r(*a):
             x = C.root("bio", *a); o.setPlainText((x.stdout + x.stderr)[-3000:] or "готово")
@@ -271,6 +271,27 @@ class Center(QWidget):
         pk = QCheckBox("Подтверждать окна запроса прав администратора отпечатком (по желанию)"); pk.setChecked(st.get("FINGER_POLKIT") == "1"); pk.toggled.connect(lambda x: r("finger-polkit-on" if x else "finger-polkit-off")); v.addWidget(pk)
         sd = QCheckBox("Разрешить отпечаток для sudo в терминале (по желанию)"); sd.setChecked(st.get("FINGER_SUDO") == "1"); sd.toggled.connect(lambda x: r("finger-sudo-on" if x else "finger-sudo-off")); v.addWidget(sd)
         v.addWidget(btn("Показать текущие настройки входа", lambda: r("status")))
+        v.addWidget(QLabel("<h3>Запросы прав администратора</h3>Касается окон «Требуется авторизация»: Wi-Fi, сеть, установка программ, настройки системы. По умолчанию — только подтверждение кнопкой OK, без пароля. Пользователь без прав администратора всегда вводит пароль администратора.", wordWrap=True))
+        am = QComboBox()
+        for i, n in (("confirm", "Только подтверждение (по умолчанию)"), ("password", "Спрашивать пароль (один раз за сеанс)"), ("none", "Без вопросов (небезопасно)")):
+            am.addItem(n, i)
+        cur = st.get("ADMIN_MODE", "confirm")
+        am.setCurrentIndex(["confirm", "password", "none"].index(cur) if cur in ("confirm", "password", "none") else 0)
+        def am_set(_):
+            m = am.currentData()
+            if m == "none" and QMessageBox.question(self, "Без вопросов", "Любая программа в вашем сеансе сможет получить права администратора без вашего ведома. Включить?") != QMessageBox.StandardButton.Yes:
+                am.blockSignals(True); am.setCurrentIndex(0); am.blockSignals(False); m = "confirm"
+            r("admin-" + m)
+        am.currentIndexChanged.connect(am_set); v.addWidget(am)
+        v.addWidget(QLabel("<h3>Бумажник KDE</h3>Бумажник хранит пароли Wi-Fi и программ. Если вы входите пальцем или лицом, он не открывается сам и спрашивает свой пароль.", wordWrap=True))
+        def kw(key, val): C.run(["kwriteconfig6", "--file", "kwalletrc", "--group", "Wallet", "--key", key, val])
+        def kr(key, d): return (C.run(["kreadconfig6", "--file", "kwalletrc", "--group", "Wallet", "--key", key, "--default", d]).stdout.strip() or d) == "true"
+        lo = QCheckBox("Не закрывать бумажник до выхода из сеанса (пароль бумажника один раз за сеанс)"); lo.setChecked(kr("Leave Open", "true") and not kr("Close When Idle", "false"))
+        def lo_set(x):
+            kw("Leave Open", "true" if x else "false"); kw("Close When Idle", "false" if x else "true"); kw("Close on Screensaver", "false")
+        lo.toggled.connect(lo_set); v.addWidget(lo)
+        wd = QCheckBox("Отключить бумажник KDE (пароль бумажника не спрашивается; пароли Wi-Fi храните «для всех пользователей»)"); wd.setChecked(not kr("Enabled", "true"))
+        wd.toggled.connect(lambda x: kw("Enabled", "false" if x else "true")); v.addWidget(wd)
         v.addWidget(QLabel("<h3>Драйвер Goodix GXFP5130 (экспериментальный)</h3>Для Huawei MateBook D16 2024 и похожих. Выключен по умолчанию. При первом включении в сканер записывается ключ шифрования, как это делает Windows. При включённом Secure Boot модуль не загрузится.", wordWrap=True))
         def gx(m):
             if not os.path.exists("/usr/sbin/matryoshka-gxfp"): o.setPlainText("Пакет matryoshka-gxfp не установлен."); return
@@ -281,6 +302,7 @@ class Center(QWidget):
         v.addWidget(btn("Окно записи лица (несколько снимков)", lambda: subprocess.Popen(["matryoshka-face-gui"])))
         v.addWidget(btn("1. Записать лицо (смотрите в камеру)", lambda: r("face-add")))
         v.addWidget(btn("2. Включить вход по лицу", lambda: r("face-login-on"))); v.addWidget(btn("Выключить вход по лицу", lambda: r("face-login-off")))
+        fl = QCheckBox("Узнавать лицо на экране блокировки сразу, без Enter"); fl.setChecked(st.get("FACE_LOCK", st.get("FACE_LOGIN", "0")) == "1"); fl.toggled.connect(lambda x: r("face-lock-on" if x else "face-lock-off")); v.addWidget(fl)
         v.addWidget(btn("Проверить, узнаёт ли меня", lambda: r("face-check"))); v.addWidget(btn("Удалить снимки лица", lambda: r("face-clear")))
     def p_privacy(self, v):
         v.addWidget(QLabel("<h2>Приватность</h2>Здесь видно всё, что может ходить в сеть. Без вашего включения сети не работает ничего.", wordWrap=True))

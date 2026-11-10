@@ -84,6 +84,11 @@ case "$cmd" in
       finger-polkit-on) /usr/sbin/matryoshka-auth finger-polkit on ;;
       finger-polkit-off) /usr/sbin/matryoshka-auth finger-polkit off ;;
       status) /usr/sbin/matryoshka-auth status ;;
+      face-lock-on) /usr/sbin/matryoshka-auth face-lock on ;;
+      face-lock-off) /usr/sbin/matryoshka-auth face-lock off ;;
+      admin-password) /usr/sbin/matryoshka-auth admin-mode password ;;
+      admin-confirm) /usr/sbin/matryoshka-auth admin-mode confirm ;;
+      admin-none) /usr/sbin/matryoshka-auth admin-mode none ;;
       face-install) dpkg -s matryoshka-face >/dev/null 2>&1 && echo "Распознавание лица установлено" || { echo "Пакет matryoshka-face не установлен"; exit 3; } ;;
       face-login-on) /usr/sbin/matryoshka-face on ;;
       face-login-off) /usr/sbin/matryoshka-face off ;;
