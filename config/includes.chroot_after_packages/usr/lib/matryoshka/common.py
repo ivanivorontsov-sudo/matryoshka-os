@@ -15,6 +15,7 @@ THEMES = {
     "terminal": dict(name="Терминал", bg="#050A06", bg2="#0A140C", fg="#39FF7A", dim="#2BB35A", accent="#39FF7A", accent2="#FFB000", shape="square", dark=True),
 }
 
+MENUS = {"": "Как задумано в расположении", "kickoff": "Обычное меню", "kickerdash": "Во весь экран, сеткой, как в Android", "kicker": "Компактное меню"}
 LAYOUTS = {"windows": "Как Windows", "macos": "Как macOS", "gnome": "Как GNOME", "android": "Как Android (СуперСмарт)"}
 
 COUNTRIES = {
@@ -174,6 +175,9 @@ def apply_theme(key):
 def apply_layout(key):
     s = settings(); s["layout"] = key; save("settings", s)
     js = open("/usr/share/matryoshka/layouts/%s.js" % key, encoding="utf-8").read()
+    menu = s.get("app_menu", "")
+    if menu and menu in MENUS:
+        js = re.sub(r'"org\.kde\.plasma\.(kickoff|kickerdash|kicker)"', '"org.kde.plasma.%s"' % menu, js)
     run(["busctl", "--user", "call", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell", "evaluateScript", "s", js])
 
 def net_on():

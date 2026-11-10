@@ -34,6 +34,12 @@ class Center(QWidget):
         th.activated.connect(lambda _: C.apply_theme(th.currentData())); f.addRow("Тема", th)
         la = QComboBox(); [la.addItem(n, k) for k, n in C.LAYOUTS.items()]; la.setCurrentIndex(list(C.LAYOUTS).index(self.s["layout"]))
         la.activated.connect(lambda _: C.apply_layout(la.currentData())); f.addRow("Расположение", la)
+        mn = QComboBox(); [mn.addItem(n, k) for k, n in C.MENUS.items()]; mn.setCurrentIndex(max(0, mn.findData(self.s.get("app_menu", ""))))
+        def mnset(_):
+            if QMessageBox.question(self, "Меню приложений", "Панели будут построены заново по выбранному расположению. Ваши изменения панелей пропадут. Продолжить?") != QMessageBox.StandardButton.Yes:
+                mn.setCurrentIndex(max(0, mn.findData(self.s.get("app_menu", "")))); return
+            self.s["app_menu"] = mn.currentData(); self.save(); C.apply_layout(la.currentData())
+        mn.activated.connect(mnset); f.addRow("Меню приложений", mn)
         hl = QCheckBox("Подсветка курсора и круги при щелчке"); hl.setChecked(os.path.exists(os.path.expanduser("~/.config/autostart/podsvetka-myshi.desktop")))
         def hlset(x):
             if not shutil.which("podsvetka-myshi"): QMessageBox.information(self, "Подсветка мыши", "Пакет podsvetka-myshi не установлен."); return
