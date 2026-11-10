@@ -67,6 +67,10 @@ class Runner(dbus.service.Object):
             apps = [a for a in C.desktop_apps() if a["file"] == path]
             if apps:
                 C.launch(apps[0])
+    @dbus.service.method("org.kde.krunner1", in_signature="", out_signature="a{sv}")
+    def Config(self):
+        return dbus.Dictionary({}, signature="sv")
+
     @dbus.service.method("org.kde.krunner1", in_signature="", out_signature="a(sss)")
     def Actions(self):
         return [("info", "О приложении и версия", "help-about"), ("uninstall", "Удалить", "edit-delete")]
