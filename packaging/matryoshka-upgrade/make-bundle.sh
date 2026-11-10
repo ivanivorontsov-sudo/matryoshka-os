@@ -5,7 +5,7 @@ T=$(mktemp -d); mkdir -p $T/includes
 rsync -a --exclude=__pycache__ --exclude=/root/extra-debs --exclude=/etc/calamares --exclude=/etc/sddm.conf.d --exclude=/usr/share/applications/matryoshka-install.desktop --exclude=/etc/systemd/system/matryoshka-autotest.service ${INC:-$R/config/includes.chroot_after_packages}/ $T/includes/
 cat $R/config/package-lists/matryoshka.list.chroot $R/config/package-lists/hardware.list.chroot 2>/dev/null | grep -v '^#' | tr ' ' '\n' | grep . | grep -vxE 'firmware-ipw2x00|firmware-ivtv' > $T/packages.list
 for f in ${EXTRA:-/nonexistent}/*.deb; do [ -f "$f" ] && dpkg-deb -f "$f" Package >> $T/packages.list; done
-grep -ho 'systemctl enable [^|&;]*' $R/config/hooks/live/0600-matryoshka.hook.chroot | sed 's/systemctl enable//; s/--now//; s/2>\/dev\/null//' | tr ' ' '\n' | grep -E '^matryoshka-.*\.(service|timer)$' | grep -v autotest | sort -u > $T/enable.list
+grep -ho 'systemctl enable [^|&;]*' $R/config/hooks/live/0600-matryoshka.hook.chroot | sed 's/systemctl enable//; s/--now//; s/2>\/dev\/null//' | tr ' ' '\n' | grep -E '^matryoshka-.*\.(service|timer)$' | grep -v autotest | while read -r u; do [ -f $T/includes/etc/systemd/system/$u ] || [ -f $T/includes/usr/lib/systemd/system/$u ] && echo $u; done | sort -u > $T/enable.list
 echo "$V" > $T/VERSION
 grep -v '^#' $R/packaging/matryoshka-upgrade/remove.list 2>/dev/null | grep . > $T/remove.list || true
 for f in ${EXTRA:-/nonexistent}/*.deb; do [ -f "$f" ] && { mkdir -p $T/matryoshka-repo; cp "$f" $T/matryoshka-repo/; }; done
