@@ -2,6 +2,8 @@ polkit.addRule(function(action, subject) {
     if (!subject.local || !subject.active) return;
     if (!subject.isInGroup("sudo") && !subject.isInGroup("wheel")) return;
     var id = action.id;
+    var nmDefaultYes = ["enable-disable-network", "enable-disable-wifi", "enable-disable-wwan", "enable-disable-wimax", "network-control", "wifi.scan", "wifi.share.open", "wifi.share.protected", "settings.modify.own", "enable-disable-statistics", "enable-disable-connectivity-check"];
+    if (id.indexOf("org.freedesktop.NetworkManager.") === 0 && nmDefaultYes.indexOf(id.substring(31)) >= 0) return;
     var ok = false;
     if (id.indexOf("org.freedesktop.NetworkManager.") === 0) ok = true;
     if (id.indexOf("org.freedesktop.resolve1.") === 0) ok = true;
