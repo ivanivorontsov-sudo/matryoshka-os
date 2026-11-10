@@ -189,6 +189,71 @@ apply() {
   return 0
 }
 
+pamfile() {
+  if [ -f "/etc/pam.d/$1" ]; then echo "/etc/pam.d/$1"; elif [ -f "/usr/lib/pam.d/$1" ]; then echo "/usr/lib/pam.d/$1"; fi
+}
+
+check_file() {
+  local f bad=0 kind a b
+  f=/etc/pam.d/$1; [ -f "$f" ] || return 0
+  while read -r kind a b; do
+    case "$kind" in
+      inc) [ -n "$(pamfile "$a")" ] || { echo "PAM $1: нет файла $a"; bad=1; } ;;
+      mod)
+        case "$a" in /*) [ -e "$a" ] ;; *) mod "$a" ;; esac || { echo "PAM $1: нет модуля $a"; bad=1; continue; }
+        if [ "$a" = pam_python.so ]; then
+          [ -f "$b" ] || { echo "PAM $1: нет файла $b"; bad=1; continue; }
+          [ "$b" = "$CONFIRM" ] && ! python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$b" 2>/dev/null && { echo "PAM $1: ошибка в $b"; bad=1; }
+        fi ;;
+    esac
+  done < <(awk '/^[ \t]*(#|$)/ {next} $1=="@include" {print "inc", $2; next} $1 ~ /^-/ || $2 == "optional" {next} {s=$0; sub(/^[ \t]*[a-z]+[ \t]+/, "", s); if (s ~ /^\[/) sub(/^\[[^]]*\][ \t]*/, "", s); else sub(/^[^ \t]+[ \t]*/, "", s); n=split(s, x, /[ \t]+/); print "mod", x[1], (n > 1 ? x[2] : "")}' "$f")
+  return $bad
+}
+
+check() {
+  local n bad=0
+  for n in sddm matryoshka-login kde kde-fingerprint kde-smartcard sudo polkit-1 common-auth login; do check_file "$n" || bad=1; done
+  if [ -f /etc/pam.d/sddm ] && ! grep -q '^@include[[:space:]]\+\(common-auth\|matryoshka-login\)' /etc/pam.d/sddm && ! grep -q '^auth' /etc/pam.d/sddm; then echo "PAM sddm: нет проверки пароля"; bad=1; fi
+  [ -f /etc/pam.d/matryoshka-login ] && ! grep -q 'pam_unix\.so' /etc/pam.d/matryoshka-login && { echo "PAM matryoshka-login: нет входа по паролю"; bad=1; }
+  [ $bad = 0 ] && echo "PAM: проверка пройдена"
+  return $bad
+}
+
+SNAP_FILES="etc/pam.d etc/matryoshka/auth.conf var/lib/matryoshka/auth/owned etc/polkit-1/rules.d/47-matryoshka-noask.rules etc/sddm.conf.d/10-matryoshka-greeter.conf"
+
+snapshot() {
+  local out=${1:-$STATE/good.tar} l=() x
+  mkdir -p "$STATE"
+  for x in $SNAP_FILES; do [ -e "/$x" ] && l+=("$x"); done
+  tar -C / -cpf "$out.new" "${l[@]}" && mv -f "$out.new" "$out"
+}
+
+restore_snap() {
+  local t=${1:-$STATE/good.tar} n
+  [ -f "$t" ] || return 1
+  if [ -f "$STATE/owned" ]; then while read -r n; do [ -n "$n" ] && rm -f "/etc/pam.d/$n"; done < "$STATE/owned"; rm -f "$STATE/owned"; fi
+  rm -f "$NOASK_RULE"
+  tar -C / -xpf "$t"
+}
+
+reset_safe() {
+  local n
+  if [ -f "$STATE/owned" ]; then while read -r n; do [ -n "$n" ] && rm -f "/etc/pam.d/$n"; done < "$STATE/owned"; rm -f "$STATE/owned"; fi
+  [ -f /etc/pam.d/sddm ] && sed -i 's/^@include[[:space:]]\+matryoshka-login[[:space:]]*$/@include common-auth/' /etc/pam.d/sddm
+  for n in sddm kde sudo polkit-1 common-auth login su sudo-i; do [ -f "/etc/pam.d/$n" ] && sed -i '/howdy/d; /pam_fprintd/d; /pam_confirm\.py/d' "/etc/pam.d/$n"; done
+  rm -f "$NOASK_RULE"
+}
+
+boot() {
+  if grep -qw matryoshka.safeauth /proc/cmdline; then reset_safe; echo "matryoshka.safeauth: вход только по паролю"; return 0; fi
+  apply
+  if check; then snapshot; return 0; fi
+  echo "PAM после применения настроек неисправен, возвращаю последнее рабочее состояние"
+  if restore_snap && check; then echo "возвращено рабочее состояние $STATE/good.tar"; return 0; fi
+  reset_safe; check || true
+  echo "включён вход только по паролю"
+}
+
 status() {
   migrate
   local k
@@ -202,6 +267,11 @@ onoff() { case "$1" in on) echo 1;; off) echo 0;; *) echo "нужно on или 
 
 case "${1:-}" in
   apply) apply;;
+  boot) boot;;
+  check) check;;
+  snapshot) snapshot "${2:-$STATE/good.tar}";;
+  restore) restore_snap "${2:-$STATE/good.tar}" && check;;
+  reset) reset_safe; check;;
   status) status;;
   finger)
     v=$(onoff "${2:-}"); setkey FINGER_LOGIN "$v"; setkey FINGER_LOCK "$v"; apply
@@ -223,5 +293,5 @@ case "${1:-}" in
       none) echo "Действия администратора выполняются без вопросов. Это небезопасно: любая программа в вашем сеансе получит права root";;
     esac;;
   greeter-ru) v=$(onoff "${2:-}"); setkey GREETER_RU "$v"; apply; echo готово;;
-  *) echo "matryoshka-auth apply|status|finger on|off|finger-lock on|off|finger-login on|off|finger-sudo on|off|finger-polkit on|off|face on|off|face-lock on|off|admin-mode password|confirm|none|greeter-ru on|off"; exit 1;;
+  *) echo "matryoshka-auth apply|boot|check|snapshot [ФАЙЛ]|restore [ФАЙЛ]|reset|status|finger on|off|finger-lock on|off|finger-login on|off|finger-sudo on|off|finger-polkit on|off|face on|off|face-lock on|off|admin-mode password|confirm|none|greeter-ru on|off"; exit 1;;
 esac

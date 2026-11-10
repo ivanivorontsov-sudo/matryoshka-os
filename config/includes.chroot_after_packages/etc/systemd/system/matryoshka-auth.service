@@ -4,7 +4,7 @@ After=local-fs.target
 Before=display-manager.service
 [Service]
 Type=oneshot
-ExecStart=-/usr/sbin/matryoshka-auth apply
+ExecStart=-/usr/sbin/matryoshka-auth boot
 TimeoutStartSec=120
 [Install]
 WantedBy=multi-user.target

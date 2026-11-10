@@ -20,6 +20,7 @@ else
   LAST=$(bash "$SB" last-ok "$TARGET" 86400) || die "нет проверенной резервной копии за последние 24 часа ($LAST). Сделайте копию на шаге 1 или выберите существующую на вкладке «Имеющиеся копии»."
   say "Резервная копия: $LAST"
 fi
+PAMSNAP=/var/lib/matryoshka/auth/pre-update.tar; rm -f "$PAMSNAP"
 got=$(sha256sum "$BUNDLE" | cut -d' ' -f1)
 [ -n "$SUM" ] && [ "$got" = "$SUM" ] || die "SHA256 файла обновления не совпал: $got"
 W=/var/lib/matryoshka/update; rm -rf $W; mkdir -p $W
@@ -33,6 +34,11 @@ rollback() {
     if [ -e "$LAST/root$f" ] || [ -L "$LAST/root$f" ]; then mkdir -p "$(dirname "$f")"; cp -a "$LAST/root$f" "$f"; else rm -f "$f"; fi
   done < $W/files.txt
   [ -f "$LAST/root/etc/fstab" ] && cp -a "$LAST/root/etc/fstab" /etc/fstab
+  if [ -f "$PAMSNAP" ]; then
+    [ -f /var/lib/matryoshka/auth/owned ] && while read -r n; do [ -n "$n" ] && rm -f "/etc/pam.d/$n"; done < /var/lib/matryoshka/auth/owned
+    rm -f /var/lib/matryoshka/auth/owned /etc/polkit-1/rules.d/47-matryoshka-noask.rules /etc/sddm.conf.d/10-matryoshka-greeter.conf
+    tar -C / -xpf "$PAMSNAP" && say "настройки входа (PAM) возвращены"
+  fi
   systemctl daemon-reload; dpkg --configure -a >/dev/null 2>&1
   echo "ОБНОВЛЕНИЕ НЕ ПРИМЕНЕНО, файлы возвращены. Если система ведёт себя странно: загрузитесь с флешки через F12 и выполните полное восстановление (инструкция в программе)."
   type isoclean >/dev/null 2>&1 && isoclean
@@ -41,6 +47,9 @@ rollback() {
 trap 'echo "прервано"; isoclean; rollback' INT TERM
 say "Проверка пакетного менеджера"
 dpkg --configure -a || rollback
+mkdir -p "$(dirname "$PAMSNAP")"
+PL=(); for x in etc/pam.d etc/matryoshka/auth.conf var/lib/matryoshka/auth/owned etc/polkit-1/rules.d/47-matryoshka-noask.rules etc/sddm.conf.d/10-matryoshka-greeter.conf; do [ -e "/$x" ] && PL+=("$x"); done
+tar -C / -cpf "$PAMSNAP" "${PL[@]}" || die "не удалось сохранить настройки входа"
 say "Копирую файлы системы"
 rsync -aK --exclude=/etc/sddm.conf.d/ --exclude=/etc/hostname --exclude=/etc/hosts $W/includes/ / || rollback
 rm -f /etc/debian_chroot
@@ -96,6 +105,12 @@ update-mime-database /usr/share/mime >/dev/null 2>&1 || true
 update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
 [ -s $W/enable.list ] && xargs -a $W/enable.list systemctl enable >/dev/null 2>&1
 systemctl disable lxc.service >/dev/null 2>&1 || true
+if [ -x /usr/sbin/matryoshka-auth ]; then
+  say "Применяю и проверяю настройки входа (PAM)"
+  /usr/sbin/matryoshka-auth apply
+  /usr/sbin/matryoshka-auth check || { echo "настройки входа не прошли проверку"; rollback; }
+  /usr/sbin/matryoshka-auth snapshot
+fi
 modprobe tun 2>/dev/null || true
 sysctl --system >/dev/null 2>&1 || true
 FB=/usr/lib/matryoshka/fix-boot.sh; [ -x "$FB" ] || FB="$(dirname "$(readlink -f "$0")")/fix-boot.sh"; "$FB" || rollback
