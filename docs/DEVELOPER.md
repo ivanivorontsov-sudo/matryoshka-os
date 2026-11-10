@@ -11,7 +11,8 @@
 | Пакет | Версия 18.6 | Назначение |
 |---|---|---|
 | matryoshka-upgrade | 1.1.0 | копия и обновление на месте |
-| matryoshka-face | 1.0.3 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
+| podsvetka-myshi | 1.2.3 | подсветка курсора, `packaging/podsvetka-myshi/build.sh [исходники] [каталог]`, нужен kwin-dev 6.3.6 |
+| matryoshka-face | 1.0.4 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
 | matryoshka-gxfp | 0.1.5 | драйвер Goodix GXFP5130, по желанию |
 | matryoshka-fixes | 1.1.4 | Wine, Electron, шрифты. libndk_translation не входит |
 
@@ -30,7 +31,7 @@
 
 ## Вход
 
-Все настройки входа пишет один скрипт `/usr/sbin/matryoshka-auth` (`apply`, `status`, `finger on|off`, `finger-lock`, `finger-login`, `finger-sudo`, `finger-polkit`, `face`, `greeter-ru`). Настройки: `/etc/matryoshka/auth.conf`. Созданные им файлы перечислены в `/var/lib/matryoshka/auth/owned`. Центр, `root.sh bio`, `matryoshka-face` и `matryoshka-gxfp` вызывают его, а сами PAM не правят.
+Все настройки входа пишет один скрипт `/usr/sbin/matryoshka-auth` (`apply`, `boot`, `check`, `snapshot`, `restore`, `reset`, `status`, `finger on|off`, `finger-lock`, `finger-login`, `finger-sudo`, `finger-polkit`, `face`, `greeter-ru`). Настройки: `/etc/matryoshka/auth.conf`. Созданные им файлы перечислены в `/var/lib/matryoshka/auth/owned`. Центр, `root.sh bio`, `matryoshka-face` и `matryoshka-gxfp` вызывают его, а сами PAM не правят.
 
 - Экран входа SDDM: `@include common-auth` заменяется на `@include matryoshka-login`. Сначала проверяется введённый пароль (`pam_unix`), камера и отпечаток вызываются только при пустом или неверном пароле. Лицо: оставить поле пустым и нажать Enter; отпечаток: `max-tries=3 timeout=15`.
 - Экран блокировки: пароль в `kde` без биометрии; отпечаток в отдельной службе `kde-fingerprint` (`/etc/pam.d/kde-fingerprint`, `timeout=-1`), которую kscreenlocker запускает параллельно. Лицо на экране блокировки не используется.

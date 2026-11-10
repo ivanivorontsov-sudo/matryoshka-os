@@ -67,7 +67,7 @@
 
 ## Версии пакетов
 
-matryoshka-upgrade 1.1.0, matryoshka-face 1.0.3, matryoshka-gxfp 0.1.5.
+matryoshka-upgrade 1.1.0, matryoshka-face 1.0.4, matryoshka-gxfp 0.1.5, podsvetka-myshi 1.2.3. Пакет matryoshka-netclient удаляется.
 
 ## Обновление с 18.5
 
