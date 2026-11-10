@@ -26,11 +26,24 @@ def greeters():
             continue
     return out
 
+def stop_children(ppid):
+    for p in os.listdir("/proc"):
+        if not p.isdigit():
+            continue
+        try:
+            if open("/proc/%s/stat" % p).read().rsplit(")", 1)[1].split()[1] != str(ppid):
+                continue
+            if b"howdy" in open("/proc/%s/cmdline" % p, "rb").read():
+                os.kill(int(p), signal.SIGTERM)
+        except Exception:
+            continue
+
 def reap(old):
     for pid, start in old.items():
         try:
             if open("/proc/%d/stat" % pid).read().rsplit(")", 1)[1].split()[19] != start:
                 continue
+            stop_children(pid)
             os.kill(pid, signal.SIGKILL)
             print("lock-helper: killed stale screen locker greeter %d" % pid, flush=True)
         except Exception:

@@ -1,0 +1,11 @@
+#!/bin/sh
+C=/usr/lib/security/howdy/config.ini
+if [ "$1" = upgrade ] && [ -f "$C" ] && [ ! -s /etc/matryoshka/face-device ]; then
+  d=$(sed -n 's/^device_path = //p' "$C")
+  case "$d" in /dev/*) mkdir -p /etc/matryoshka; echo "$d" > /etc/matryoshka/face-device;; esac
+fi
+if [ -f "$C" ]; then
+  t=$(sed -n 's/^dark_threshold = //p' "$C")
+  [ -n "$t" ] && { mkdir -p /etc/matryoshka; echo "$t" > /etc/matryoshka/face-dark-threshold; }
+fi
+exit 0

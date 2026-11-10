@@ -1,0 +1,8 @@
+#!/bin/sh
+C=/usr/lib/security/howdy/config.ini
+if [ "$1" = configure ]; then
+  t=$(cat /etc/matryoshka/face-dark-threshold 2>/dev/null)
+  [ -n "$t" ] && sed -i "s/^dark_threshold = .*/dark_threshold = $t/" "$C"
+  /usr/sbin/matryoshka-face fixpath >/dev/null 2>&1 || true
+fi
+exit 0

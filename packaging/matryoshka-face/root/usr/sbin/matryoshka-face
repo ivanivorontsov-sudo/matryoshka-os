@@ -12,12 +12,34 @@ cams() {
   done
 }
 pick() { cams | sort | head -1; }
+stable() {
+  for l in /dev/v4l/by-path/* /dev/v4l/by-id/*; do
+    [ -L "$l" ] && [ "$(readlink -f "$l")" = "$1" ] && { echo "$l"; return; }
+  done
+  echo "$1"
+}
+setdev() {
+  s=$(stable "$1")
+  sed -i "s#^device_path = .*#device_path = $s#" "$C"
+  mkdir -p /etc/matryoshka; echo "$s" > /etc/matryoshka/face-device
+}
 case "$1" in
   cameras) cams;;
+  fixpath)
+    cur=$(sed -n 's/^device_path = //p' "$C")
+    case "$cur" in /dev/v4l/*) [ -e "$cur" ] && exit 0;; esac
+    saved=$(cat /etc/matryoshka/face-device 2>/dev/null)
+    if [ -n "$saved" ] && [ -e "$saved" ]; then setdev "$(readlink -f "$saved")"; exit 0; fi
+    if [ -n "$cur" ] && [ "$cur" != none ] && [ -e "$cur" ]; then setdev "$(readlink -f "$cur")"; exit 0; fi
+    grep -qs howdy /etc/pam.d/sddm /etc/pam.d/matryoshka-login /etc/pam.d/kde-smartcard || exit 0
+    c=$(pick); [ -n "$c" ] || exit 0
+    set -- $c; setdev "$2"
+    [ "$1" = rgb ] && sed -i 's/^dark_threshold = .*/dark_threshold = 80/' "$C"
+    exit 0;;
   on)
     c=$(pick); [ -n "$c" ] || { echo "Камера не найдена"; exit 1; }
     set -- $c; dev=$2
-    sed -i "s#^device_path = .*#device_path = $dev#" "$C"
+    setdev "$dev"
     if [ "$1" = rgb ]; then sed -i 's/^dark_threshold = .*/dark_threshold = 80/' "$C"; echo "ВНИМАНИЕ: инфракрасной камеры нет, используется обычная ($dev). Такую защиту можно обмануть фотографией. Пароль работает всегда."; else echo "Инфракрасная камера: $dev"; fi
     [ -x "$AUTH" ] || { echo "Нет $AUTH (нужна Матрёшка 18.6)"; exit 1; }
     "$AUTH" face on >/dev/null || exit 1
@@ -30,5 +52,5 @@ case "$1" in
   check) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; [ -n "$u" ] || exit 1; SUDO_USER="$u" howdy -U "$u" list >/dev/null 2>&1 || { echo "Лицо ещё не записано"; exit 2; }; echo "Смотрите в камеру..."; if PYTHONWARNINGS=ignore timeout 30 python3 /lib/security/howdy/compare.py "$u" >/dev/null 2>&1; then echo "Лицо узнано"; else echo "Лицо не узнано, попробуйте записать ещё снимок"; exit 3; fi;;
   list) u=${2:-${PKEXEC_UID:+$(id -nu "$PKEXEC_UID")}}; SUDO_USER="$u" howdy -U "$u" list 2>&1 | grep -v WARN;;
   status) grep "^device_path" "$C"; grep -l howdy /etc/pam.d/* 2>/dev/null;;
-  *) echo "matryoshka-face on|off|add [пользователь]|import пользователь файл|clear|check|list|cameras|test|status"; exit 1;;
+  *) echo "matryoshka-face on|off|fixpath|add [пользователь]|import пользователь файл|clear|check|list|cameras|test|status"; exit 1;;
 esac
