@@ -3,10 +3,17 @@ import glob, os, shutil, subprocess, sys
 def q(path):
     return path.replace('"', "").replace("\\", "/")
 
+def run_line(name):
+    plain = name.isascii() and " " not in name
+    cmd = name if plain else '"%s"' % name
+    if name.lower().endswith(".bat"):
+        return "call %s\n" % cmd
+    return "%s\n" % cmd
+
 def session_text(program_dir, program, dos_root, home, shared, print_dir):
     program_dir, dos_root, home, shared, print_dir = (q(p) for p in (program_dir, dos_root, home, shared, print_dir))
     name = program.replace('"', "")
-    run = ('call "%s"\n' % name) if name else "echo DOS готов. Диски: C программа, D DOS, E дом, F общее.\n"
+    run = run_line(name) if name else "echo DOS готов. Диски: C программа, D DOS, E дом, F общее.\n"
     return """[sdl]
 fullscreen=false
 autolock=false
@@ -87,10 +94,8 @@ mount f "{shared}" -freesize 2048
 set TEMP=C:\\
 set TMP=C:\\
 set BLASTER=A220 I7 D1 H5 P330 T6
-path c:\\;d:\\;z:\\
+path c:\\;d:\\;z:\\;z:\\system;z:\\bin;z:\\dos;z:\\4dos;z:\\textutil
 c:
-CHCP 866
-KEYB RU 866
 {run}""".format(program_dir=program_dir, dos_root=dos_root, home=home, shared=shared, print_dir=print_dir, run=run)
 
 def conf_text(drive, folder, program):
@@ -151,7 +156,7 @@ def launch(program=None, home=None, timeout=None):
                 f.write("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -conf \"%s\"\nIcon=dosbox-x\n" % (tag, conf))
             os.chmod(lf, 0o755)
     env = dict(os.environ, LANG=os.environ.get("LANG") or "ru_RU.UTF-8")
-    proc = subprocess.Popen(["dosbox-x", "-silent", "-conf", conf], env=env)
+    proc = subprocess.Popen(["dosbox-x", "-nopromptfolder", "-fastlaunch", "-conf", conf], env=env)
     try:
         code = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:

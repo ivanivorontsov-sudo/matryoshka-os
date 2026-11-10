@@ -42,6 +42,12 @@ class T(unittest.TestCase):
         self.assertIn('mount e "/home/ivan"', text)
         self.assertIn("FESTA.EXE", text)
         self.assertNotIn("\nexit", text.split("[autoexec]")[-1])
+        auto = text.split("[autoexec]")[-1]
+        self.assertIn("z:\\dos", auto)
+        self.assertIn("\nFESTA.EXE\n", auto)
+        self.assertNotIn("KEYB", auto)
+        self.assertEqual(dosbox.run_line("RUN.BAT"), "call RUN.BAT\n")
+        self.assertEqual(dosbox.run_line("Феста.exe"), '"Феста.exe"\n')
 
     def test_newer(self):
         self.assertFalse(pkgplan.newer("1.0", "1.0"))
