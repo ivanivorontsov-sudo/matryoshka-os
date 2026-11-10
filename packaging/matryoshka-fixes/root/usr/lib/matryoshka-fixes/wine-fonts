@@ -1,7 +1,7 @@
 #!/bin/bash
 export WINEPREFIX=${WINEPREFIX:-$HOME/.wine}
 [ -f "$WINEPREFIX/system.reg" ] || exit 0
-M="$WINEPREFIX/.matryoshka-fonts-2"
+M="$WINEPREFIX/.matryoshka-fonts-3"
 [ "$1" = --force ] || [ ! -e "$M" ] || exit 0
 W=wine; command -v wine >/dev/null || W=/usr/lib/wine/wine64
 export WINEDEBUG=-all WINEDLLOVERRIDES="mscoree=;mshtml=;winemenubuilder.exe=d"
@@ -16,6 +16,10 @@ done
 for f in "Courier New" "Consolas" "Lucida Console" "Cascadia Mono" "Cascadia Code"; do "$W" reg add "$K" /v "$f" /d "$m" /f >/dev/null 2>&1; done
 for f in "Times New Roman" "Georgia" "Cambria"; do "$W" reg add "$K" /v "$f" /d "$r" /f >/dev/null 2>&1; done
 for f in "Microsoft YaHei" "Microsoft YaHei UI" "SimSun" "NSimSun" "SimHei" "MS Gothic" "MS UI Gothic" "Meiryo" "Yu Gothic" "Malgun Gothic"; do "$W" reg add "$K" /v "$f" /d "$c" /f >/dev/null 2>&1; done
+e="Symbola"; fc-list -q "$e" || e="Noto Color Emoji"
+y="Symbola"; fc-list -q "$y" || y="DejaVu Sans"
+for f in "Segoe UI Emoji" "Apple Color Emoji" "Noto Emoji" "Twemoji Mozilla"; do "$W" reg add "$K" /v "$f" /d "$e" /f >/dev/null 2>&1; done
+for f in "Segoe UI Symbol"; do "$W" reg add "$K" /v "$f" /d "$y" /f >/dev/null 2>&1; done
 D='HKCU\Control Panel\Desktop'
 "$W" reg add "$D" /v FontSmoothing /d 2 /f >/dev/null 2>&1
 "$W" reg add "$D" /v FontSmoothingType /t REG_DWORD /d 2 /f >/dev/null 2>&1
