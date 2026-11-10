@@ -1,0 +1,13 @@
+[Unit]
+Description=Matryoshka fingerprint scanner recovery after errors
+ConditionPathExists=/etc/matryoshka/gxfp-on
+After=matryoshka-gxfp.service
+
+[Service]
+ExecStart=/usr/sbin/matryoshka-gxfp watch
+Restart=on-failure
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

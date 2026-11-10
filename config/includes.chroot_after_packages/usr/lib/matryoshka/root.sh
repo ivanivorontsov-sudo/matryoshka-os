@@ -113,6 +113,8 @@ case "$cmd" in
       finger-sudo-off) /usr/sbin/matryoshka-auth finger-sudo off ;;
       finger-polkit-on) /usr/sbin/matryoshka-auth finger-polkit on ;;
       finger-polkit-off) /usr/sbin/matryoshka-auth finger-polkit off ;;
+      finger-reset) /usr/sbin/matryoshka-gxfp reset ;;
+      face-fixpath) /usr/sbin/matryoshka-face fixpath && grep "^device_path" /usr/lib/security/howdy/config.ini ;;
       status) /usr/sbin/matryoshka-auth status ;;
       face-lock-on) /usr/sbin/matryoshka-auth face-lock on ;;
       face-lock-off) /usr/sbin/matryoshka-auth face-lock off ;;

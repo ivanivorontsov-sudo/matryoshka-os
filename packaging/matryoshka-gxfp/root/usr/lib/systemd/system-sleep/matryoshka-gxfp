@@ -1,0 +1,6 @@
+#!/bin/sh
+[ "$1" = post ] || exit 0
+[ -e /etc/matryoshka/gxfp-on ] || exit 0
+[ -x /usr/sbin/matryoshka-gxfp ] || exit 0
+( sleep 2; /usr/sbin/matryoshka-gxfp reset >/dev/null 2>&1 ) &
+exit 0

@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-0.1.5}; O=${2:-.}; KV=${KV:-6.12.115+deb13.1-amd64}; D=$(dirname "$(readlink -f "$0")")
+V=${1:-0.1.6}; O=${2:-.}; KV=${KV:-6.12.115+deb13.1-amd64}; D=$(dirname "$(readlink -f "$0")")
 S=${GXFP_SRC:-/workspace/gxfp}
 [ -d "$S" ] || git clone -q https://github.com/Metrohan/gxfp5130-linux "$S"
 git -C "$S" checkout -q aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23
@@ -19,7 +19,7 @@ for b in gxfp_capture gxfp_psk_tool gxfp_recovery; do install -m 755 "$S/build/u
 cp -a "$S"/build/libfprint/libfprint/libfprint-2.so* "$T/usr/lib/matryoshka-gxfp/lib/"
 cp "$S/LICENSE" "$T/usr/share/doc/matryoshka-gxfp/LICENSE-GPL-2.0"; cp "$S/libfprint/COPYING" "$T/usr/share/doc/matryoshka-gxfp/libfprint-COPYING-LGPL"
 printf 'Source: https://github.com/Metrohan/gxfp5130-linux aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23 + temp_hot_seconds=-1 (issue 21)\nKernel: %s\n' "$KV" > "$T/usr/share/doc/matryoshka-gxfp/SOURCE"
-chmod 755 "$T/usr/sbin/"*
+chmod 755 "$T/usr/sbin/"* "$T/usr/lib/systemd/system-sleep/"*
 mkdir -p "$T/DEBIAN"
 cat > "$T/DEBIAN/control" <<C
 Package: matryoshka-gxfp
@@ -31,7 +31,7 @@ Depends: fprintd, libpam-fprintd, libgusb2, libgudev-1.0-0, libmbedtls21, libmbe
 Description: Experimental Goodix GXFP5130 fingerprint driver (opt-in)
  Off by default. Enable: matryoshka-gxfp on. Disable: matryoshka-gxfp off.
 C
-printf '#!/bin/sh\n/usr/sbin/matryoshka-gxfp sign || true\n[ -d /run/systemd/system ] && systemctl daemon-reload\nsystemctl enable matryoshka-gxfp.service >/dev/null 2>&1 || true\nif [ -e /etc/matryoshka/gxfp-on ] && [ -d /run/systemd/system ] && ! [ -c /dev/gxfp ]; then /usr/sbin/matryoshka-gxfp boot >/dev/null 2>&1; systemctl try-restart fprintd >/dev/null 2>&1; fi\nexit 0\n' > "$T/DEBIAN/postinst"
+printf '#!/bin/sh\n/usr/sbin/matryoshka-gxfp sign || true\n[ -d /run/systemd/system ] && systemctl daemon-reload\nsystemctl enable matryoshka-gxfp.service matryoshka-gxfp-watch.service >/dev/null 2>&1 || true\n[ -e /etc/matryoshka/gxfp-on ] && [ -d /run/systemd/system ] && systemctl restart matryoshka-gxfp-watch.service >/dev/null 2>&1\nif [ -e /etc/matryoshka/gxfp-on ] && [ -d /run/systemd/system ] && ! [ -c /dev/gxfp ]; then /usr/sbin/matryoshka-gxfp boot >/dev/null 2>&1; systemctl try-restart fprintd >/dev/null 2>&1; fi\nexit 0\n' > "$T/DEBIAN/postinst"
 mkdir -p "$T/etc/kernel/postinst.d"
 printf '#!/bin/sh\n/usr/sbin/matryoshka-gxfp sign "$1" >/dev/null 2>&1\nexit 0\n' > "$T/etc/kernel/postinst.d/zz-matryoshka-gxfp"; chmod 755 "$T/etc/kernel/postinst.d/zz-matryoshka-gxfp"
 printf '#!/bin/sh\n[ "$1" = remove ] && /usr/sbin/matryoshka-gxfp off >/dev/null 2>&1\nexit 0\n' > "$T/DEBIAN/prerm"

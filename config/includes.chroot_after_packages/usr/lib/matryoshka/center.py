@@ -302,6 +302,7 @@ class Center(QWidget):
         v.addWidget(QLabel("<h3>Отпечаток пальца</h3>"))
         v.addWidget(btn("Записать отпечаток", lambda: subprocess.Popen(["konsole", "--hold", "-e", "fprintd-enroll"])))
         v.addWidget(btn("Включить вход по отпечатку", lambda: r("finger-login-on"))); v.addWidget(btn("Выключить вход по отпечатку", lambda: r("finger-login-off")))
+        v.addWidget(btn("Сканер пишет «неизвестная ошибка» — сбросить сканер", lambda: r("finger-reset")))
         st = {}
         try:
             for line in open("/etc/matryoshka/auth.conf", encoding="utf-8"):
@@ -343,6 +344,7 @@ class Center(QWidget):
         v.addWidget(btn("Включить драйвер Goodix (экспериментальный)", lambda: gx("on"))); v.addWidget(btn("Выключить драйвер Goodix", lambda: gx("off")))
         v.addWidget(QLabel("<h3>Лицо</h3>Howdy 2.6.1 (пакет boltgolt с Launchpad) с dlib. Работает на экране входа после пустого Enter, пароль подходит всегда. Если у камеры нет инфракрасного режима, защиту можно обмануть фотографией.", wordWrap=True))
         v.addWidget(btn("Какая камера будет использована", lambda: r("face-cameras")))
+        v.addWidget(btn("Лицо не узнаётся на экране блокировки — найти камеру заново", lambda: r("face-fixpath")))
         v.addWidget(btn("Окно записи лица (несколько снимков)", lambda: subprocess.Popen(["matryoshka-face-gui"])))
         v.addWidget(btn("1. Записать лицо (смотрите в камеру)", lambda: r("face-add")))
         v.addWidget(btn("2. Включить вход по лицу", lambda: r("face-login-on"))); v.addWidget(btn("Выключить вход по лицу", lambda: r("face-login-off")))
