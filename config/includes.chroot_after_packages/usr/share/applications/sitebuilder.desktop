@@ -8,5 +8,5 @@ Comment=Конструктор сайтов (Windows-программа чере
 Actions=fix;
 
 [Desktop Action fix]
-Name=Если окно пустое: починить WebView2
+Name=Если окно всё ещё пустое: поставить DXVK
 Exec=sitebuilder --fix
