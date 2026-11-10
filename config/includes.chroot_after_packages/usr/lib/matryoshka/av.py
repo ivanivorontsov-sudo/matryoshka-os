@@ -101,6 +101,7 @@ def ask_ai(res):
 def dialog(res):
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextBrowser
     app = QApplication.instance() or QApplication(sys.argv)
+    if not app.desktopFileName(): app.setDesktopFileName("matryoshka-av")
     d = QDialog(); d.setWindowTitle("Антивирус Матрёшки"); d.resize(640, 460); v = QVBoxLayout(d)
     name = os.path.basename(res["file"])
     if res.get("confirmed"):

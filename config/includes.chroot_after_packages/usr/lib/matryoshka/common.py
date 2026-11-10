@@ -1,4 +1,4 @@
-import json, os, re, shlex, subprocess, configparser, glob, shutil
+import json, os, re, shlex, subprocess, configparser, glob, shutil, sys
 
 HOME = os.path.expanduser("~")
 CONF = os.path.join(HOME, ".config", "matryoshka")
@@ -260,8 +260,40 @@ def prep_wine():
     if os.path.isdir(dd) and not os.path.islink(link):
         os.symlink(s, link)
 
+DESKTOP_IDS = {"agent": "matryoshka-agent", "android": "matryoshka-android", "apps": "matryoshka-apps", "autostartmgr": "matryoshka-autostart", "av": "matryoshka-av",
+               "cadmenu": "matryoshka-cad", "cloud": "matryoshka-cloud", "dev": "matryoshka-dev", "dosbox": "matryoshka-dos", "emulators": "matryoshka-emulators",
+               "firstrun": "matryoshka-center", "pkginstall": "matryoshka-pkginstall", "run": "matryoshka-run", "sandbox": "matryoshka-sandbox", "share": "matryoshka-center",
+               "sysupdate": "matryoshka-sysupdate", "osupdate": "matryoshka-update", "vms": "matryoshka-vms", "waydroid_ctl": "matryoshka-android",
+               "install-wizard": "matryoshka-install", "antiraskladka": "antiraskladka", "appinfo": "matryoshka-center", "filetypes": "matryoshka-filetypes",
+               "cursor": "matryoshka-cursor", "session": "matryoshka-center"}
+
+def desktop_id(app):
+    from PyQt6.QtGui import QIcon
+    if not app.desktopFileName():
+        base = os.path.basename(sys.argv[0] if sys.argv and sys.argv[0] else "")
+        did = DESKTOP_IDS.get(base[:-3] if base.endswith(".py") else base)
+        if not did and base.startswith("matryoshka-"):
+            did = base
+        if did:
+            app.setDesktopFileName(did)
+    did = app.desktopFileName()
+    if did and app.windowIcon().isNull():
+        for d in ("/usr/share/applications", "/usr/local/share/applications"):
+            p = os.path.join(d, did + ".desktop")
+            if os.path.exists(p):
+                for line in open(p, encoding="utf-8", errors="replace"):
+                    if line.startswith("Icon="):
+                        ic = line.split("=", 1)[1].strip()
+                        app.setWindowIcon(QIcon(ic) if ic.startswith("/") else QIcon.fromTheme(ic))
+                        break
+                break
+
 def qt_ru(app):
     from PyQt6.QtCore import QTranslator, QLibraryInfo
+    try:
+        desktop_id(app)
+    except Exception:
+        pass
     app._tr = []
     for n in ("qtbase_ru", "qt_ru"):
         t = QTranslator()

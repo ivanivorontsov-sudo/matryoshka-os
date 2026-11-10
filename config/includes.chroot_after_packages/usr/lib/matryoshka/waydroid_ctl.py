@@ -83,6 +83,7 @@ def controller():
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QWidget
     app = QApplication.instance() or QApplication(sys.argv)
+    if not app.desktopFileName(): app.setDesktopFileName("matryoshka-android")
     w = QWidget()
     w.setWindowTitle("Android")
     w.setWindowFlag(Qt.WindowType.WindowMinimizeButtonHint, True)
