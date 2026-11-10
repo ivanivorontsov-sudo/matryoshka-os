@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Game in emulator
+Name[ru]=Игра в эмуляторе
+Comment[ru]=Открывает образ игры в подходящем эмуляторе (Flathub)
+Exec=python3 /usr/lib/matryoshka/romopen.py %f
+Icon=applications-games
+NoDisplay=true
+Categories=Game;Emulator;
+MimeType=application/x-matryoshka-game-image;application/x-nes-rom;application/x-snes-rom;application/x-n64-rom;application/x-gameboy-rom;application/x-gameboy-color-rom;application/x-gba-rom;application/x-nintendo-ds-rom;application/x-nintendo-3ds-rom;application/x-gamecube-rom;application/x-gamecube-iso-image;application/x-wii-rom;application/x-wii-iso-image;application/x-wii-wad;application/x-atari-2600-rom;application/x-pc-engine-rom;application/x-genesis-rom;application/x-genesis-rom-smd;application/x-sms-rom;application/x-gamegear-rom;application/x-dreamcast-rom;application/x-gd-rom-cue;

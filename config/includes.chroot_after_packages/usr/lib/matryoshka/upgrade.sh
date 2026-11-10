@@ -87,6 +87,8 @@ if [ -s $W/packages.list ]; then
   say "Версии пакетов Матрёшки:"; dpkg-query -W -f='  ${Package} ${Version}\n' 'matryoshka-*' 2>/dev/null
 fi
 systemctl daemon-reload
+update-mime-database /usr/share/mime >/dev/null 2>&1 || true
+update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
 [ -s $W/enable.list ] && xargs -a $W/enable.list systemctl enable >/dev/null 2>&1
 systemctl disable lxc.service >/dev/null 2>&1 || true
 modprobe tun 2>/dev/null || true

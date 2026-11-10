@@ -1,4 +1,26 @@
 [Default Applications]
+application/x-matryoshka-game-image=matryoshka-rom.desktop
+application/x-nes-rom=matryoshka-rom.desktop
+application/x-snes-rom=matryoshka-rom.desktop
+application/x-n64-rom=matryoshka-rom.desktop
+application/x-gameboy-rom=matryoshka-rom.desktop
+application/x-gameboy-color-rom=matryoshka-rom.desktop
+application/x-gba-rom=matryoshka-rom.desktop
+application/x-nintendo-ds-rom=matryoshka-rom.desktop
+application/x-nintendo-3ds-rom=matryoshka-rom.desktop
+application/x-gamecube-rom=matryoshka-rom.desktop
+application/x-gamecube-iso-image=matryoshka-rom.desktop
+application/x-wii-rom=matryoshka-rom.desktop
+application/x-wii-iso-image=matryoshka-rom.desktop
+application/x-wii-wad=matryoshka-rom.desktop
+application/x-atari-2600-rom=matryoshka-rom.desktop
+application/x-pc-engine-rom=matryoshka-rom.desktop
+application/x-genesis-rom=matryoshka-rom.desktop
+application/x-genesis-rom-smd=matryoshka-rom.desktop
+application/x-sms-rom=matryoshka-rom.desktop
+application/x-gamegear-rom=matryoshka-rom.desktop
+application/x-dreamcast-rom=matryoshka-rom.desktop
+application/x-gd-rom-cue=matryoshka-rom.desktop
 x-scheme-handler/http=firefox-esr.desktop
 x-scheme-handler/https=firefox-esr.desktop
 text/html=firefox-esr.desktop

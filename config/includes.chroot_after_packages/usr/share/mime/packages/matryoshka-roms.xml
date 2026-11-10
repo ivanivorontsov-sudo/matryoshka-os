@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-matryoshka-game-image"><comment>Образ игры для эмулятора</comment><glob pattern="*.rvz"/><glob pattern="*.wbfs"/><glob pattern="*.gcz"/><glob pattern="*.gcm"/><glob pattern="*.wua"/><glob pattern="*.wux"/><glob pattern="*.rpx"/><glob pattern="*.cso"/><glob pattern="*.chd"/><glob pattern="*.pbp"/><glob pattern="*.cia"/><glob pattern="*.cci"/><glob pattern="*.cxi"/><glob pattern="*.gdi"/><glob pattern="*.cdi"/><glob pattern="*.a26"/><glob pattern="*.fds"/><glob pattern="*.unf"/></mime-type>
+</mime-info>
