@@ -1,0 +1,25 @@
+[Desktop Entry]
+Type=Application
+Name=Файлы по типу
+Comment=Все фото, видео, музыка, документы, архивы и программы в одном окне
+Exec=python3 /usr/lib/matryoshka/filetypes.py
+Icon=folder-documents
+Categories=Utility;FileTools;
+Keywords=файлы;фото;видео;музыка;документы;архивы;files;photos;documents;
+Actions=images;video;audio;docs;
+
+[Desktop Action images]
+Name=Изображения
+Exec=python3 /usr/lib/matryoshka/filetypes.py images
+
+[Desktop Action video]
+Name=Видео
+Exec=python3 /usr/lib/matryoshka/filetypes.py video
+
+[Desktop Action audio]
+Name=Музыка
+Exec=python3 /usr/lib/matryoshka/filetypes.py audio
+
+[Desktop Action docs]
+Name=Документы
+Exec=python3 /usr/lib/matryoshka/filetypes.py docs
