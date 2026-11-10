@@ -154,6 +154,11 @@ def chooser():
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox
     import sys
     app = QApplication.instance() or QApplication(sys.argv)
+    try:
+        import wheelguard
+        wheelguard.install(app)
+    except Exception:
+        pass
     d = QDialog()
     d.setWindowTitle("Запуск Матрёшки")
     v = QVBoxLayout(d)

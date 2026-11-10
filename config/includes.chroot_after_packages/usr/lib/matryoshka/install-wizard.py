@@ -176,4 +176,4 @@ class Wiz(QWizard):
         super().reject()
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv); app.setDesktopFileName("matryoshka-install"); w = Wiz(); w.show(); sys.exit(app.exec())
+    app = QApplication(sys.argv); app.setDesktopFileName("matryoshka-install"); import wheelguard; wheelguard.install(app); w = Wiz(); w.show(); sys.exit(app.exec())

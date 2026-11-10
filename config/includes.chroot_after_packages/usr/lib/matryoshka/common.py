@@ -295,6 +295,11 @@ def desktop_id(app):
 def qt_ru(app):
     from PyQt6.QtCore import QTranslator, QLibraryInfo
     try:
+        import wheelguard
+        wheelguard.install(app)
+    except Exception:
+        pass
+    try:
         desktop_id(app)
     except Exception:
         pass
