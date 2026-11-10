@@ -2,12 +2,14 @@
 import json, os, subprocess, sys, tempfile, traceback
 from PyQt6.QtCore import QThread, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QPlainTextEdit, QMessageBox
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QPlainTextEdit, QMessageBox, QCheckBox
 
 T = "/usr/sbin/matryoshka-face"
 DATA = "/usr/lib/security/howdy/dlib-data"
 SHOTS = 5
 CONFIG = "/usr/lib/security/howdy/config.ini"
+AUTH = "/usr/sbin/matryoshka-auth"
+AUTH_CONF = "/etc/matryoshka/auth.conf"
 CASCADES = ("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml", "/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml")
 
 
@@ -17,6 +19,14 @@ def target_user():
         if i + 1 < len(sys.argv):
             return sys.argv[i + 1]
     return os.environ.get("USER", "")
+
+
+def auth_value(key, default="0"):
+    try:
+        vals = dict(line.strip().split("=", 1) for line in open(AUTH_CONF, encoding="utf-8") if "=" in line)
+    except OSError:
+        return default
+    return vals.get(key, vals.get("FACE_LOGIN", default) if key == "FACE_LOCK" else default)
 
 
 def camera_path():
@@ -42,13 +52,14 @@ def cascade_file(cv2):
 class Job(QThread):
     done = pyqtSignal(str)
 
-    def __init__(self, args):
+    def __init__(self, args, cmd=None):
         super().__init__()
         self.args = args
+        self.cmd = cmd or [T]
 
     def run(self):
         try:
-            r = subprocess.run(["pkexec", T] + self.args, capture_output=True, text=True, timeout=180)
+            r = subprocess.run(["pkexec"] + self.cmd + self.args, capture_output=True, text=True, timeout=180)
             out = "\n".join(l for l in (r.stdout + r.stderr).splitlines() if "WARN" not in l and "GStreamer" not in l)
             if r.returncode in (126, 127):
                 out = out or "Пароль не введён"
@@ -80,6 +91,14 @@ class W(QWidget):
             b.clicked.connect(lambda _, a=a: self.go(a))
             v.addWidget(b)
             self.bs.append(b)
+        self.lock = QCheckBox("Узнавать лицо на экране блокировки сразу, без Enter")
+        self.lock.setChecked(auth_value("FACE_LOCK") == "1")
+        self.lock.toggled.connect(self.set_lock)
+        v.addWidget(self.lock)
+        self.bs.append(self.lock)
+        more = QPushButton("Все настройки входа по пальцу и лицу")
+        more.clicked.connect(lambda: subprocess.Popen(["matryoshka-center", "bio"], start_new_session=True))
+        v.addWidget(more)
         self.o = QPlainTextEdit(readOnly=True)
         v.addWidget(self.o)
         self.j = None
@@ -111,10 +130,21 @@ class W(QWidget):
         self.j.done.connect(self.fin)
         self.j.start()
 
+    def set_lock(self, on):
+        for b in self.bs:
+            b.setEnabled(False)
+        self.o.setPlainText("Подождите...")
+        self.j = Job(["face-lock", "on" if on else "off"], [AUTH])
+        self.j.done.connect(self.fin)
+        self.j.start()
+
     def fin(self, t):
         self.o.setPlainText(t)
         for b in self.bs:
             b.setEnabled(True)
+        self.lock.blockSignals(True)
+        self.lock.setChecked(auth_value("FACE_LOCK") == "1")
+        self.lock.blockSignals(False)
 
     def start_multi(self):
         try:

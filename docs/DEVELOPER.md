@@ -12,7 +12,7 @@
 |---|---|---|
 | matryoshka-upgrade | 1.1.0 | копия и обновление на месте |
 | podsvetka-myshi | 1.2.3 | подсветка курсора, `packaging/podsvetka-myshi/build.sh [исходники] [каталог]`, нужен kwin-dev 6.3.6 |
-| matryoshka-face | 1.0.5 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
+| matryoshka-face | 1.0.6 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
 | matryoshka-gxfp | 0.1.6 | драйвер Goodix GXFP5130, по желанию |
 | matryoshka-fixes | 1.1.4 | Wine, Electron, шрифты. libndk_translation не входит |
 

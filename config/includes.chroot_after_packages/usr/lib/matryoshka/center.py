@@ -22,6 +22,7 @@ class Center(QWidget):
         self.nav.currentRowChanged.connect(self.stack.setCurrentIndex); self.nav.setCurrentRow(0)
         if len(sys.argv) > 1 and sys.argv[1].isdigit(): self.nav.setCurrentRow(int(sys.argv[1]))
         if len(sys.argv) > 1 and sys.argv[1] == "users": self.nav.setCurrentRow(self.nav.count() - 1)
+        if len(sys.argv) > 1 and sys.argv[1] == "bio": self.nav.setCurrentRow(self.nav.count() - 2)
     def save(self): C.save("settings", self.s)
     def closeEvent(self, e):
         C.cancel_tasks(self); e.accept()
@@ -400,7 +401,7 @@ class Center(QWidget):
             if u == os.environ.get("USER"): subprocess.Popen(["konsole", "--hold", "-e", "fprintd-enroll"])
             else: subprocess.Popen(["konsole", "--hold", "-e", "pkexec", "fprintd-enroll", u])
         for t, fn in (("Добавить пользователя…", add), ("Изменить полное имя…", rename), ("Сделать администратором", lambda: settype("admin")), ("Сделать обычным пользователем", lambda: settype("standard")),
-                      ("Записать лицо для выбранного пользователя", face), ("Записать отпечаток для выбранного пользователя", finger), ("Пользователи KDE (пароль, аватар, удаление)", lambda: subprocess.Popen(["systemsettings", "kcm_users"]))):
+                      ("Лицо выбранного пользователя: записать, проверить, удалить", face), ("Записать отпечаток для выбранного пользователя", finger), ("Пользователи KDE (пароль, аватар, удаление)", lambda: subprocess.Popen(["systemsettings", "kcm_users"]))):
             v.addWidget(btn(t, fn))
         fill()
     def p_privacy(self, v):

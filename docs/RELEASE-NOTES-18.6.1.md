@@ -20,4 +20,4 @@
 
 ## Версии пакетов
 
-matryoshka-upgrade 1.1.0, matryoshka-face 1.0.5, matryoshka-gxfp 0.1.6, podsvetka-myshi 1.2.3.
+matryoshka-upgrade 1.1.0, matryoshka-face 1.0.6, matryoshka-gxfp 0.1.6, podsvetka-myshi 1.2.3.
