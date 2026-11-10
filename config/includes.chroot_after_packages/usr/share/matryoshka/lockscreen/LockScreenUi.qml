@@ -43,6 +43,9 @@ Item {
         target: authenticator
         function onFailed(kind) {
             if (kind != 0) { // if this is coming from the noninteractive authenticators
+                if (bioRetryTimer.left > 0) {
+                    bioRetryTimer.restart();
+                }
                 return;
             }
             const msg = i18nd("plasma_shell_org.kde.plasma.desktop", "Unlocking failed");
@@ -124,6 +127,7 @@ Item {
                 fadeoutTimer.running = false;
             } else if (uiVisible) {
                 fadeoutTimer.restart();
+                bioRetryTimer.left = 3;
             }
             authenticator.startAuthenticating();
         }
@@ -169,6 +173,19 @@ Item {
             id: notificationRemoveTimer
             interval: 3000
             onTriggered: root.notification = ""
+        }
+        Timer {
+            id: bioRetryTimer
+            property int left: 3
+            interval: 4000
+            onTriggered: {
+                if (left <= 0 || authenticator.unlocked || mainBlock.mainPasswordBox.text.length > 0) {
+                    return;
+                }
+                left = left - 1;
+                authenticator.stopAuthenticating();
+                authenticator.startAuthenticating();
+            }
         }
         Timer {
             id: graceLockTimer
