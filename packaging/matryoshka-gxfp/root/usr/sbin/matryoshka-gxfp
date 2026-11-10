@@ -26,41 +26,55 @@ load() {
   for _ in 1 2 3 4 5 6 7 8 9 10; do [ -c /dev/gxfp ] && { systemctl try-restart fprintd.service 2>/dev/null; return 0; }; sleep 1; done
   echo "Устройство /dev/gxfp не появилось"; return 1
 }
-reset() {
+rebind() {
+  P=/sys/bus/platform/drivers/gxfp
+  N=$(basename "$(readlink -f /sys/class/misc/gxfp/device 2>/dev/null)" 2>/dev/null)
+  [ -n "$N" ] && [ -e "$P/$N" ] || N=$(ls "$P" 2>/dev/null | grep -m1 GXFP)
+  [ -n "$N" ] || return 1
+  echo "$N" > "$P/unbind" 2>/dev/null || return 1
+  sleep 1
+  echo "$N" > "$P/bind" 2>/dev/null
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -c /dev/gxfp ] && return 0; sleep 1; done
+  return 1
+}
+recover() {
+  timeout 30 $L/bin/gxfp_recovery --reset-mcu --reset-sensor >/dev/null 2>&1 || timeout 30 $L/bin/gxfp_recovery >/dev/null 2>&1
+}
+reset() (
   [ -e "$F" ] || return 0
-  exec 9>/run/matryoshka-gxfp-reset.lock; flock -n 9 || return 0
+  exec 9>/run/matryoshka-gxfp-reset.lock; flock -w 90 9 || return 1
   logger -t matryoshka-gxfp "сброс сканера отпечатков"
   was=$(systemctl is-active fprintd 2>/dev/null)
   systemctl stop fprintd 2>/dev/null
-  load || return 1
   ok=0
-  for a in "" "--reset-mcu --reset-sensor"; do
-    if timeout 20 $L/bin/gxfp_recovery $a >/dev/null 2>&1; then ok=1; break; fi
-    systemctl stop fprintd 2>/dev/null
-  done
+  if load && rebind && recover; then ok=1; fi
   if [ "$ok" = 0 ]; then
     for _ in 1 2 3 4 5; do systemctl stop fprintd 2>/dev/null; rmmod gxfp 2>/dev/null && break; sleep 1; done
-    load && timeout 20 $L/bin/gxfp_recovery >/dev/null 2>&1 && ok=1
+    load && recover && ok=1
   fi
   [ "$was" = active ] && systemctl start fprintd 2>/dev/null
   logger -t matryoshka-gxfp "сброс сканера: $([ "$ok" = 1 ] && echo готово || echo не удался)"
   [ "$ok" = 1 ]
-}
+)
 case "$1" in
   reset) reset && echo "Сканер сброшен" || { echo "Сбросить сканер не удалось"; exit 1; }; exit 0;;
   watch)
-    journalctl -u fprintd -f -n 0 -o cat | while read -r line; do
-      case "$line" in
-        *"Translating to activation failure"*|*"fpi_device_action_is_cancelled"*|*"gxfp session error"*) ;;
-        *) continue;;
-      esac
+    trig() {
       now=$(date +%s); last=$(cat /run/matryoshka-gxfp-reset.time 2>/dev/null || echo 0)
-      [ $((now - last)) -ge 20 ] || continue
+      [ $((now - last)) -ge 20 ] || return 0
       n=$(awk -v t="$now" '$1 > t - 600' /run/matryoshka-gxfp-reset.log 2>/dev/null | wc -l)
-      [ "$n" -lt 3 ] || continue
+      [ "$n" -lt 3 ] || return 0
       echo "$now" > /run/matryoshka-gxfp-reset.time; echo "$now" >> /run/matryoshka-gxfp-reset.log
       sleep 3
       reset
+    }
+    dbus-monitor --system "type='signal',interface='net.reactivated.Fprint.Device'" 2>/dev/null | while read -r line; do
+      case "$line" in *verify-unknown-error*|*enroll-unknown-error*) trig;; esac
+    done &
+    journalctl -u fprintd -f -n 0 -o cat | while read -r line; do
+      case "$line" in
+        *"Translating to activation failure"*|*"fpi_device_action_is_cancelled"*|*"gxfp session error"*) trig;;
+      esac
     done;;
   on)
     grep -qs GXFP5130 /sys/bus/acpi/devices/*/hid || { echo "Сканер GXFP5130 не найден на этом компьютере"; exit 1; }

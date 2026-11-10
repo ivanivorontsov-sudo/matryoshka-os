@@ -1,0 +1,10 @@
+#!/bin/sh
+FV=sigfm-aae5662-bz12
+D=/var/lib/fprintd/gxfp
+FT=$D/template-format
+[ -d "$D" ] || exit 0
+if [ -f "$FT" ] && [ "$(cat "$FT")" != "$FV" ] && find /var/lib/fprintd -mindepth 2 -type f ! -path "$D/*" | grep -q .; then
+  mkdir -p /var/lib/matryoshka
+  date +%s > /var/lib/matryoshka/fp-reenroll
+fi
+echo "$FV" > "$FT"

@@ -235,9 +235,36 @@ def caches_fix():
     os.makedirs(d, exist_ok=True)
     open(stamp, "w", encoding="utf-8").write(ver + "\n")
 
+def fp_reenroll():
+    try:
+        mark = open("/var/lib/matryoshka/fp-reenroll", encoding="utf-8").read().strip()
+    except OSError:
+        return
+    d = os.path.expanduser("~/.local/state/matryoshka")
+    stamp = os.path.join(d, "fp-reenroll")
+    try:
+        if open(stamp, encoding="utf-8").read().strip() == mark:
+            return
+    except OSError:
+        pass
+    os.makedirs(d, exist_ok=True)
+    open(stamp, "w", encoding="utf-8").write(mark + "\n")
+    def ask():
+        try:
+            r = subprocess.run(["notify-send", "-a", "Матрёшка", "-i", "fingerprint", "-u", "critical", "-A", "open=Добавить палец", "Отпечатки нужно добавить заново", "Драйвер сканера обновился, и сохранённые отпечатки могут не узнаваться. Удалите их и добавьте палец заново."], capture_output=True, text=True, timeout=3600)
+            if r.stdout.strip() == "open":
+                subprocess.Popen(["matryoshka-center", "bio"], start_new_session=True)
+        except Exception:
+            pass
+    threading.Thread(target=ask, daemon=True).start()
+
 def on_login():
     try:
         caches_fix()
+    except Exception:
+        pass
+    try:
+        fp_reenroll()
     except Exception:
         pass
     try:
