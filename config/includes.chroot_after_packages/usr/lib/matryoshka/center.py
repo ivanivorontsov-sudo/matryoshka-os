@@ -254,20 +254,29 @@ class Center(QWidget):
             o.setHtml(html); go.setEnabled(not r["problems"])
         v.addWidget(btn("1. Проверить компьютер", check)); v.addWidget(go)
     def p_bio(self, v):
-        v.addWidget(QLabel("<h2>Вход по пальцу и лицу</h2>Отпечаток и лицо открывают только экран входа и блокировки. Для прав администратора, установки системы, шифрованных дисков и «Бесконечной памяти» всегда нужен пароль.", wordWrap=True))
+        v.addWidget(QLabel("<h2>Вход по пальцу и лицу</h2>Отпечаток открывает экран входа и блокировки, лицо — экран входа. Введённый пароль проверяется сразу, камера и сканер его не задерживают. Чтобы войти пальцем или лицом на экране входа, оставьте поле пароля пустым и нажмите Enter. Отпечаток для окон прав администратора включается отдельно, по желанию. Для установки системы, шифрованных дисков и «Бесконечной памяти» всегда нужен пароль.", wordWrap=True))
         o = self.out(v)
         def r(*a):
             x = C.root("bio", *a); o.setPlainText((x.stdout + x.stderr)[-3000:] or "готово")
         v.addWidget(QLabel("<h3>Отпечаток пальца</h3>"))
         v.addWidget(btn("Записать отпечаток", lambda: subprocess.Popen(["konsole", "--hold", "-e", "fprintd-enroll"])))
         v.addWidget(btn("Включить вход по отпечатку", lambda: r("finger-login-on"))); v.addWidget(btn("Выключить вход по отпечатку", lambda: r("finger-login-off")))
-        sd = QCheckBox("Разрешить отпечаток для sudo в терминале (по желанию)"); sd.toggled.connect(lambda x: r("finger-sudo-on" if x else "finger-sudo-off")); v.addWidget(sd)
+        st = {}
+        try:
+            for line in open("/etc/matryoshka/auth.conf", encoding="utf-8"):
+                k, _, val = line.strip().partition("=")
+                st[k] = val
+        except OSError:
+            pass
+        pk = QCheckBox("Подтверждать окна запроса прав администратора отпечатком (по желанию)"); pk.setChecked(st.get("FINGER_POLKIT") == "1"); pk.toggled.connect(lambda x: r("finger-polkit-on" if x else "finger-polkit-off")); v.addWidget(pk)
+        sd = QCheckBox("Разрешить отпечаток для sudo в терминале (по желанию)"); sd.setChecked(st.get("FINGER_SUDO") == "1"); sd.toggled.connect(lambda x: r("finger-sudo-on" if x else "finger-sudo-off")); v.addWidget(sd)
+        v.addWidget(btn("Показать текущие настройки входа", lambda: r("status")))
         v.addWidget(QLabel("<h3>Драйвер Goodix GXFP5130 (экспериментальный)</h3>Для Huawei MateBook D16 2024 и похожих. Выключен по умолчанию. При первом включении в сканер записывается ключ шифрования, как это делает Windows. При включённом Secure Boot модуль не загрузится.", wordWrap=True))
         def gx(m):
             if not os.path.exists("/usr/sbin/matryoshka-gxfp"): o.setPlainText("Пакет matryoshka-gxfp не установлен."); return
             x = C.run(["pkexec", "/usr/sbin/matryoshka-gxfp", m]); o.setPlainText((x.stdout + x.stderr)[-3000:] or "готово")
         v.addWidget(btn("Включить драйвер Goodix (экспериментальный)", lambda: gx("on"))); v.addWidget(btn("Выключить драйвер Goodix", lambda: gx("off")))
-        v.addWidget(QLabel("<h3>Лицо</h3>Howdy 2.6.1 (пакет boltgolt с Launchpad) с dlib. Работает только на экране входа и блокировки, пароль подходит всегда. Если у камеры нет инфракрасного режима, защиту можно обмануть фотографией.", wordWrap=True))
+        v.addWidget(QLabel("<h3>Лицо</h3>Howdy 2.6.1 (пакет boltgolt с Launchpad) с dlib. Работает на экране входа после пустого Enter, пароль подходит всегда. Если у камеры нет инфракрасного режима, защиту можно обмануть фотографией.", wordWrap=True))
         v.addWidget(btn("Какая камера будет использована", lambda: r("face-cameras")))
         v.addWidget(btn("Окно записи лица (несколько снимков)", lambda: subprocess.Popen(["matryoshka-face-gui"])))
         v.addWidget(btn("1. Записать лицо (смотрите в камеру)", lambda: r("face-add")))

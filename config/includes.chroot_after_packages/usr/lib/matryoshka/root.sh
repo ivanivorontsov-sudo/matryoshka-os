@@ -71,10 +71,13 @@ case "$cmd" in
   fwupd-enable) touch /var/lib/matryoshka/fwupd-consent; sed -i 's/^Enabled=.*/Enabled=true/' /etc/fwupd/remotes.d/lvfs.conf ;;
   bio)
     case "$1" in
-      finger-login-on) for p in sddm kde; do grep -q pam_fprintd /etc/pam.d/$p || sed -i '0,/^auth/s//auth\tsufficient\tpam_fprintd.so max-tries=3 timeout=15\nauth/' /etc/pam.d/$p; done ;;
-      finger-login-off) sed -i '/pam_fprintd/d' /etc/pam.d/sddm /etc/pam.d/kde ;;
-      finger-sudo-on) grep -q pam_fprintd /etc/pam.d/sudo || sed -i '0,/^@include common-auth/s//auth\tsufficient\tpam_fprintd.so max-tries=2 timeout=10\n@include common-auth/' /etc/pam.d/sudo ;;
-      finger-sudo-off) sed -i '/pam_fprintd/d' /etc/pam.d/sudo ;;
+      finger-login-on) /usr/sbin/matryoshka-auth finger on ;;
+      finger-login-off) /usr/sbin/matryoshka-auth finger off ;;
+      finger-sudo-on) /usr/sbin/matryoshka-auth finger-sudo on ;;
+      finger-sudo-off) /usr/sbin/matryoshka-auth finger-sudo off ;;
+      finger-polkit-on) /usr/sbin/matryoshka-auth finger-polkit on ;;
+      finger-polkit-off) /usr/sbin/matryoshka-auth finger-polkit off ;;
+      status) /usr/sbin/matryoshka-auth status ;;
       face-install) dpkg -s matryoshka-face >/dev/null 2>&1 && echo "Распознавание лица установлено" || { echo "Пакет matryoshka-face не установлен"; exit 3; } ;;
       face-login-on) /usr/sbin/matryoshka-face on ;;
       face-login-off) /usr/sbin/matryoshka-face off ;;

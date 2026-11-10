@@ -23,7 +23,7 @@ load() {
   [ -f "$K" ] || { echo "Нет модуля для ядра $(uname -r)"; return 1; }
   sign "$K" "$(uname -r)"
   timeout 20 insmod "$K" || { mokutil --sb-state 2>/dev/null | grep -q enabled && echo "Включён Secure Boot: неподписанный модуль не загружается"; return 1; }
-  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -c /dev/gxfp ] && return 0; sleep 1; done
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -c /dev/gxfp ] && { systemctl try-restart fprintd.service 2>/dev/null; return 0; }; sleep 1; done
   echo "Устройство /dev/gxfp не появилось"; return 1
 }
 case "$1" in
