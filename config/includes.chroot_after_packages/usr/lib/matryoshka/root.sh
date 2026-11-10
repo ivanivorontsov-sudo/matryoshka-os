@@ -131,8 +131,16 @@ case "$cmd" in
       *) exit 1 ;;
     esac ;;
   remove-app)
-    for p in "$@"; do echo "$p" | grep -Eq '^[a-z0-9][a-z0-9+.-]+$' || exit 2; grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }; done
-    DEBIAN_FRONTEND=noninteractive apt-get purge -y "$@" && DEBIAN_FRONTEND=noninteractive apt-get autoremove -y --purge
+    for p in "$@"; do
+      echo "$p" | grep -Eq '^[a-z0-9][a-z0-9+.-]+$' || exit 2
+      case "$p" in matryoshka-*) echo "часть Матрёшки, не удаляется: $p"; exit 3 ;; esac
+      grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }
+      case "$(dpkg-query -W -f='${Essential} ${Priority}' "$p" 2>/dev/null)" in "yes "*|*" required"|*" important") echo "системный пакет, не удаляется: $p"; exit 3 ;; esac
+    done
+    sim=$(apt-get -s remove "$@" 2>&1) || { echo "$sim" | tail -n 5; exit 4; }
+    bad=$(echo "$sim" | awk '$1=="Remv"{print $2}' | while read -r q; do case "$q" in matryoshka-*|plasma-*|kwin*|sddm*|systemd*|linux-image*) echo "$q" ;; *) grep -qx "$q" /usr/lib/matryoshka/protected.list && echo "$q" ;; esac; done)
+    [ -n "$bad" ] && { echo "удаление затронет части системы, отменено: $(echo $bad)"; exit 3; }
+    DEBIAN_FRONTEND=noninteractive apt-get remove -y "$@"
     for s in ufw apparmor; do printf '%s: %s\n' "$s" "$(systemctl is-active $s)"; done; ufw status | head -1 ;;
   update-all)
     nmcli -t networking | grep -q enabled || { echo "Сеть выключена"; exit 4; }

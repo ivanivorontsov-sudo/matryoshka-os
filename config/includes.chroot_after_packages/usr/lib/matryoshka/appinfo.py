@@ -152,12 +152,62 @@ def set_hidden(path, hide):
     os.replace(dst + ".new", dst)
 
 
+APP_DIRS = (LOCAL_DIR, "/usr/local/share/applications", "/usr/share/applications") + FLATPAK_DIRS
+
+
+def appstream_desktop(url):
+    cid = url.split(":", 1)[-1].lstrip("/").strip()
+    if not cid or "/" in cid:
+        return None
+    names = [cid if cid.endswith(".desktop") else cid + ".desktop"]
+    for mi in ("/usr/share/metainfo", "/usr/share/appdata"):
+        for ext in (".metainfo.xml", ".appdata.xml"):
+            f = os.path.join(mi, cid + ext)
+            try:
+                t = open(f, encoding="utf-8").read()
+            except OSError:
+                continue
+            import re
+            names += re.findall(r'<launchable type="desktop-id">([^<]+)</launchable>', t)
+    for n in names:
+        for d in APP_DIRS:
+            f = os.path.join(d, n)
+            if os.path.isfile(f):
+                return f
+    return None
+
+
+def removal_plan(pkg):
+    prot = set()
+    try:
+        prot = {l.strip() for l in open("/usr/lib/matryoshka/protected.list", encoding="utf-8") if l.strip()}
+    except OSError:
+        pass
+    if pkg in prot or pkg.startswith("matryoshka-"):
+        return None, "«%s» — часть Матрёшки, её нельзя удалить." % pkg
+    q = C.run(["dpkg-query", "-W", "-f", "${Essential} ${Priority}", pkg], timeout=20).stdout.split()
+    if q[:1] == ["yes"] or q[1:2] in (["required"], ["important"]):
+        return None, "«%s» — системный пакет, его нельзя удалить." % pkg
+    r = C.run(["apt-get", "-s", "-o", "Debug::NoLocking=1", "remove", pkg], timeout=120)
+    gone = [l.split()[1] for l in r.stdout.splitlines() if l.startswith("Remv ")]
+    if r.returncode != 0 or not gone:
+        return None, "Не удалось проверить удаление «%s»:\n%s" % (pkg, (r.stdout + r.stderr)[-800:])
+    bad = [g for g in gone if g in prot or g.startswith("matryoshka-") or g.startswith(("plasma-", "kwin", "sddm", "systemd", "linux-image"))]
+    if bad:
+        return None, "Удаление «%s» затронет части системы: %s. Удаление отменено." % (pkg, ", ".join(bad[:8]))
+    return gone, ""
+
+
 def remove(d, parent=None):
     from PyQt6.QtWidgets import QMessageBox
     ask = lambda t: QMessageBox.question(parent, "Удаление", t) == QMessageBox.StandardButton.Yes
     say = lambda t: QMessageBox.information(parent, "Удаление", t[-1500:] or "готово")
     if d["package"]:
-        if not ask("Удалить «%s» (пакет %s)?\nНенужные зависимости тоже уберутся." % (d["name"], d["package"])):
+        gone, why = removal_plan(d["package"])
+        if gone is None:
+            say(why)
+            return False
+        if not ask("Удалить «%s» (пакет %s)?\nБудут удалены пакеты: %s\nНастройки в домашней папке останутся." % (d["name"], d["package"], ", ".join(gone))):
             return False
         x = C.root("remove-app", d["package"])
         say(x.stdout + x.stderr)
@@ -299,13 +349,23 @@ def dialog(path):
 
 def main():
     from PyQt6.QtWidgets import QApplication
-    if len(sys.argv) < 3 or sys.argv[1] not in ("--info", "--remove"):
-        print("appinfo.py --info|--remove ФАЙЛ.desktop")
+    if len(sys.argv) < 3 or sys.argv[1] not in ("--info", "--remove", "--appstream"):
+        print("appinfo.py --info|--remove ФАЙЛ.desktop | --appstream appstream://ID")
         return 2
     app = QApplication(sys.argv)
     C.qt_ru(app)
     app.setDesktopFileName("matryoshka-center")
     path = sys.argv[2]
+    if sys.argv[1] == "--appstream":
+        found = appstream_desktop(path)
+        if not found:
+            if shutil.which("plasma-discover"):
+                subprocess.Popen(["plasma-discover", path], start_new_session=True)
+                return 0
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(None, "Удаление", "Не нашёл программу %s в меню." % path)
+            return 1
+        path = found
     if sys.argv[1] == "--remove":
         remove(info(path))
         return 0

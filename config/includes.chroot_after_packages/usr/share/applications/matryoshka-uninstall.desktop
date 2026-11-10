@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Remove or manage app
+Name[ru]=Удаление и сведения о программе
+Exec=python3 /usr/lib/matryoshka/appinfo.py --appstream %u
+Icon=edit-delete
+NoDisplay=true
+MimeType=x-scheme-handler/appstream;

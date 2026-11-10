@@ -32,3 +32,5 @@ grub-efi-amd64-signed
 shim-signed
 python3
 python3-pyqt6
+konsole
+dolphin

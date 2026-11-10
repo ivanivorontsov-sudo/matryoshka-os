@@ -1,4 +1,5 @@
 [Default Applications]
+x-scheme-handler/appstream=matryoshka-uninstall.desktop
 application/x-matryoshka-game-image=matryoshka-rom.desktop
 application/x-nes-rom=matryoshka-rom.desktop
 application/x-snes-rom=matryoshka-rom.desktop
