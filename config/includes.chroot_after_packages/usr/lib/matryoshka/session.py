@@ -202,6 +202,16 @@ def layout_once(fresh):
     s["layout_applied"] = True
     C.save("settings", s)
 
+def places_fix():
+    p = os.path.expanduser("~/.local/share/user-places.xbel")
+    home = os.path.expanduser("~"); user = os.path.basename(home)
+    if not os.path.isfile(p) or home == "/home/ivan":
+        return
+    t = open(p, encoding="utf-8").read()
+    n = t.replace("file:///media/ivan\"", "file:///media/%s\"" % user).replace("file:///home/ivan\"", "file://%s\"" % home)
+    if n != t:
+        open(p, "w", encoding="utf-8").write(n)
+
 def on_login():
     fresh = not os.path.exists(os.path.join(C.CONF, "settings.json"))
     s = C.settings()
@@ -213,6 +223,10 @@ def on_login():
         pass
     try:
         sound_enhance()
+    except Exception:
+        pass
+    try:
+        places_fix()
     except Exception:
         pass
     try:
