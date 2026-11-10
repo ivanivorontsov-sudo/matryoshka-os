@@ -1,0 +1,272 @@
+diff -ruN a/libfprint/libfprint/drivers/gxfp.c b/libfprint/libfprint/drivers/gxfp.c
+--- a/libfprint/libfprint/drivers/gxfp.c	2026-11-10 15:09:39.081007106 +1000
++++ b/libfprint/libfprint/drivers/gxfp.c	2026-11-10 15:13:02.786104644 +1000
+@@ -5,6 +5,7 @@
+ #include "../fpi-image-device.h"
+ 
+ #include <errno.h>
++#include <math.h>
+ #include <gio/gio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -80,6 +81,138 @@
+ }
+ 
+ static void
++blur_rows_cols (const gfloat *src, gfloat *dst, gint w, gint h, gdouble sigma)
++{
++  gint rad = (gint) (sigma * 3.0 + 0.5);
++  g_autofree gfloat *k = g_new0 (gfloat, 2 * rad + 1);
++  g_autofree gfloat *tmp = g_new0 (gfloat, (gsize) w * h);
++  gfloat sum = 0;
++
++  for (gint i = -rad; i <= rad; i++)
++    sum += k[i + rad] = (gfloat) exp (-(gdouble) (i * i) / (2.0 * sigma * sigma));
++  for (gint i = 0; i <= 2 * rad; i++)
++    k[i] /= sum;
++  for (gint y = 0; y < h; y++)
++    for (gint x = 0; x < w; x++)
++      {
++        gfloat a = 0;
++        for (gint i = -rad; i <= rad; i++)
++          a += k[i + rad] * src[(gsize) y * w + CLAMP (x + i, 0, w - 1)];
++        tmp[(gsize) y * w + x] = a;
++      }
++  for (gint y = 0; y < h; y++)
++    for (gint x = 0; x < w; x++)
++      {
++        gfloat a = 0;
++        for (gint i = -rad; i <= rad; i++)
++          a += k[i + rad] * tmp[(gsize) CLAMP (y + i, 0, h - 1) * w + x];
++        dst[(gsize) y * w + x] = a;
++      }
++}
++
++static gint
++cmp_float (gconstpointer a, gconstpointer b)
++{
++  gfloat x = *(const gfloat *) a, y = *(const gfloat *) b;
++
++  return (x > y) - (x < y);
++}
++
++static void
++frame_stats (const gfloat *v, gsize n, gdouble *mn, gdouble *mx, gdouble *mean, gdouble *sd)
++{
++  gdouble s = 0, s2 = 0;
++
++  *mn = G_MAXDOUBLE;
++  *mx = -G_MAXDOUBLE;
++  for (gsize i = 0; i < n; i++)
++    {
++      s += v[i];
++      s2 += (gdouble) v[i] * v[i];
++      *mn = MIN (*mn, v[i]);
++      *mx = MAX (*mx, v[i]);
++    }
++  *mean = s / n;
++  *sd = sqrt (MAX (0.0, s2 / n - *mean * *mean));
++}
++
++static gboolean
++prepare_image (FpiDeviceGxfp *self, const struct gxfp_decoded_image *img, guint8 *out)
++{
++  gint w = img->cols, h = img->rows;
++  gsize n = (gsize) w * h;
++  const gchar *mode = g_getenv ("FP_GXFP_PREP");
++  gboolean hp = !(mode && g_strcmp0 (mode, "raw") == 0);
++  g_autofree gfloat *f = g_new (gfloat, n);
++  g_autofree gfloat *bl = g_new (gfloat, n);
++  g_autofree gfloat *srt = NULL;
++  gdouble mn, mx, mean, sd, hsd = 0, nsd = 0, lo, hi;
++
++  for (gsize i = 0; i < n; i++)
++    f[i] = img->pixels[i];
++  frame_stats (f, n, &mn, &mx, &mean, &sd);
++  blur_rows_cols (f, bl, w, h, 1.0);
++  {
++    g_autofree gfloat *d = g_new (gfloat, n);
++    g_autofree gfloat *b4 = g_new (gfloat, n);
++    gdouble a, b, c;
++
++    for (gsize i = 0; i < n; i++)
++      d[i] = f[i] - bl[i];
++    frame_stats (d, n, &a, &b, &c, &nsd);
++    blur_rows_cols (f, b4, w, h, 4.0);
++    for (gsize i = 0; i < n; i++)
++      d[i] = bl[i] - b4[i];
++    frame_stats (d, n, &a, &b, &c, &hsd);
++    if (hp)
++      for (gsize i = 0; i < n; i++)
++        f[i] = f[i] - b4[i];
++  }
++  srt = g_memdup2 (f, n * sizeof (gfloat));
++  qsort (srt, n, sizeof (gfloat), cmp_float);
++  lo = hp ? srt[n / 100] : 0;
++  hi = hp ? srt[n - 1 - n / 100] : 4095;
++  if (hi <= lo)
++    hi = lo + 1;
++  for (gsize i = 0; i < n; i++)
++    {
++      gdouble v = (f[i] - lo) * 255.0 / (hi - lo);
++      out[i] = (guint8) CLAMP (v + 0.5, 0, 255);
++    }
++  g_message ("gxfp frame %dx%d raw min %.0f max %.0f mean %.1f sd %.1f ridge %.1f noise %.1f q %.2f dark %s prep %s",
++             w, h, mn, mx, mean, sd, hsd, nsd, nsd > 0 ? hsd / nsd : 0,
++             gxfp_session_dark_loaded (&self->sess) ? "yes" : "no", hp ? "hp" : "raw");
++  if (g_getenv ("FP_GXFP_MIN_Q") && nsd > 0 && hsd / nsd < g_ascii_strtod (g_getenv ("FP_GXFP_MIN_Q"), NULL))
++    {
++      g_message ("gxfp frame rejected: quality %.2f below %s", hsd / nsd, g_getenv ("FP_GXFP_MIN_Q"));
++      return FALSE;
++    }
++  return TRUE;
++}
++
++static void
++dump_raw (FpiDeviceGxfp *self, const struct gxfp_decoded_image *img)
++{
++  const gchar *dir = g_getenv ("FP_GXFP_DUMP");
++  g_autofree gchar *path = NULL;
++  g_autoptr(GString) pgm = NULL;
++  static guint seq = 0;
++
++  if (!dir || dir[0] == '\0')
++    return;
++  g_mkdir_with_parents (dir, 0700);
++  path = g_strdup_printf ("%s/%" G_GINT64_FORMAT "-%04u-raw16.pgm", dir, g_get_real_time () / 1000, seq++);
++  pgm = g_string_new (NULL);
++  g_string_append_printf (pgm, "P5\n%d %d\n4095\n", img->cols, img->rows);
++  for (gsize i = 0; i < (gsize) img->cols * img->rows; i++)
++    {
++      g_string_append_c (pgm, (gchar) (img->pixels[i] >> 8));
++      g_string_append_c (pgm, (gchar) (img->pixels[i] & 0xff));
++    }
++  g_file_set_contents (path, pgm->str, pgm->len, NULL);
++}
++
++static void
+ emit_image_captured (FpiDeviceGxfp *self)
+ {
+   struct gxfp_decoded_image img;
+@@ -98,12 +231,14 @@
+     }
+ 
+   fp_img = fp_image_new (img.cols, img.rows);
+-  for (gint y = 0; y < img.rows; y++)
+-    for (gint x = 0; x < img.cols; x++)
+-      {
+-        guint16 p = img.pixels[(gsize) y * img.cols + x];
+-        fp_img->data[(gsize) y * img.cols + x] = (guint8) ((p * 255u) / 4095u);
+-      }
++  dump_raw (self, &img);
++  if (!prepare_image (self, &img, fp_img->data))
++    {
++      gxfp_decoded_image_free (&img);
++      g_object_unref (fp_img);
++      fpi_image_device_retry_scan (FP_IMAGE_DEVICE (self), FP_DEVICE_RETRY_CENTER_FINGER);
++      return;
++    }
+ 
+   gxfp_decoded_image_free (&img);
+   dump_image (self, fp_img);
+@@ -217,6 +352,8 @@
+   int r;
+ 
+   g_return_if_fail (self);
++  if (g_getenv ("FP_GXFP_ENROLL_STAGES") && g_ascii_strtoll (g_getenv ("FP_GXFP_ENROLL_STAGES"), NULL, 10) >= 8 && g_ascii_strtoll (g_getenv ("FP_GXFP_ENROLL_STAGES"), NULL, 10) <= 40)
++    fpi_device_set_nr_enroll_stages (FP_DEVICE (dev), (gint) g_ascii_strtoll (g_getenv ("FP_GXFP_ENROLL_STAGES"), NULL, 10));
+   if (thr_env && g_ascii_strtoll (thr_env, NULL, 10) >= 4 && g_ascii_strtoll (thr_env, NULL, 10) <= 400)
+     fpi_image_device_set_bz3_threshold (dev, (gint) g_ascii_strtoll (thr_env, NULL, 10));
+ 
+diff -ruN a/libfprint/libfprint/drivers/gxfpmoc/include/gxfp/flow/session.h b/libfprint/libfprint/drivers/gxfpmoc/include/gxfp/flow/session.h
+--- a/libfprint/libfprint/drivers/gxfpmoc/include/gxfp/flow/session.h	2026-11-10 15:09:39.089005820 +1000
++++ b/libfprint/libfprint/drivers/gxfpmoc/include/gxfp/flow/session.h	2026-11-10 15:13:02.798103093 +1000
+@@ -90,6 +90,7 @@
+                        struct gxfp_session_events *ev);
+ 
+ int gxfp_session_take_image(struct gxfp_session *s, struct gxfp_decoded_image *out);
++int gxfp_session_dark_loaded(const struct gxfp_session *s);
+ int gxfp_session_poll_readable(const struct gxfp_session *s, int timeout_ms);
+ 
+ #ifdef __cplusplus
+diff -ruN a/libfprint/libfprint/drivers/gxfpmoc/src/flow/session.c b/libfprint/libfprint/drivers/gxfpmoc/src/flow/session.c
+--- a/libfprint/libfprint/drivers/gxfpmoc/src/flow/session.c	2026-11-10 15:09:39.089005820 +1000
++++ b/libfprint/libfprint/drivers/gxfpmoc/src/flow/session.c	2026-11-10 15:13:02.794103610 +1000
+@@ -865,6 +865,14 @@
+ }
+ 
+ int
++gxfp_session_dark_loaded(const struct gxfp_session *s)
++{
++    if (!s || !s->impl)
++        return 0;
++    return SESSION(s)->dark_loaded;
++}
++
++int
+ gxfp_session_poll_readable(const struct gxfp_session *s, int timeout_ms)
+ {
+     if (!gxfp_session_mode_has_io(s))
+diff -ruN a/libfprint/libfprint/fp-image.c b/libfprint/libfprint/fp-image.c
+--- a/libfprint/libfprint/fp-image.c	2026-11-10 15:09:39.085006462 +1000
++++ b/libfprint/libfprint/fp-image.c	2026-11-10 15:13:02.786104644 +1000
+@@ -316,7 +316,8 @@
+   g_timer_stop (timer);
+   fp_dbg ("sigfm extract completed in %f secs", g_timer_elapsed (timer, NULL));
+   g_timer_destroy (timer);
+-  if (sigfm_keypoints_count (data->sigfm_info) < 25)
++  g_message ("sigfm keypoints %d (%dx%d)", sigfm_keypoints_count (data->sigfm_info), data->width, data->height);
++  if (sigfm_keypoints_count (data->sigfm_info) < MAX (25, g_getenv ("FP_GXFP_MIN_KP") ? (gint) g_ascii_strtoll (g_getenv ("FP_GXFP_MIN_KP"), NULL, 10) : 25))
+     {
+       g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_FAILED,
+                                "No enough keypoints found");
+diff -ruN a/libfprint/libfprint/fpi-print.c b/libfprint/libfprint/fpi-print.c
+--- a/libfprint/libfprint/fpi-print.c	2026-11-10 15:12:29.497885126 +1000
++++ b/libfprint/libfprint/fpi-print.c	2026-11-10 15:13:02.790104127 +1000
+@@ -295,7 +295,13 @@
+       return FPI_MATCH_ERROR;
+     }
+   SigfmImgInfo * against = g_ptr_array_index (print->prints, 0);
+-  for (int i = 0; i != template->prints->len; ++i)
++  g_autoptr(GString) line = g_string_new (NULL);
++  const gchar *sum_env = g_getenv ("FP_GXFP_SUM_THRESHOLD");
++  gint sum_threshold = sum_env ? (gint) g_ascii_strtoll (sum_env, NULL, 10) : 0;
++  gint best[3] = { 0, 0, 0 };
++  gint top;
++
++  for (guint i = 0; i < template->prints->len; ++i)
+     {
+       SigfmImgInfo * pinfo = g_ptr_array_index (template->prints, i);
+       int score = sigfm_match_score (pinfo, against);
+@@ -305,10 +311,28 @@
+                                              "error in sigfm_match_score");
+           return FPI_MATCH_ERROR;
+         }
+-      g_message ("sigfm score %d/%d (template %d of %u)", score, bz3_threshold, i + 1, template->prints->len);
+-      if (score >= bz3_threshold)
+-        return FPI_MATCH_SUCCESS;
++      g_string_append_printf (line, " %d", score);
++      if (score > best[0])
++        {
++          best[2] = best[1];
++          best[1] = best[0];
++          best[0] = score;
++        }
++      else if (score > best[1])
++        {
++          best[2] = best[1];
++          best[1] = score;
++        }
++      else if (score > best[2])
++        {
++          best[2] = score;
++        }
+     }
++  top = best[0] + best[1] + best[2];
++  g_message ("sigfm scores [%s ] max %d top3 %d threshold %d sum-threshold %d -> %s", line->str, best[0], top, bz3_threshold, sum_threshold,
++             (best[0] >= bz3_threshold || (sum_threshold > 0 && top >= sum_threshold)) ? "match" : "no-match");
++  if (best[0] >= bz3_threshold || (sum_threshold > 0 && top >= sum_threshold))
++    return FPI_MATCH_SUCCESS;
+   return FPI_MATCH_FAIL;
+ }
+ 

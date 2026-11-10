@@ -1,5 +1,5 @@
 #!/bin/sh
-FV=sigfm-aae5662-bz12
+FV=sigfm-aae5662-hp4
 D=/var/lib/fprintd/gxfp
 FT=$D/template-format
 [ -d "$D" ] || exit 0
