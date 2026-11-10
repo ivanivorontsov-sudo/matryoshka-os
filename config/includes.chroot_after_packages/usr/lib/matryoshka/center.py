@@ -115,6 +115,10 @@ class Center(QWidget):
         v.addWidget(QLabel("<h3>Скорость и задержки</h3>Уже включено: BBR + fq, TCP Fast Open, увеличенные буферы, кэш DNS.", wordWrap=True))
         ps = QCheckBox("Отключить энергосбережение Wi-Fi (меньше задержка, больше расход батареи)"); ps.setChecked(C.wifi_powersave_off())
         ps.toggled.connect(lambda x: C.root("wifi-powersave", "off" if x else "on")); v.addWidget(ps)
+        v.addWidget(QLabel("<h3>Источники программ</h3>При первом подключении к сети Матрёшка сама выбирает самое быстрое зеркало Debian (с обновлениями и обновлениями безопасности). Прежние источники сохраняются.", wordWrap=True))
+        so = self.out(v); so.setPlainText(C.run(["/usr/lib/matryoshka/sources.sh", "status"]).stdout)
+        v.addWidget(btn("Выбрать самое быстрое зеркало сейчас", lambda: so.setPlainText((lambda r: r.stdout + r.stderr)(C.root("sources-auto")))))
+        v.addWidget(btn("Вернуть прежние источники", lambda: so.setPlainText((lambda r: r.stdout + r.stderr)(C.root("sources-restore")))))
     def p_av(self, v):
         v.addWidget(QLabel("<h2>Защита</h2>Антивирус включён всегда: ClamAV + открытые правила YARA (YARA Forge) следят за «Загрузками», рабочим столом и флешками. Находки объясняет нейросеть, решаете вы. Активаторы без вирусов не блокируются, но показывается предупреждение о законах выбранной страны.", wordWrap=True))
         f = QFormLayout(); v.addLayout(f)

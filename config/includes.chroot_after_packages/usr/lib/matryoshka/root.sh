@@ -190,6 +190,8 @@ case "$cmd" in
     else echo "в обновлении нет apply.sh или config/"; ok=0; fi
     if [ $ok = 1 ]; then echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО"; rm -rf $W; exit 0; fi
     if [ -n "$S" ]; then snapper -c root undochange $S..0 && echo "ОШИБКА: изменения откачены к снимку $S"; else echo "ОШИБКА, снимка нет"; fi; exit 7 ;;
+  sources-auto) exec /usr/lib/matryoshka/sources.sh auto --force ;;
+  sources-restore) exec /usr/lib/matryoshka/sources.sh restore ;;
   ndk-install) exec python3 /usr/lib/matryoshka/ndk_install.py install "$@" ;;
   android-arm)
     if [ "$1" = libndk ]; then exec python3 /usr/lib/matryoshka/ndk_install.py install; fi
