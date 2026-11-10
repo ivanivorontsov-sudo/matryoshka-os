@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+import configparser, os, shutil, signal, subprocess, sys
+sys.path.insert(0, "/usr/lib/matryoshka")
+import common as C
+
+FLATPAK_DIRS = ("/var/lib/flatpak/exports/share/applications", os.path.join(C.HOME, ".local/share/flatpak/exports/share/applications"))
+LOCAL_DIR = os.path.join(C.HOME, ".local/share/applications")
+
+
+def entry(path):
+    c = configparser.ConfigParser(interpolation=None, strict=False)
+    try:
+        c.read(path, encoding="utf-8")
+        return dict(c["Desktop Entry"])
+    except Exception:
+        return {}
+
+
+def human(kb):
+    try:
+        kb = float(kb)
+    except (TypeError, ValueError):
+        return ""
+    for unit in ("КБ", "МБ", "ГБ"):
+        if kb < 1024:
+            return "%.0f %s" % (kb, unit) if unit == "КБ" else "%.1f %s" % (kb, unit)
+        kb /= 1024
+    return "%.1f ТБ" % kb
+
+
+def du(path):
+    total = 0
+    for root, dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(root, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def binary(e):
+    ex = (e.get("exec") or "").split()
+    for w in ex:
+        if w in ("env",) or "=" in w:
+            continue
+        return os.path.basename(w)
+    return ""
+
+
+def info(path):
+    e = entry(path)
+    d = dict(path=path, name=e.get("name[ru]") or e.get("name") or os.path.basename(path), icon=e.get("icon", ""), exec=e.get("exec", ""),
+             comment=e.get("comment[ru]") or e.get("comment") or e.get("genericname[ru]") or e.get("genericname", ""),
+             kind="", package="", version="", size="", origin="", flatpak="", waydroid="", hidden=e.get("nodisplay", "false") == "true")
+    real = os.path.realpath(path)
+    fid = os.path.basename(path)[:-8] if path.endswith(".desktop") else ""
+    if any(real.startswith(os.path.realpath(x)) or path.startswith(x) for x in FLATPAK_DIRS) or "/flatpak/" in real:
+        d["kind"], d["flatpak"] = "Flatpak", fid
+        r = C.run(["flatpak", "info", fid], timeout=20)
+        for line in r.stdout.splitlines():
+            k, _, v = line.strip().partition(":")
+            k = k.strip().lower()
+            if k in ("version", "версия"):
+                d["version"] = v.strip()
+            elif k in ("installed", "установлено", "installed size"):
+                d["size"] = v.strip()
+            elif k in ("origin", "источник"):
+                d["origin"] = v.strip()
+        return d
+    if "waydroid app launch" in d["exec"]:
+        d["kind"], d["waydroid"] = "Android (Waydroid)", d["exec"].split()[-1]
+        return d
+    r = C.run(["dpkg-query", "-S", real], timeout=20)
+    if r.returncode != 0 and real != path:
+        r = C.run(["dpkg-query", "-S", path], timeout=20)
+    pkg = r.stdout.split(":")[0].strip() if r.returncode == 0 else ""
+    if pkg:
+        q = C.run(["dpkg-query", "-W", "-f", "${Version}\t${Installed-Size}\t${Maintainer}", pkg], timeout=20).stdout.split("\t")
+        d["kind"], d["package"] = "Пакет Debian", pkg
+        if len(q) >= 2:
+            d["version"], d["size"] = q[0], human(q[1])
+        if len(q) >= 3:
+            d["origin"] = q[2]
+        return d
+    if path.startswith(LOCAL_DIR):
+        d["kind"] = "Ярлык пользователя"
+        if "wine" in d["exec"].lower():
+            d["kind"] = "Программа Windows (Wine)"
+        return d
+    d["kind"] = "Входит в Матрёшку"
+    try:
+        d["version"] = open("/usr/share/matryoshka/VERSION", encoding="utf-8").read().strip()
+    except OSError:
+        pass
+    return d
+
+
+def data_dirs(d):
+    names = {x for x in (binary(d), d.get("package"), d.get("flatpak")) if x}
+    out = []
+    if d.get("flatpak"):
+        base = os.path.join(C.HOME, ".var/app", d["flatpak"])
+        out += [("Данные", base), ("Кэш", os.path.join(base, "cache"))]
+        return [x for x in out if os.path.isdir(x[1])]
+    for n in sorted(names):
+        for label, root in (("Настройки", ".config"), ("Данные", ".local/share"), ("Кэш", ".cache")):
+            p = os.path.join(C.HOME, root, n)
+            if os.path.isdir(p):
+                out.append((label, p))
+    return out
+
+
+def processes(d):
+    b = binary(d)
+    if not b or b in ("python3", "sh", "bash", "env", "konsole", "waydroid", "flatpak", "wine", "java"):
+        return []
+    uid, out = os.getuid(), []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            if os.stat("/proc/" + pid).st_uid != uid:
+                continue
+            exe = os.path.basename(os.readlink("/proc/%s/exe" % pid))
+        except OSError:
+            continue
+        if exe == b:
+            out.append(int(pid))
+    return out
+
+
+def set_hidden(path, hide):
+    os.makedirs(LOCAL_DIR, exist_ok=True)
+    dst = os.path.join(LOCAL_DIR, os.path.basename(path))
+    if not hide:
+        if os.path.exists(dst) and os.path.realpath(path) != os.path.realpath(dst):
+            os.remove(dst)
+        elif os.path.exists(dst):
+            lines = [l for l in open(dst, encoding="utf-8") if not l.startswith("NoDisplay=")]
+            open(dst, "w", encoding="utf-8").writelines(lines)
+        return
+    src = dst if os.path.exists(dst) else path
+    lines = [l for l in open(src, encoding="utf-8", errors="replace") if not l.startswith("NoDisplay=")]
+    out, done = [], False
+    for l in lines:
+        out.append(l)
+        if not done and l.strip() == "[Desktop Entry]":
+            out.append("NoDisplay=true\n")
+            done = True
+    open(dst + ".new", "w", encoding="utf-8").writelines(out)
+    os.replace(dst + ".new", dst)
+
+
+def remove(d, parent=None):
+    from PyQt6.QtWidgets import QMessageBox
+    ask = lambda t: QMessageBox.question(parent, "Удаление", t) == QMessageBox.StandardButton.Yes
+    say = lambda t: QMessageBox.information(parent, "Удаление", t[-1500:] or "готово")
+    if d["package"]:
+        if not ask("Удалить «%s» (пакет %s)?\nНенужные зависимости тоже уберутся." % (d["name"], d["package"])):
+            return False
+        x = C.root("remove-app", d["package"])
+        say(x.stdout + x.stderr)
+        return x.returncode == 0
+    if d["flatpak"]:
+        if not ask("Удалить Flatpak-программу «%s» (%s)?" % (d["name"], d["flatpak"])):
+            return False
+        scope = "--user" if d["path"].startswith(C.HOME) else "--system"
+        x = C.run(["flatpak", "uninstall", scope, "-y", "--noninteractive", d["flatpak"]], timeout=600)
+        say(x.stdout + x.stderr)
+        return x.returncode == 0
+    if d["waydroid"]:
+        if not ask("Удалить Android-приложение %s?" % d["waydroid"]):
+            return False
+        x = C.run(["waydroid", "app", "remove", d["waydroid"]], timeout=300)
+        say(x.stdout + x.stderr)
+        return x.returncode == 0
+    if d["path"].startswith(LOCAL_DIR):
+        if not ask("Удалить ярлык «%s» из меню?" % d["name"]):
+            return False
+        os.remove(d["path"])
+        return True
+    if ask("«%s» входит в систему и не удаляется отдельно. Скрыть из меню?" % d["name"]):
+        set_hidden(d["path"], True)
+        return True
+    return False
+
+
+def dialog(path):
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QIcon
+    from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QMessageBox, QGridLayout, QFrame
+
+    class Info(QDialog):
+        def __init__(self):
+            super().__init__()
+            self.d = info(path)
+            self.setWindowTitle("О приложении — %s" % self.d["name"])
+            self.resize(480, 560)
+            v = QVBoxLayout(self)
+            top = QHBoxLayout()
+            ic = QLabel()
+            icon = QIcon(self.d["icon"]) if self.d["icon"].startswith("/") else QIcon.fromTheme(self.d["icon"] or "application-x-executable")
+            ic.setPixmap(icon.pixmap(72, 72))
+            top.addWidget(ic)
+            t = QLabel("<h2>%s</h2>%s" % (self.d["name"], self.d["comment"]))
+            t.setWordWrap(True)
+            top.addWidget(t, 1)
+            v.addLayout(top)
+            g = QGridLayout()
+            rows = [("Версия", self.d["version"] or "неизвестна"), ("Источник", self.d["kind"]), ("Пакет", self.d["package"] or self.d["flatpak"] or self.d["waydroid"]),
+                    ("Размер", self.d["size"]), ("Разработчик / источник", self.d["origin"]), ("Ярлык", self.d["path"])]
+            for i, (k, val) in enumerate([r for r in rows if r[1]]):
+                g.addWidget(QLabel("<b>%s</b>" % k), i, 0)
+                lv = QLabel(val)
+                lv.setWordWrap(True)
+                lv.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                g.addWidget(lv, i, 1)
+            v.addLayout(g)
+            line = QFrame()
+            line.setFrameShape(QFrame.Shape.HLine)
+            v.addWidget(line)
+            self.store = QLabel()
+            self.store.setWordWrap(True)
+            v.addWidget(self.store)
+            self.fill_store()
+            row = QHBoxLayout()
+            for t2, f in (("Открыть", self.open_), ("Остановить", self.stop), ("Удалить", self.remove_)):
+                b = QPushButton(t2)
+                b.clicked.connect(f)
+                row.addWidget(b)
+            v.addLayout(row)
+            row2 = QHBoxLayout()
+            self.hb = QPushButton("Показать в меню" if self.d["hidden"] else "Скрыть из меню")
+            self.hb.clicked.connect(self.hide_)
+            row2.addWidget(self.hb)
+            b = QPushButton("Очистить кэш")
+            b.clicked.connect(self.clear_cache)
+            row2.addWidget(b)
+            if self.d["flatpak"]:
+                b = QPushButton("Права")
+                b.clicked.connect(self.perms)
+                row2.addWidget(b)
+            v.addLayout(row2)
+            v.addStretch(1)
+
+        def fill_store(self):
+            dd = data_dirs(self.d)
+            if not dd:
+                self.store.setText("<b>Хранилище</b><br>Отдельных папок с данными не найдено.")
+                return
+            self.store.setText("<b>Хранилище</b><br>" + "<br>".join("%s: %s (%s)" % (k, p.replace(C.HOME, "~"), human(du(p) / 1024)) for k, p in dd))
+
+        def open_(self):
+            C.launch(dict(exec=self.d["exec"], terminal=False, path=""))
+
+        def stop(self):
+            pids = processes(self.d)
+            if not pids:
+                QMessageBox.information(self, "Остановить", "Программа не запущена (или её процесс не удаётся определить).")
+                return
+            if QMessageBox.question(self, "Остановить", "Принудительно закрыть «%s»? Несохранённые данные пропадут." % self.d["name"]) != QMessageBox.StandardButton.Yes:
+                return
+            for p in pids:
+                try:
+                    os.kill(p, signal.SIGTERM)
+                except OSError:
+                    pass
+
+        def remove_(self):
+            if remove(self.d, self):
+                self.accept()
+
+        def hide_(self):
+            set_hidden(self.d["path"], not self.d["hidden"])
+            self.d["hidden"] = not self.d["hidden"]
+            self.hb.setText("Показать в меню" if self.d["hidden"] else "Скрыть из меню")
+
+        def clear_cache(self):
+            caches = [p for k, p in data_dirs(self.d) if k == "Кэш"]
+            if not caches:
+                QMessageBox.information(self, "Кэш", "Кэш не найден.")
+                return
+            if QMessageBox.question(self, "Кэш", "Удалить кэш:\n%s" % "\n".join(caches)) != QMessageBox.StandardButton.Yes:
+                return
+            for p in caches:
+                if p.startswith(C.HOME + "/") and "/cache" in p.replace(".cache", "/cache"):
+                    shutil.rmtree(p, ignore_errors=True)
+            self.fill_store()
+
+        def perms(self):
+            if shutil.which("flatseal") or C.run(["flatpak", "info", "com.github.tchx84.Flatseal"], timeout=10).returncode == 0:
+                subprocess.Popen(["flatpak", "run", "com.github.tchx84.Flatseal", self.d["flatpak"]], start_new_session=True, env=C.clean_env())
+                return
+            QMessageBox.information(self, "Права", C.run(["flatpak", "info", "--show-permissions", self.d["flatpak"]], timeout=20).stdout[-3000:] or "нет данных")
+
+    return Info()
+
+
+def main():
+    from PyQt6.QtWidgets import QApplication
+    if len(sys.argv) < 3 or sys.argv[1] not in ("--info", "--remove"):
+        print("appinfo.py --info|--remove ФАЙЛ.desktop")
+        return 2
+    app = QApplication(sys.argv)
+    C.qt_ru(app)
+    app.setDesktopFileName("matryoshka-center")
+    path = sys.argv[2]
+    if sys.argv[1] == "--remove":
+        remove(info(path))
+        return 0
+    w = dialog(path)
+    w.show()
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

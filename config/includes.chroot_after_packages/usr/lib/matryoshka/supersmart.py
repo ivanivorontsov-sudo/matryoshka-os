@@ -37,21 +37,30 @@ class Tile(QToolButton):
         self.customContextMenuRequested.connect(self.menu)
     def menu(self, pos):
         from PyQt6.QtWidgets import QMenu
+        import appinfo
         m = QMenu(self)
+        if not hasattr(self, "meta"):
+            self.meta = appinfo.info(self.app["file"])
+        h = m.addAction("%s %s" % (self.app["name"], ("— версия " + self.meta["version"]) if self.meta["version"] else ""))
+        h.setEnabled(False)
+        m.addSeparator()
         m.addAction("Открыть", lambda: (C.launch(self.app), self.window().done()))
+        m.addAction("О приложении", self.about)
+        m.addAction("Скрыть с экрана", self.hide_app)
         m.addAction("Удалить", self.uninstall)
         m.exec(self.mapToGlobal(pos))
+    def about(self):
+        import appinfo
+        appinfo.dialog(self.app["file"]).exec()
+        self.window().reload()
+    def hide_app(self):
+        import appinfo
+        appinfo.set_hidden(self.app["file"], True)
+        self.window().reload()
     def uninstall(self):
-        from PyQt6.QtWidgets import QMessageBox
-        r = C.run(["dpkg", "-S", self.app["file"]])
-        pkg = r.stdout.split(":")[0].strip()
-        if not pkg:
-            QMessageBox.information(self, "Удаление", "Это не пакет системы. Удалите его в «Программы».")
-            return
-        if QMessageBox.question(self, "Удаление", "Удалить пакет %s?" % pkg) != QMessageBox.StandardButton.Yes:
-            return
-        x = C.root("remove-app", pkg)
-        QMessageBox.information(self, "Удаление", (x.stdout + x.stderr)[-1500:] or "готово")
+        import appinfo
+        if appinfo.remove(appinfo.info(self.app["file"]), self):
+            self.window().reload()
     def enterEvent(self, e): self.hover = True; self.update()
     def leaveEvent(self, e): self.hover = False; self.update()
     def paintEvent(self, e):
@@ -117,6 +126,8 @@ class Home(QWidget):
         if not cat:
             lst = [a for a in lst if a["name"] in self.fav] + [a for a in lst if a["name"] not in self.fav]
         return lst
+    def reload(self):
+        self.apps = C.desktop_apps(); self.refill()
     def refill(self):
         while self.grid.count():
             w = self.grid.takeAt(0).widget(); w.deleteLater()

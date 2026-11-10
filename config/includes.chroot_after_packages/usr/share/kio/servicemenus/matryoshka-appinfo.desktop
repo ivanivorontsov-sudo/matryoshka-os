@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/x-desktop;
+Actions=appinfo;
+X-KDE-Priority=TopLevel
+
+[Desktop Action appinfo]
+Name=About the app and version
+Name[ru]=О приложении и версия
+Icon=help-about
+Exec=python3 /usr/lib/matryoshka/appinfo.py --info %f
