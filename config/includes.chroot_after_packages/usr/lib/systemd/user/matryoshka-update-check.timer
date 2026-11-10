@@ -1,0 +1,10 @@
+[Unit]
+Description=Проверка обновлений Матрёшки раз в полдня
+
+[Timer]
+OnStartupSec=15min
+OnUnitActiveSec=12h
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

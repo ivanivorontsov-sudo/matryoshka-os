@@ -1,0 +1,7 @@
+[Unit]
+Description=Проверка обновлений Матрёшки
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/lib/matryoshka/updcheck.py --auto
