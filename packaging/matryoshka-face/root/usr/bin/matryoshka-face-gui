@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import json, os, subprocess, sys, tempfile
+import json, os, subprocess, sys, tempfile, traceback
 from PyQt6.QtCore import QThread, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QPlainTextEdit, QMessageBox
@@ -7,6 +7,36 @@ from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushBut
 T = "/usr/sbin/matryoshka-face"
 DATA = "/usr/lib/security/howdy/dlib-data"
 SHOTS = 5
+CONFIG = "/usr/lib/security/howdy/config.ini"
+CASCADES = ("/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml", "/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml")
+
+
+def target_user():
+    if "--user" in sys.argv:
+        i = sys.argv.index("--user")
+        if i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return os.environ.get("USER", "")
+
+
+def camera_path():
+    try:
+        for line in open(CONFIG, encoding="utf-8"):
+            k, _, v = line.partition("=")
+            if k.strip() == "device_path" and v.strip().startswith("/dev/"):
+                return v.strip()
+    except OSError:
+        pass
+    return None
+
+
+def cascade_file(cv2):
+    d = getattr(cv2, "data", None)
+    cands = ([os.path.join(d.haarcascades, "haarcascade_frontalface_default.xml")] if d is not None else []) + list(CASCADES)
+    for c in cands:
+        if os.path.exists(c):
+            return c
+    return None
 
 
 class Job(QThread):
@@ -60,6 +90,11 @@ class W(QWidget):
         self.got = []
         self.prev = None
         self.pause = 0
+        self.user = target_user()
+        self.models = None
+        self.rgb = None
+        if self.user != os.environ.get("USER", ""):
+            self.setWindowTitle("Вход по лицу: %s" % self.user)
 
     def go(self, a):
         if a == "multi":
@@ -70,6 +105,8 @@ class W(QWidget):
         for b in self.bs:
             b.setEnabled(False)
         self.o.setPlainText("Смотрите в камеру..." if a[0] in ("add", "check") else "Подождите...")
+        if a[0] in ("check", "list", "clear") and self.user:
+            a = a + [self.user]
         self.j = Job(a)
         self.j.done.connect(self.fin)
         self.j.start()
@@ -86,11 +123,26 @@ class W(QWidget):
         except Exception:
             self.o.setPlainText("Нет OpenCV. Нажмите «Записать лицо» в Центре.")
             return
-        self.cap = cv2.VideoCapture(0)
+        dev = camera_path()
+        self.cap = cv2.VideoCapture(dev if dev else 0)
+        if not self.cap.isOpened() and dev:
+            self.cap = cv2.VideoCapture(0)
         if not self.cap.isOpened():
-            self.o.setPlainText("Камера не открылась.")
+            self.cap = None
+            self.o.setPlainText("Камера не открылась. Закройте другие программы, которые её используют.")
             return
-        self.cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        cf = cascade_file(cv2)
+        self.cascade = cv2.CascadeClassifier(cf) if cf else None
+        if self.cascade is not None and self.cascade.empty():
+            self.cascade = None
+        if self.cascade is None:
+            try:
+                import dlib
+                self.hog = dlib.get_frontal_face_detector()
+            except Exception as e:
+                self.stop_cam()
+                self.o.setPlainText("Нет детектора лиц: %s" % e)
+                return
         self.stable = 0
         self.got = []
         self.prev = None
@@ -102,10 +154,11 @@ class W(QWidget):
 
     def encode(self, frame, box):
         import dlib
-        x, y, w, h = box
-        det = dlib.get_frontal_face_detector()
-        sp = dlib.shape_predictor(os.path.join(DATA, "shape_predictor_5_face_landmarks.dat"))
-        rec = dlib.face_recognition_model_v1(os.path.join(DATA, "dlib_face_recognition_resnet_model_v1.dat"))
+        if self.models is None:
+            self.models = (dlib.get_frontal_face_detector(),
+                           dlib.shape_predictor(os.path.join(DATA, "shape_predictor_5_face_landmarks.dat")),
+                           dlib.face_recognition_model_v1(os.path.join(DATA, "dlib_face_recognition_resnet_model_v1.dat")))
+        det, sp, rec = self.models
         gray = self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2GRAY)
         faces = det(gray, 1)
         if not faces:
@@ -115,6 +168,21 @@ class W(QWidget):
         return [float(x) for x in enc]
 
     def frame(self):
+        try:
+            self.step()
+        except Exception as e:
+            self.stop_cam()
+            self.o.setPlainText("Ошибка камеры: %s" % e)
+
+    def detect(self, gray):
+        if self.cascade is not None:
+            return list(self.cascade.detectMultiScale(gray, 1.2, 5, minSize=(80, 80)))
+        small = self.cv2.resize(gray, (gray.shape[1] // 2, gray.shape[0] // 2))
+        return [(r.left() * 2, r.top() * 2, r.width() * 2, r.height() * 2) for r in self.hog(small, 0)]
+
+    def step(self):
+        if self.cap is None:
+            return
         ok, frame = self.cap.read()
         if not ok:
             return
@@ -123,7 +191,7 @@ class W(QWidget):
             self.show_frame(frame, None)
             return
         gray = self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2GRAY)
-        faces = self.cascade.detectMultiScale(gray, 1.2, 5, minSize=(80, 80))
+        faces = self.detect(gray)
         box = None
         if len(faces):
             box = max(faces, key=lambda b: b[2] * b[3])
@@ -157,7 +225,10 @@ class W(QWidget):
         if box is not None:
             x, y, w, h = [int(v) for v in box]
             self.cv2.rectangle(img, (x, y), (x + w, y + h), (232, 56, 79), 2)
-        rgb = self.cv2.cvtColor(img, self.cv2.COLOR_BGR2RGB)
+        if len(img.shape) == 2:
+            img = self.cv2.cvtColor(img, self.cv2.COLOR_GRAY2BGR)
+        rgb = self.cv2.cvtColor(img, self.cv2.COLOR_BGR2RGB).copy()
+        self.rgb = rgb
         q = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.strides[0], QImage.Format.Format_RGB888)
         self.view.setPixmap(QPixmap.fromImage(q).scaled(self.view.width(), self.view.height(), Qt.AspectRatioMode.KeepAspectRatio))
 
@@ -177,7 +248,7 @@ class W(QWidget):
         self.o.setPlainText("Сохраняю %d снимков…" % len(self.got))
         for b in self.bs:
             b.setEnabled(False)
-        self.j = Job(["import", os.environ.get("USER", ""), path])
+        self.j = Job(["import", self.user, path])
         self.j.done.connect(self.fin)
         self.j.start()
 
@@ -186,7 +257,17 @@ class W(QWidget):
         e.accept()
 
 
+def crash(t, e, tb):
+    msg = "".join(traceback.format_exception(t, e, tb))
+    sys.stderr.write(msg)
+    try:
+        QMessageBox.critical(None, "Вход по лицу", "Ошибка:\n" + msg[-1500:])
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
+    sys.excepthook = crash
     app = QApplication(sys.argv)
     app.setDesktopFileName("matryoshka-face")
     w = W()

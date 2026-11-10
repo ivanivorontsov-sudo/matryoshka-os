@@ -328,6 +328,7 @@ matryoshka-netclient
 libopencv-features2d410
 xdotool
 python3-opencv
+opencv-data
 python3-numpy
 libpam-python
 libopenblas0

@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-1.0.3}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")"); W=${FACE_WORK:-/workspace/face}
+V=${1:-1.0.4}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")"); W=${FACE_WORK:-/workspace/face}
 HDEB=$W/howdy_2.6.1_all.deb; HSUM=c104329d8c7f54508b317ac7fb9782eae4104187bac657ee8a80aeeeb406c84f
 mkdir -p "$W"
 [ -f "$HDEB" ] || curl -fsSL -o "$HDEB" https://launchpad.net/~boltgolt/+archive/ubuntu/howdy/+files/howdy_2.6.1_all.deb
@@ -37,6 +37,7 @@ Version: $V
 Architecture: amd64
 Maintainer: Ivan Vorontsov
 Depends: python3 (>= 3.13), python3 (<< 3.14), python3-opencv, python3-numpy, libpam-python, libopenblas0, libx11-6, libpng16-16t64, libjpeg62-turbo, libwebp7, libgfortran5, v4l-utils, python3-pyqt6, pkexec | policykit-1
+Recommends: opencv-data
 Conflicts: howdy
 Description: Face login for Matryoshka (Howdy 2.6.1 + dlib), off by default
  Password always works. Enable: matryoshka-face on; add face: matryoshka-face add USER.
