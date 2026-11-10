@@ -280,6 +280,7 @@ npm
 libpwquality-tools
 winetricks
 fonts-wine
+winbind
 mesa-vulkan-drivers
 libvulkan1
 vulkan-tools

@@ -1,11 +1,11 @@
 [Unit]
-Description=Матрёшка: блок-лист рекламы и трекеров в /etc/hosts
+Description=Матрёшка: имя компьютера и блок-лист рекламы в /etc/hosts
 After=live-config.service
 Before=NetworkManager.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c "grep -q StevenBlack /etc/hosts || { echo '# StevenBlack unified hosts'; grep -E '^0\\.0\\.0\\.0 ' /usr/share/matryoshka/hosts/stevenblack | grep -v ' 0\\.0\\.0\\.0$'; } >> /etc/hosts"
+ExecStart=/usr/lib/matryoshka/hosts.sh
 
 [Install]
 WantedBy=multi-user.target

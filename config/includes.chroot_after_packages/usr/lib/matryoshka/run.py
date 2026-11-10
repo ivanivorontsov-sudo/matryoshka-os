@@ -50,6 +50,10 @@ def install_apks(apks):
     C.run(["adb", "connect", ip + ":5555"])
     return subprocess.run(["adb", "-s", ip + ":5555", "install-multiple", *apks]).returncode
 
+def electron_dir(d):
+    r = os.path.join(d, "resources")
+    return os.path.exists(os.path.join(r, "app.asar")) or os.path.isdir(os.path.join(r, "app")) or (os.path.exists(os.path.join(d, "libEGL.dll")) and bool(glob.glob(os.path.join(d, "*.pak"))))
+
 def exe_kind(path):
     try:
         b = open(path, "rb").read(4096)
@@ -80,6 +84,8 @@ def main(path):
         return dos(path)
     if ext in ("exe", "msi", "lnk"):
         C.prep_wine(); env = dict(os.environ, LANG="ru_RU.UTF-8")
+        if os.path.exists("/usr/lib/matryoshka-fixes/wine-fonts"):
+            subprocess.call(["/usr/lib/matryoshka-fixes/wine-fonts"], env=dict(env, WINEPREFIX=os.path.expanduser("~/.wine")), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if ext == "msi": return subprocess.call(["wine", "msiexec", "/i", path], env=env)
         env.update(MOZ_DISABLE_CONTENT_SANDBOX="1", MOZ_DISABLE_GPU_SANDBOX="1", MOZ_DISABLE_RDD_SANDBOX="1", MOZ_DISABLE_SOCKET_PROCESS_SANDBOX="1", MOZ_DISABLE_GMP_SANDBOX="1", MOZ_DISABLE_UTILITY_SANDBOX="1")
         if not os.path.exists(os.path.expanduser("~/.wine/.matryoshka-win10")):
@@ -91,8 +97,8 @@ def main(path):
             if subprocess.call(["kdialog", "--yesno", "Установщик Chrome для Windows под Wine не работает (ошибка 0x124fb).\nУстановить обычный Chromium для Linux (около 100 МБ, нужен интернет)?"]) == 0:
                 return subprocess.call(["matryoshka-pkginstall", "--apt", "chromium"])
             return 1
-        if any(x in b for x in ("chrome", "vivaldi", "msedge", "opera", "brave", "yandex", "electron", "code", "discord", "slack", "teams")) and not any(x in b for x in ("setup", "install", "update")):
-            return subprocess.call(["wine", path, "--no-sandbox", "--disable-gpu-sandbox", "--disable-gpu", "--in-process-gpu"], env=env, cwd=os.path.dirname(path))
+        if (electron_dir(os.path.dirname(path)) or any(x in b for x in ("chrome", "vivaldi", "msedge", "opera", "brave", "yandex", "electron", "code", "discord", "slack", "teams"))) and not any(x in b for x in ("setup", "install", "update")):
+            return subprocess.call(["wine", path, "--no-sandbox", "--disable-gpu-sandbox", "--disable-gpu", "--disable-gpu-compositing", "--in-process-gpu"], env=env, cwd=os.path.dirname(path))
         if b.startswith("firefox") and not any(x in b for x in ("setup", "install")):
             return subprocess.call(["wine", path, "-no-remote"], env=env, cwd=os.path.dirname(path))
         return subprocess.call(["wine", "start", "/unix", path], env=env)
