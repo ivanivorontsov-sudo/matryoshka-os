@@ -2,6 +2,7 @@
 Type=Application
 Name=Центр Матрёшки
 Exec=matryoshka-center
-Icon=preferences-system
+Icon=matryoshka-center
+StartupWMClass=matryoshka-center
 Categories=Settings;System;
 Keywords=настройки;settings;

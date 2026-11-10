@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#1f6f8b"/>
+  <path d="M27 7c-6.5 0-10.5 5-10.5 11 0 2.6.8 4.8 2 6.6C13.5 28.5 11 34.6 11 41.5 11 52 18.2 58 27 58s16-6 16-16.5c0-6.9-2.5-13-7.5-16.9 1.2-1.8 2-4 2-6.6C37.5 12 33.5 7 27 7z" fill="#d93a3a"/>
+  <circle cx="27" cy="18.5" r="6.8" fill="#ffe2c6"/>
+  <path d="M20.2 17.5c1.2-4.6 4-6.3 6.8-6.3s5.6 1.7 6.8 6.3c-2-1.9-4.3-2.7-6.8-2.7s-4.8.8-6.8 2.7z" fill="#f2c200"/>
+  <circle cx="24.6" cy="19" r=".9" fill="#3b2a20"/>
+  <circle cx="29.4" cy="19" r=".9" fill="#3b2a20"/>
+  <path d="M25 22.2c1.3.9 2.7.9 4 0" stroke="#c0392b" stroke-width=".9" fill="none" stroke-linecap="round"/>
+  <ellipse cx="27" cy="41" rx="9.5" ry="10.5" fill="#fff4dc"/>
+  <circle cx="27" cy="38" r="3.2" fill="#e74c3c"/>
+  <circle cx="23.3" cy="43.5" r="2.2" fill="#2e86de"/>
+  <circle cx="30.7" cy="43.5" r="2.2" fill="#27ae60"/>
+  <g transform="translate(45 45)">
+    <circle r="14" fill="#1f6f8b"/>
+    <path d="M-1.9-11h3.8l.7 3.1 2.5 1 2.7-1.7 2.7 2.7-1.7 2.7 1 2.5 3.1.7v3.8l-3.1.7-1 2.5 1.7 2.7-2.7 2.7-2.7-1.7-2.5 1-.7 3.1h-3.8l-.7-3.1-2.5-1-2.7 1.7-2.7-2.7 1.7-2.7-1-2.5-3.1-.7v-3.8l3.1-.7 1-2.5-1.7-2.7 2.7-2.7 2.7 1.7 2.5-1z" fill="#eef3f6"/>
+    <circle r="3.8" fill="#1f6f8b"/>
+  </g>
+</svg>
