@@ -1,7 +1,7 @@
 #!/bin/bash
 export WINEPREFIX=${WINEPREFIX:-$HOME/.wine}
 [ -f "$WINEPREFIX/system.reg" ] || exit 0
-M="$WINEPREFIX/.matryoshka-fonts-3"
+M="$WINEPREFIX/.matryoshka-fonts-4"
 [ "$1" = --force ] || [ ! -e "$M" ] || exit 0
 W=wine; command -v wine >/dev/null || W=/usr/lib/wine/wine64
 export WINEDEBUG=-all WINEDLLOVERRIDES="mscoree=;mshtml=;winemenubuilder.exe=d"
@@ -20,6 +20,16 @@ e="Symbola"; fc-list -q "$e" || e="Noto Color Emoji"
 y="Symbola"; fc-list -q "$y" || y="DejaVu Sans"
 for f in "Segoe UI Emoji" "Apple Color Emoji" "Noto Emoji" "Twemoji Mozilla"; do "$W" reg add "$K" /v "$f" /d "$e" /f >/dev/null 2>&1; done
 for f in "Segoe UI Symbol"; do "$W" reg add "$K" /v "$f" /d "$y" /f >/dev/null 2>&1; done
+EM=/usr/share/matryoshka-fixes/seguiemj.ttf
+if [ -f "$EM" ]; then
+  mkdir -p "$WINEPREFIX/drive_c/windows/Fonts"
+  cmp -s "$EM" "$WINEPREFIX/drive_c/windows/Fonts/seguiemj.ttf" || cp -f "$EM" "$WINEPREFIX/drive_c/windows/Fonts/seguiemj.ttf"
+fi
+if [ -f "$WINEPREFIX/drive_c/windows/Fonts/seguiemj.ttf" ]; then
+  "$W" reg add 'HKLM\Software\Microsoft\Windows NT\CurrentVersion\Fonts' /v "Segoe UI Emoji (TrueType)" /d seguiemj.ttf /f >/dev/null 2>&1
+  "$W" reg delete "$K" /v "Segoe UI Emoji" /f >/dev/null 2>&1
+  "$W" reg add 'HKLM\Software\Microsoft\Windows NT\CurrentVersion\FontLink\SystemLink' /v "Segoe UI" /t REG_MULTI_SZ /d 'seguiemj.ttf,Segoe UI Emoji' /f >/dev/null 2>&1
+fi
 D='HKCU\Control Panel\Desktop'
 "$W" reg add "$D" /v FontSmoothing /d 2 /f >/dev/null 2>&1
 "$W" reg add "$D" /v FontSmoothingType /t REG_DWORD /d 2 /f >/dev/null 2>&1
