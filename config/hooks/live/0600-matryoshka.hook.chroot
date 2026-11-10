@@ -16,6 +16,7 @@ systemctl enable clamav-daemon.service || true
 systemctl disable waydroid-container.service || true
 systemctl enable matryoshka-bootcheck.service matryoshka-bootok.service matryoshka-sandbox-mode.service || true
 systemctl disable opensnitch.service 2>/dev/null || true
+systemctl disable winbind.service 2>/dev/null || true
 if [ -d /usr/share/matryoshka/clamav ]; then cp /usr/share/matryoshka/clamav/*.cvd /var/lib/clamav/ && chown clamav:clamav /var/lib/clamav/*.cvd && rm -rf /usr/share/matryoshka/clamav; fi
 mkdir -p /var/lib/NetworkManager /var/lib/matryoshka
 printf '[main]\nNetworkingEnabled=false\nWirelessEnabled=true\nWWANEnabled=false\n' > /var/lib/NetworkManager/NetworkManager.state
