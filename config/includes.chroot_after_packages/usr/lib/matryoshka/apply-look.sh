@@ -19,6 +19,7 @@ Icon=firefox-esr
 StartupWMClass=firefox
 E
 fi
+[ -f /usr/lib/matryoshka/waydroid_desktop.py ] && python3 /usr/lib/matryoshka/waydroid_desktop.py --patch >/dev/null 2>&1 || true
 t=/usr/share/sddm/themes/breeze/theme.conf
 if [ -f "$t" ]; then
   if grep -q '^background=' "$t"; then

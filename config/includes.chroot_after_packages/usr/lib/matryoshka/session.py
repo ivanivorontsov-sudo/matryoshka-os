@@ -240,6 +240,11 @@ def on_login():
         caches_fix()
     except Exception:
         pass
+    try:
+        import waydroid_desktop
+        waydroid_desktop.fix_user_files()
+    except Exception:
+        pass
     fresh = not os.path.exists(os.path.join(C.CONF, "settings.json"))
     s = C.settings()
     threading.Thread(target=layout_once, args=(fresh,)).start()
