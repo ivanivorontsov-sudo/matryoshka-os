@@ -37,12 +37,37 @@ def ee_ready(wait=10):
         time.sleep(0.25)
     return False
 
+def ee_last_preset():
+    r = C.run(["gsettings", "get", "com.github.wwmm.easyeffects", "last-loaded-output-preset"], timeout=5)
+    v = (r.stdout or "").strip().strip("'\"") if r.returncode == 0 else ""
+    if v and os.path.exists(os.path.expanduser("~/.config/easyeffects/output/%s.json" % v)):
+        return v
+    for f in ("~/.config/easyeffects/db/easyeffectsrc", "~/.config/easyeffects/db/easyeffects.conf"):
+        try:
+            for line in open(os.path.expanduser(f), encoding="utf-8"):
+                if line.startswith("lastLoadedOutputPreset=") or line.startswith("last-used-output-preset="):
+                    v = line.split("=", 1)[1].strip().strip('"')
+                    if v and os.path.exists(os.path.expanduser("~/.config/easyeffects/output/%s.json" % v)):
+                        return v
+        except OSError:
+            pass
+    return ""
+
+def ee_sink_ready(wait=20):
+    for _ in range(wait * 2):
+        if "easyeffects_sink" in pactl("list", "short", "sinks"):
+            return True
+        time.sleep(0.5)
+    return False
+
 def apply_profile(force=False):
     if not shutil.which("easyeffects"):
         return
     s = C.settings()
     sink, port = current_output()
     name = audiodev.preset_for(s, sink, port)
+    if name == "@ee":
+        name = ee_last_preset()
     key = (sink, port, name)
     if key == EE_STATE["key"] and not force:
         return
@@ -62,6 +87,7 @@ def watch_audio():
         for line in p.stdout:
             if "sink" not in line and "'change' on server" not in line:
                 continue
+            fresh = "'new' on sink" in line
             now = time.time()
             if now - last < 1.2:
                 continue
@@ -71,10 +97,27 @@ def watch_audio():
                 default = pactl("get-default-sink").strip()
                 audiodev.remember(data, sinks(), default)
                 audiodev.save_audio(AUDIO, data)
-                apply_profile()
+                apply_profile(force=fresh)
             except Exception:
                 pass
     threading.Thread(target=loop, daemon=True).start()
+    def resume():
+        try:
+            p = subprocess.Popen(["gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"], stdout=subprocess.PIPE, text=True)
+        except OSError:
+            return
+        for line in p.stdout:
+            if "PrepareForSleep" in line and "false" in line:
+                time.sleep(4)
+                try:
+                    if C.settings().get("sound_enhance", True) and shutil.which("easyeffects"):
+                        if not ee_ready(0):
+                            sound_enhance()
+                        else:
+                            apply_profile(force=True)
+                except Exception:
+                    pass
+    threading.Thread(target=resume, daemon=True).start()
 
 def sound_enhance():
     s = C.settings()
@@ -93,8 +136,13 @@ def sound_enhance():
             if not os.path.exists(to):
                 shutil.copy(src, to)
     if not ee_ready(0):
-        subprocess.Popen(["easyeffects", "--gapplication-service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        if C.run(["systemd-run", "--user", "--unit=matryoshka-easyeffects", "--collect", "--quiet", "easyeffects", "--gapplication-service"], timeout=15).returncode != 0:
+            subprocess.Popen(["easyeffects", "--gapplication-service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     if ee_ready(15):
+        ee_sink_ready(20)
+        time.sleep(1)
+        apply_profile(force=True)
+        time.sleep(3)
         apply_profile(force=True)
 
 def restart_audio():

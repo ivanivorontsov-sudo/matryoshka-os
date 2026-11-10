@@ -82,4 +82,4 @@ def preset_for(settings, sink, port):
         return ""
     if output_kind(sink, port) == "phones":
         return settings.get("sound_phones", settings.get("sound_preset", "Пространство-наушники"))
-    return settings.get("sound_speakers", "")
+    return settings.get("sound_speakers", "@ee")

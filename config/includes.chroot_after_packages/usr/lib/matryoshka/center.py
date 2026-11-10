@@ -86,8 +86,10 @@ class Center(QWidget):
             names |= set(os.path.splitext(x)[0] for x in os.listdir("/etc/skel/.config/easyeffects/output") if x.endswith(".json")) if os.path.isdir("/etc/skel/.config/easyeffects/output") else set()
             return sorted(names)
         combos = {}
-        for key, label, default in (("sound_phones", "Наушники", self.s.get("sound_preset", "Пространство-наушники")), ("sound_speakers", "Динамики ноутбука", "")):
-            cb = QComboBox(); cb.addItem("Без обработки", "")
+        for key, label, default in (("sound_phones", "Наушники", self.s.get("sound_preset", "Пространство-наушники")), ("sound_speakers", "Динамики ноутбука", "@ee")):
+            cb = QComboBox()
+            if key == "sound_speakers": cb.addItem("Как в Easy Effects (последний профиль)", "@ee")
+            cb.addItem("Без обработки", "")
             for n in presets(): cb.addItem(n, n)
             cur = self.s.get(key, default); i = cb.findData(cur); cb.setCurrentIndex(i if i >= 0 else 0)
             sf.addRow(label, cb); combos[key] = cb
