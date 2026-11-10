@@ -53,6 +53,13 @@ tar -C / -cpf "$PAMSNAP" "${PL[@]}" || die "не удалось сохранит
 say "Копирую файлы системы"
 rsync -aK --exclude=/etc/sddm.conf.d/ --exclude=/etc/hostname --exclude=/etc/hosts $W/includes/ / || rollback
 rm -f /etc/debian_chroot
+if [ -s $W/remove.list ]; then
+  say "Убираю то, что больше не входит в Матрёшку"
+  awk '$1=="file"{print $2}' $W/remove.list >> $W/files.txt
+  awk '$1=="file"{print $2}' $W/remove.list | while read -r f; do rm -f "$f"; done
+  rp=$(awk '$1=="pkg"{print $2}' $W/remove.list | while read -r p; do dpkg -s "$p" >/dev/null 2>&1 && echo "$p"; done)
+  [ -n "$rp" ] && { DEBIAN_FRONTEND=noninteractive apt-get purge -y $rp >>/tmp/matryoshka-apt.log 2>&1 && say "Удалены пакеты: $(echo $rp)" || echo "ВНИМАНИЕ: не удалось удалить пакеты: $(echo $rp)"; }
+fi
 if [ -n "$ISO" ]; then
   [ -f "$ISO" ] || { echo "образ $ISO не найден"; rollback; }
   modprobe loop 2>/dev/null; ISOM=$(mktemp -d)

@@ -1,0 +1,5 @@
+pkg matryoshka-netclient
+file /usr/local/bin/matryoshka-netclient
+file /usr/lib/matryoshka/netclient.py
+file /usr/share/applications/matryoshka-netclient.desktop
+file /etc/NetworkManager/system-connections/netclient.nmconnection

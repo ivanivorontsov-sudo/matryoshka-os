@@ -324,7 +324,6 @@ ksshaskpass
 matryoshka-fixes
 matryoshka-gxfp
 matryoshka-phone
-matryoshka-netclient
 libopencv-features2d410
 xdotool
 python3-opencv

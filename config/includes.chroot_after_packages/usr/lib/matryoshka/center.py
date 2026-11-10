@@ -93,16 +93,6 @@ class Center(QWidget):
         v.addWidget(QLabel("<h3>Скорость и задержки</h3>Уже включено: BBR + fq, TCP Fast Open, увеличенные буферы, кэш DNS.", wordWrap=True))
         ps = QCheckBox("Отключить энергосбережение Wi-Fi (меньше задержка, больше расход батареи)"); ps.setChecked(C.wifi_powersave_off())
         ps.toggled.connect(lambda x: C.root("wifi-powersave", "off" if x else "on")); v.addWidget(ps)
-        v.addWidget(QLabel("<h3>Сеть</h3>Поддерживаются WireGuard, OpenVPN, IPsec/IKEv2 — профиль от вашего провайдера или работы импортируется одним нажатием. Подключение работает, только когда сеть включена.", wordWrap=True))
-        o = self.out(v)
-        def imp():
-            p, _ = QFileDialog.getOpenFileName(self, "Профиль VPN", os.path.expanduser("~"), "Профили (*.conf *.ovpn);;Все (*)")
-            if not p: return
-            t = "openvpn" if p.endswith(".ovpn") else "wireguard"
-            r = C.run(["nmcli", "connection", "import", "type", t, "file", p]); o.setPlainText(r.stdout + r.stderr)
-        v.addWidget(btn("Импортировать профиль VPN (.conf WireGuard / .ovpn)", imp))
-        v.addWidget(btn("Все подключения и VPN (настройки KDE)", lambda: subprocess.Popen(["systemsettings", "kcm_networkmanagement"])))
-        v.addWidget(btn("Прокси-сервер", lambda: subprocess.Popen(["systemsettings", "kcm_proxy"])))
     def p_av(self, v):
         v.addWidget(QLabel("<h2>Защита</h2>Антивирус включён всегда: ClamAV + открытые правила YARA (YARA Forge) следят за «Загрузками», рабочим столом и флешками. Находки объясняет нейросеть, решаете вы. Активаторы без вирусов не блокируются, но показывается предупреждение о законах выбранной страны.", wordWrap=True))
         f = QFormLayout(); v.addLayout(f)
