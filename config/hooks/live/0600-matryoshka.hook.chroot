@@ -41,7 +41,7 @@ chmod 640 /etc/shadow; chown root:shadow /etc/shadow
 systemctl mask lxc-net.service 2>/dev/null || true
 rm -f /usr/share/dbus-1/services/org.kde.kdeconnect.service
 ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf 2>/dev/null || true
-systemctl enable matryoshka-hosts.service matryoshka-resolv.service 2>/dev/null || true
+systemctl enable matryoshka-hosts.service matryoshka-resolv.service matryoshka-appstream.service 2>/dev/null || true
 rm -f /etc/xdg/autostart/org.kde.kdeconnect.daemon.desktop
 grep -q '^ConcurrentDatabaseReload' /etc/clamav/clamd.conf && sed -i 's/^ConcurrentDatabaseReload.*/ConcurrentDatabaseReload no/' /etc/clamav/clamd.conf || echo 'ConcurrentDatabaseReload no' >> /etc/clamav/clamd.conf
 rm -f /usr/share/kio/servicemenus/*telnet* /usr/share/applications/*ktelnet* /usr/share/kservices6/*telnet* 2>/dev/null

@@ -1,0 +1,13 @@
+[Unit]
+Description=Каталог программ Debian для Discover
+Wants=network-online.target
+After=network-online.target matryoshka-netup.service
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/usr/lib/matryoshka/appstream.sh
+
+[Install]
+WantedBy=multi-user.target
