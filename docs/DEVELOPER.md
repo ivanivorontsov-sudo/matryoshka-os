@@ -1,4 +1,4 @@
-# Матрёшка 18.5 — документация разработчика
+# Матрёшка 18.6 — документация разработчика
 
 Образ — Debian 13 (trixie), amd64, KDE Plasma 6, сборка `live-build`. Свой код — Python 3 и PyQt6 в `config/includes.chroot_after_packages/usr/lib/matryoshka` плюс пакеты в `packaging/`. Логотип не меняется. Разметку диска, GRUB, btrfs и ядро из backports этот выпуск не трогает.
 
@@ -8,29 +8,40 @@
 
 Пакеты, которые ставятся поверх образа из `packaging/*/build.sh`:
 
-| Пакет | Версия 18.5 | Назначение |
+| Пакет | Версия 18.6 | Назначение |
 |---|---|---|
-| matryoshka-upgrade | 1.0.8 | копия и обновление на месте |
-| matryoshka-face | 1.0.2 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
-| matryoshka-gxfp | 0.1.4 | драйвер Goodix GXFP5130, по желанию |
+| matryoshka-upgrade | 1.0.9 | копия и обновление на месте |
+| matryoshka-face | 1.0.3 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
+| matryoshka-gxfp | 0.1.5 | драйвер Goodix GXFP5130, по желанию |
 | matryoshka-fixes | 1.1.4 | Wine, Electron, шрифты. libndk_translation не входит |
 
 Ключ выпуска `45A2D53B7751F4A8` не создаётся заново. Если закрытого ключа нет в среде сборки, суммы публикуются без подписи `SHA256SUMS.asc`.
 
-## Обновление 18.4 → 18.5
+## Обновление 18.5 → 18.6
 
-1. Скачать `matryoshka-upgrade_1.0.8_all.deb` и `matryoshka-update-18.5.tar.gz` вместе с файлом `.sha256`.
-2. `sudo apt install ./matryoshka-upgrade_1.0.8_all.deb`
-3. «Копия и обновление Матрёшки»: шаг 1 — копия, шаг 2 — архив обновления и, если есть, ISO.
-4. Перезагрузка.
+1. Скачать `matryoshka-upgrade_1.0.9_all.deb` и `matryoshka-update-18.6.tar.gz` вместе с файлом `.sha256`.
+2. `sudo apt install ./matryoshka-upgrade_1.0.9_all.deb`
+3. «Копия и обновление Матрёшки»: шаг 1 — копия, шаг 2 — архив обновления.
+4. Перезагрузка. При загрузке `matryoshka-auth.service` пересобирает настройки PAM из `/etc/matryoshka/auth.conf` и переносит прежние настройки 18.5.
+
+Архив собирается командой `EXTRA=каталог-с-deb packaging/matryoshka-upgrade/make-bundle.sh 18.6 out`. `/etc/matryoshka-version` пишет `upgrade.sh`; `apply-look.sh` только создаёт файл из `/usr/share/matryoshka/VERSION`, если его нет.
 
 `pkgplan.py` сравнивает установленную версию с кандидатом репозитория через `dpkg --compare-versions`. Уже стоящий пакет попадает в установку, если кандидат новее. Раньше обновлялись только отсутствующие пакеты и имена `matryoshka-*`.
 
 ## Вход
 
-- Отпечаток: `libpam-fprintd`, только `sddm` и `kde`. Для GXFP5130 порог SIGFM снижен до 12 (у bozorth3 по умолчанию 40, а счётчик sigfm на чужом пальце в проверке автора драйвера не превышал 3). Ключ MOK берётся только из `/var/lib/matryoshka-mok`. Если его нет, модуль не подписывается и новый ключ не генерируется.
-- Лицо: Howdy. Окно «Вход по лицу» снимает 5 ракурсов через OpenCV и дописывает модели в JSON Howdy. Пункт есть в параметрах KDE (категория системы) и в Центре. Пароль подходит всегда.
-- Экран блокировки: копия `LockScreenUi.qml` Plasma 6.3 с кнопками питания и фокусом поля пароля по пробелу. `apply-look.sh` кладёт файл поверх оболочки Plasma.
+Все настройки входа пишет один скрипт `/usr/sbin/matryoshka-auth` (`apply`, `status`, `finger on|off`, `finger-lock`, `finger-login`, `finger-sudo`, `finger-polkit`, `face`, `greeter-ru`). Настройки: `/etc/matryoshka/auth.conf`. Созданные им файлы перечислены в `/var/lib/matryoshka/auth/owned`. Центр, `root.sh bio`, `matryoshka-face` и `matryoshka-gxfp` вызывают его, а сами PAM не правят.
+
+- Экран входа SDDM: `@include common-auth` заменяется на `@include matryoshka-login`. Сначала проверяется введённый пароль (`pam_unix`), камера и отпечаток вызываются только при пустом или неверном пароле. Лицо: оставить поле пустым и нажать Enter; отпечаток: `max-tries=3 timeout=15`.
+- Экран блокировки: пароль в `kde` без биометрии; отпечаток в отдельной службе `kde-fingerprint` (`/etc/pam.d/kde-fingerprint`, `timeout=-1`), которую kscreenlocker запускает параллельно. Лицо на экране блокировки не используется.
+- sudo и окна администратора (polkit): по желанию `auth sufficient pam_fprintd.so max-tries=2 timeout=10` перед паролем.
+- Язык SDDM: `GreeterEnvironment` в `/etc/sddm.conf.d/10-matryoshka-greeter.conf`, локаль `ru_RU.UTF-8` создаётся при необходимости. Правило `45-matryoshka-greeter-power.rules` разрешает пользователю `sddm` выключение и перезагрузку.
+- Выход из сеанса: `logind.conf.d/50-matryoshka-logout.conf` (`KillUserProcesses=yes`, кроме root). Долгие действия администратора уходят в отдельный scope через `systemd-run --scope`, чтобы выход не оборвал dpkg.
+- Зависший процесс `kscreenlocker_greet` после разблокировки убивает `lock-helper` (`lock-layout.py`) через 1,5 с, если это тот же процесс (сверяется время запуска).
+- GXFP5130: после появления `/dev/gxfp` перезапускается `fprintd`. Порог SIGFM 12. Ключ MOK берётся только из `/var/lib/matryoshka-mok`.
+- Лицо: Howdy 2.6.1. Окно «Вход по лицу» снимает 5 ракурсов через OpenCV. Пароль подходит всегда.
+- Экран блокировки: копия `LockScreenUi.qml` Plasma 6.3 с кнопками питания (без второго подтверждения) и фокусом поля пароля по пробелу.
+- Горячие клавиши: на X11 служба перезапускается через `systemctl --user restart plasma-kglobalaccel.service`, на Wayland KWin не трогается. Отчёт для разбора клавиш: `matryoshka-keys-diag`.
 
 ## Рабочий стол
 
