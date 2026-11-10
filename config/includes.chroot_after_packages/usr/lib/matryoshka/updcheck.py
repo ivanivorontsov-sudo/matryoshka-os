@@ -24,7 +24,7 @@ def source():
                 k, v = l.strip().split("=", 1); d[k.strip()] = v.strip().strip('"')
     except OSError:
         pass
-    for k in ("REPO", "API"):
+    for k in ("REPO", "API", "CHANNEL"):
         if os.environ.get("MATRYOSHKA_UPDATE_" + k): d[k] = os.environ["MATRYOSHKA_UPDATE_" + k]
     return d
 
@@ -50,7 +50,14 @@ def get(url, timeout=20):
 def latest():
     s = source()
     try:
-        rel = json.loads(get("%s/repos/%s/releases/latest" % (s["API"], s["REPO"])))
+        if s.get("CHANNEL", "") == "pre":
+            rels = [r for r in json.loads(get("%s/repos/%s/releases?per_page=30" % (s["API"], s["REPO"]))) if not r.get("draft")]
+            rels = [r for r in rels if any(re.fullmatch(r"matryoshka-update-[\d.]+\.tar\.(gz|zst|xz)", a["name"]) for a in r.get("assets", []))]
+            if not rels:
+                raise RuntimeError("в репозитории %s нет выпусков с архивом обновления" % s["REPO"])
+            rel = max(rels, key=lambda r: vkey(r.get("tag_name", "")))
+        else:
+            rel = json.loads(get("%s/repos/%s/releases/latest" % (s["API"], s["REPO"])))
     except urllib.error.HTTPError as e:
         if e.code == 404:
             raise RuntimeError("в репозитории %s нет опубликованных выпусков или он закрыт" % s["REPO"])
