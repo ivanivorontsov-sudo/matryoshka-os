@@ -292,8 +292,11 @@ class Center(QWidget):
         def lo_set(x):
             kw("Leave Open", "true" if x else "false"); kw("Close When Idle", "false" if x else "true"); kw("Close on Screensaver", "false")
         lo.toggled.connect(lo_set); v.addWidget(lo)
-        wd = QCheckBox("Отключить бумажник KDE (пароль бумажника не спрашивается; пароли Wi-Fi храните «для всех пользователей»)"); wd.setChecked(not kr("Enabled", "true"))
-        wd.toggled.connect(lambda x: kw("Enabled", "false" if x else "true")); v.addWidget(wd)
+        wd = QCheckBox("Отключить бумажник KDE (пароль бумажника не спрашивается; пароли Wi-Fi храните «для всех пользователей»)"); wd.setChecked(not self.s.get("kwallet", True))
+        def wd_set(x):
+            self.s["kwallet"] = not x; self.save()
+            import session; session.kwallet(not x)
+        wd.toggled.connect(wd_set); v.addWidget(wd)
         v.addWidget(QLabel("<h3>Драйвер Goodix GXFP5130 (экспериментальный)</h3>Для Huawei MateBook D16 2024 и похожих. Выключен по умолчанию. При первом включении в сканер записывается ключ шифрования, как это делает Windows. При включённом Secure Boot модуль не загрузится.", wordWrap=True))
         def gx(m):
             if not os.path.exists("/usr/sbin/matryoshka-gxfp"): o.setPlainText("Пакет matryoshka-gxfp не установлен."); return
