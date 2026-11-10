@@ -24,7 +24,7 @@ f=/etc/calamares/modules/partition.conf
 if [ -f $f ]; then sed -i 's/^defaultFileSystemType:.*/defaultFileSystemType: "btrfs"/' $f; grep -q defaultFileSystemType $f || echo 'defaultFileSystemType: "btrfs"' >> $f; fi
 sed -i 's/Debian/Матрёшка/g' /etc/calamares/branding/debian/branding.desc 2>/dev/null || true
 update-mime-database /usr/share/mime
-sed -i 's/^PRETTY_NAME=.*/PRETTY_NAME="Матрёшка (на базе Debian 13)"/' /etc/os-release
+/usr/lib/matryoshka/os-release.sh || true
 echo matryoshka > /etc/hostname
 grep -q StevenBlack /etc/hosts || { echo; echo "# StevenBlack unified hosts"; grep -E '^0\.0\.0\.0 ' /usr/share/matryoshka/hosts/stevenblack | grep -v ' 0\.0\.0\.0$'; } >> /etc/hosts
 sed -i 's/^ENABLED=no/ENABLED=yes/' /etc/ufw/ufw.conf 2>/dev/null || true

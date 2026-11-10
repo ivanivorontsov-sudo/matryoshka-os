@@ -30,5 +30,6 @@ if [ -f "$t" ]; then
 fi
 mkdir -p /etc
 [ -s /usr/share/matryoshka/VERSION ] && [ ! -s /etc/matryoshka-version ] && cp /usr/share/matryoshka/VERSION /etc/matryoshka-version
-if [ -x /usr/bin/gtk-update-icon-cache ] && [ /usr/share/icons/hicolor/scalable/apps/matryoshka-center.svg -nt /usr/share/icons/hicolor/icon-theme.cache ]; then gtk-update-icon-cache -q -f /usr/share/icons/hicolor >/dev/null 2>&1 || true; fi
+[ -x /usr/lib/matryoshka/os-release.sh ] && /usr/lib/matryoshka/os-release.sh || true
+if [ -x /usr/bin/gtk-update-icon-cache ] && { [ /usr/share/icons/hicolor/scalable/apps/matryoshka-center.svg -nt /usr/share/icons/hicolor/icon-theme.cache ] || [ /usr/share/icons/hicolor/256x256/apps/matryoshka.png -nt /usr/share/icons/hicolor/icon-theme.cache ]; }; then gtk-update-icon-cache -q -f /usr/share/icons/hicolor >/dev/null 2>&1 || true; fi
 exit 0
