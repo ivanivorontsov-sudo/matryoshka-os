@@ -186,6 +186,10 @@ class Center(QWidget):
             p, _ = QFileDialog.getOpenFileName(self, "Программа", os.path.expanduser("~"), "Программы (*.exe *.msi *.apk *.xapk *.apks *.AppImage *.deb *.sh);;Все (*)")
             if p: subprocess.Popen(["matryoshka-run", p])
         v.addWidget(btn("Запустить или установить файл…", pick))
+        di = QCheckBox("Значок на рабочем столе для каждой новой программы (Debian, Flatpak, Android)"); di.setChecked(self.s.get("desktop_icons", True) is not False)
+        def di_set(x):
+            self.s["desktop_icons"] = bool(x); self.save()
+        di.toggled.connect(di_set); v.addWidget(di)
         def andr():
             if not C.net_on(): o.setPlainText("Сначала включите сеть: образ Android (~1 ГБ) скачивается с сайта Waydroid."); return
             o.setPlainText("Скачиваю и настраиваю Android-слой, это может занять 10–20 минут…"); QApplication.processEvents()
