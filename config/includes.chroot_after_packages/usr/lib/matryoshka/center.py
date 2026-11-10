@@ -34,6 +34,19 @@ class Center(QWidget):
         th.activated.connect(lambda _: C.apply_theme(th.currentData())); f.addRow("Тема", th)
         la = QComboBox(); [la.addItem(n, k) for k, n in C.LAYOUTS.items()]; la.setCurrentIndex(list(C.LAYOUTS).index(self.s["layout"]))
         la.activated.connect(lambda _: C.apply_layout(la.currentData())); f.addRow("Расположение", la)
+        hl = QCheckBox("Подсветка курсора и круги при щелчке"); hl.setChecked(os.path.exists(os.path.expanduser("~/.config/autostart/podsvetka-myshi.desktop")))
+        def hlset(x):
+            if not shutil.which("podsvetka-myshi"): QMessageBox.information(self, "Подсветка мыши", "Пакет podsvetka-myshi не установлен."); return
+            a = os.path.expanduser("~/.config/autostart/podsvetka-myshi.desktop")
+            if x:
+                os.makedirs(os.path.dirname(a), exist_ok=True)
+                open(a, "w").write("[Desktop Entry]\nType=Application\nName=Подсветка мыши\nExec=/usr/bin/podsvetka-myshi --autostart\nIcon=input-mouse\nNoDisplay=true\nX-KDE-autostart-phase=2\n")
+                subprocess.Popen(["podsvetka-myshi", "--autostart"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                if os.path.exists(a): os.remove(a)
+                subprocess.Popen(["podsvetka-myshi", "--quit"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        hl.toggled.connect(hlset)
+        hb = QHBoxLayout(); hb.addWidget(hl); x = QPushButton("Настройки подсветки…"); x.clicked.connect(lambda: subprocess.Popen(["podsvetka-myshi-launch", "--settings"], start_new_session=True)); hb.addWidget(x); f.addRow("Курсор", hb)
         mo = QComboBox(); mo.addItem("Стандартный — анимации и прозрачность", "standard"); mo.addItem("Простой — без анимаций, всё летает", "simple"); mo.setCurrentIndex(1 if C.simple() else 0)
         mo.activated.connect(lambda _: C.apply_mode(mo.currentData())); f.addRow("Режим", mo)
         v.addWidget(btn("Тонкая настройка KDE (шрифты, курсоры, значки, жесты)", lambda: subprocess.Popen(["systemsettings"])))
