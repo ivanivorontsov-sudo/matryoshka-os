@@ -1,0 +1,28 @@
+diff -ru a/libfprint/libfprint/drivers/gxfp.c b/libfprint/libfprint/drivers/gxfp.c
+--- a/libfprint/libfprint/drivers/gxfp.c	2026-11-10 15:26:50.601463389 +1000
++++ b/libfprint/libfprint/drivers/gxfp.c	2026-11-10 15:26:50.601463389 +1000
+@@ -230,6 +230,15 @@
+       return;
+     }
+ 
++  if (g_strcmp0 (g_getenv ("FP_GXFP_LAYOUT"), "row") == 0)
++    {
++      gsize n = (gsize) img.rows * img.cols;
++      g_autofree guint16 *t = g_new (guint16, n);
++
++      for (gsize i = 0; i < n; i++)
++        t[i] = img.pixels[(i % img.rows) * img.cols + i / img.rows];
++      memcpy (img.pixels, t, n * sizeof (guint16));
++    }
+   fp_img = fp_image_new (img.cols, img.rows);
+   dump_raw (self, &img);
+   if (!prepare_image (self, &img, fp_img->data))
+@@ -488,6 +497,8 @@
+ 
+     case FPI_IMAGE_DEVICE_STATE_CAPTURE:
+       new_state = GXFP_SESSION_STATE_CAPTURE;
++      if (g_getenv ("FP_GXFP_CAPTURE_DELAY_MS"))
++        g_usleep (1000 * CLAMP (g_ascii_strtoll (g_getenv ("FP_GXFP_CAPTURE_DELAY_MS"), NULL, 10), 0, 500));
+       break;
+ 
+     case FPI_IMAGE_DEVICE_STATE_AWAIT_FINGER_OFF:

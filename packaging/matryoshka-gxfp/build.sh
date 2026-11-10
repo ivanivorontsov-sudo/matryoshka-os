@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-0.1.9}; O=${2:-.}; KV=${KV:-6.12.115+deb13.1-amd64}; D=$(dirname "$(readlink -f "$0")")
+V=${1:-0.1.10}; O=${2:-.}; KV=${KV:-6.12.115+deb13.1-amd64}; D=$(dirname "$(readlink -f "$0")")
 S=${GXFP_SRC:-/workspace/gxfp}
 [ -d "$S" ] || git clone -q https://github.com/Metrohan/gxfp5130-linux "$S"
 git -C "$S" checkout -q aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23
@@ -12,6 +12,7 @@ git -C "$S" checkout -q -- libfprint/libfprint/fpi-print.c libfprint/libfprint/f
 patch -d "$S" -p1 -s < "$D/dump-images.patch"
 patch -d "$S" -p1 -s < "$D/threshold-score.patch"
 patch -d "$S" -p1 -s < "$D/image-prep.patch"
+patch -d "$S" -p1 -s < "$D/layout-delay.patch"
 grep -q "bz3_threshold = 12" "$S/libfprint/libfprint/drivers/gxfp.c"
 make -C "$S/kernel" KERNELDIR=/usr/src/linux-headers-$KV -j4 >/dev/null
 cmake -S "$S/userspace" -B "$S/build/userspace" -DCMAKE_BUILD_TYPE=Release >/dev/null
@@ -26,7 +27,7 @@ cp -a "$S"/build/libfprint/libfprint/libfprint-2.so* "$T/usr/lib/matryoshka-gxfp
 rm -rf "$T"/usr/lib/matryoshka-gxfp/lib/*.p; strip --strip-unneeded "$T/usr/lib/matryoshka-gxfp/lib/libfprint-2.so.2.0.0"
 cp "$S/LICENSE" "$T/usr/share/doc/matryoshka-gxfp/LICENSE-GPL-2.0"; cp "$S/libfprint/COPYING" "$T/usr/share/doc/matryoshka-gxfp/libfprint-COPYING-LGPL"
 printf 'Source: https://github.com/Metrohan/gxfp5130-linux aae5662cf6e8a9c4ef2bd07862b9d5efe3b32f23 + temp_hot_seconds=-1 (issue 21)\nKernel: %s\n' "$KV" > "$T/usr/share/doc/matryoshka-gxfp/SOURCE"
-chmod 755 "$T/usr/sbin/"* "$T/usr/lib/systemd/system-sleep/"* "$T/usr/lib/matryoshka-gxfp/fpformat"
+chmod 755 "$T/usr/sbin/"* "$T/usr/lib/systemd/system-sleep/"* "$T/usr/lib/matryoshka-gxfp/fpformat"; chmod 644 "$T/usr/lib/matryoshka-gxfp/sheet.py"
 mkdir -p "$T/DEBIAN"
 cat > "$T/DEBIAN/control" <<C
 Package: matryoshka-gxfp

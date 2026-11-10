@@ -137,6 +137,7 @@ case "$1" in
       ls -l /var/lib/fprint/gxfp-dump 2>&1 | tail -n 60
     } > "$R" 2>&1
     chmod 644 "$R"
+    [ -d /var/lib/fprint/gxfp-dump ] && python3 /usr/lib/matryoshka-gxfp/sheet.py /var/lib/fprint/gxfp-dump /tmp/gxfp-sheet.png >/dev/null 2>&1 && chmod 644 /tmp/gxfp-sheet.png && echo "Картинка снимков: /tmp/gxfp-sheet.png"
     if [ -d /var/lib/fprint/gxfp-dump ]; then tar -czf /tmp/gxfp-dump.tar.gz -C /var/lib/fprint gxfp-dump && chmod 644 /tmp/gxfp-dump.tar.gz && echo "Снимки пальца: /tmp/gxfp-dump.tar.gz"; fi
     echo "Готово: $R";;
   capture)
@@ -168,12 +169,21 @@ case "$1" in
       *) [ -f "$PD" ] && echo raw || echo hp; exit 0;;
     esac
     systemctl daemon-reload; systemctl try-restart fprintd 2>/dev/null; echo "Обработка снимка: $2. Отпечатки нужно добавить заново.";;
+  layout)
+    YD=/etc/systemd/system/fprintd.service.d/64-matryoshka-gxfp-layout.conf
+    case "$2" in
+      col) rm -f "$YD";;
+      row) mkdir -p "${YD%/*}"; printf '[Service]\nEnvironment=FP_GXFP_LAYOUT=row\n' > "$YD";;
+      *) [ -f "$YD" ] && echo row || echo col; exit 0;;
+    esac
+    systemctl daemon-reload; systemctl try-restart fprintd 2>/dev/null; echo "Порядок точек снимка: $2. Отпечатки нужно добавить заново.";;
+  sheet) python3 /usr/lib/matryoshka-gxfp/sheet.py "${2:-/var/lib/fprint/gxfp-dump}" "${3:-/tmp/gxfp-sheet.png}" && chmod 644 "${3:-/tmp/gxfp-sheet.png}";;
   tune)
     UD=/etc/systemd/system/fprintd.service.d/63-matryoshka-gxfp-tune.conf
     case "$2" in
-      min-kp) K=FP_GXFP_MIN_KP;; min-q) K=FP_GXFP_MIN_Q;; sum) K=FP_GXFP_SUM_THRESHOLD;; stages) K=FP_GXFP_ENROLL_STAGES;;
+      min-kp) K=FP_GXFP_MIN_KP;; min-q) K=FP_GXFP_MIN_Q;; sum) K=FP_GXFP_SUM_THRESHOLD;; stages) K=FP_GXFP_ENROLL_STAGES;; delay) K=FP_GXFP_CAPTURE_DELAY_MS;;
       reset) rm -f "$UD"; systemctl daemon-reload; systemctl try-restart fprintd 2>/dev/null; echo "Настройки сброшены"; exit 0;;
-      *) cat "$UD" 2>/dev/null || echo "matryoshka-gxfp tune min-kp|min-q|sum|stages ЗНАЧЕНИЕ | tune reset"; exit 0;;
+      *) cat "$UD" 2>/dev/null || echo "matryoshka-gxfp tune min-kp|min-q|sum|stages|delay ЗНАЧЕНИЕ | tune reset"; exit 0;;
     esac
     case "$3" in ""|*[!0-9.]*) echo "Нужно число"; exit 1;; esac
     mkdir -p "${UD%/*}"; [ -f "$UD" ] || printf '[Service]\n' > "$UD"
@@ -181,5 +191,5 @@ case "$1" in
     systemctl daemon-reload; systemctl try-restart fprintd 2>/dev/null; echo "$K=$3";;
   scores) journalctl -u fprintd --no-pager -o short-iso ${2:+--since "$2"} | grep -E "sigfm score|sigfm keypoints|gxfp frame|verify|enroll|Minutiae|retry" | tail -n 80;;
   status) [ -e "$F" ] && echo on || echo off; [ -c /dev/gxfp ] && echo "/dev/gxfp есть";;
-  *) echo "matryoshka-gxfp on|off|auto|reset|watch|sign [ядро]|status|debug [off]|diag|capture|threshold [N|default]|prep [hp|raw]|tune ...|scores [с какого времени]"; exit 1;;
+  *) echo "matryoshka-gxfp on|off|auto|reset|watch|sign [ядро]|status|debug [off]|diag|capture|threshold [N|default]|prep [hp|raw]|layout [col|row]|sheet|tune ...|scores [с какого времени]"; exit 1;;
 esac
