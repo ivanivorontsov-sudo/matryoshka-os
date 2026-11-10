@@ -1,0 +1,44 @@
+--- a/libfprint/libfprint/drivers/gxfp.c	2026-11-10 14:24:57.475956194 +1000
++++ b/libfprint/libfprint/drivers/gxfp.c	2026-11-10 14:24:57.475956194 +1000
+@@ -53,6 +53,33 @@
+ }
+ 
+ static void
++dump_image (FpiDeviceGxfp *self, FpImage *img)
++{
++  static guint seq = 0;
++  const gchar *dir = g_getenv ("FP_GXFP_DUMP");
++  g_autofree gchar *path = NULL;
++  g_autoptr(GString) pgm = NULL;
++  const gchar *kind;
++
++  if (!dir || dir[0] == '\0')
++    return;
++  switch (fpi_device_get_current_action (FP_DEVICE (self)))
++    {
++    case FPI_DEVICE_ACTION_ENROLL: kind = "enroll"; break;
++    case FPI_DEVICE_ACTION_VERIFY: kind = "verify"; break;
++    case FPI_DEVICE_ACTION_IDENTIFY: kind = "identify"; break;
++    default: kind = "other"; break;
++    }
++  g_mkdir_with_parents (dir, 0700);
++  path = g_strdup_printf ("%s/%" G_GINT64_FORMAT "-%04u-%s.pgm", dir, g_get_real_time () / 1000, seq++, kind);
++  pgm = g_string_new (NULL);
++  g_string_append_printf (pgm, "P5\n%d %d\n255\n", img->width, img->height);
++  g_string_append_len (pgm, (const gchar *) img->data, (gssize) img->width * img->height);
++  if (!g_file_set_contents (path, pgm->str, pgm->len, NULL))
++    g_warning ("gxfp dump failed: %s", path);
++}
++
++static void
+ emit_image_captured (FpiDeviceGxfp *self)
+ {
+   struct gxfp_decoded_image img;
+@@ -79,6 +106,7 @@
+       }
+ 
+   gxfp_decoded_image_free (&img);
++  dump_image (self, fp_img);
+   fpi_image_device_image_captured (FP_IMAGE_DEVICE (self), fp_img);
+ }
+ 
