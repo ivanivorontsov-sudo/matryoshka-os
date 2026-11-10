@@ -415,7 +415,7 @@ Item {
             PlasmaComponents3.ToolButton {
                 focusPolicy: Qt.TabFocus
                 icon.name: "system-reboot"
-                text: i18nd("plasma_shell_org.kde.plasma.desktop", "Restart")
+                text: "Перезагрузить"
                 visible: sessionManagement.canReboot
                 onClicked: sessionManagement.requestReboot(0)
                 Layout.fillHeight: true
@@ -424,7 +424,7 @@ Item {
             PlasmaComponents3.ToolButton {
                 focusPolicy: Qt.TabFocus
                 icon.name: "system-shutdown"
-                text: i18nd("plasma_shell_org.kde.plasma.desktop", "Shut Down")
+                text: "Выключить"
                 visible: sessionManagement.canShutdown
                 onClicked: sessionManagement.requestShutdown(0)
                 Layout.fillHeight: true
