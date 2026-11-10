@@ -1,0 +1,11 @@
+[Unit]
+Description=Matryoshka: fix ownership of user caches and rebuild app menu cache after an update
+After=local-fs.target home.mount
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/matryoshka/homefix.sh
+
+[Install]
+WantedBy=multi-user.target

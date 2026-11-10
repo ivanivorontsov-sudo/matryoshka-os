@@ -212,7 +212,34 @@ def places_fix():
     if n != t:
         open(p, "w", encoding="utf-8").write(n)
 
+def caches_fix():
+    try:
+        ver = open("/etc/matryoshka-version", encoding="utf-8").read().strip()
+    except OSError:
+        return
+    d = os.path.expanduser("~/.local/state/matryoshka")
+    stamp = os.path.join(d, "caches-version")
+    try:
+        if open(stamp, encoding="utf-8").read().strip() == ver:
+            return
+    except OSError:
+        pass
+    cache = os.path.expanduser("~/.cache")
+    for n in os.listdir(cache) if os.path.isdir(cache) else []:
+        if n.startswith("ksycoca6_") or n.startswith("ksycoca5_") or n == "icon-cache.kcache":
+            try:
+                os.remove(os.path.join(cache, n))
+            except OSError:
+                pass
+    subprocess.Popen(["kbuildsycoca6", "--noincremental"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    os.makedirs(d, exist_ok=True)
+    open(stamp, "w", encoding="utf-8").write(ver + "\n")
+
 def on_login():
+    try:
+        caches_fix()
+    except Exception:
+        pass
     fresh = not os.path.exists(os.path.join(C.CONF, "settings.json"))
     s = C.settings()
     threading.Thread(target=layout_once, args=(fresh,)).start()
