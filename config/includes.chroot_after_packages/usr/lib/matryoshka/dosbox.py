@@ -25,6 +25,8 @@ machine=svga_s3
 memsize=64
 captures={print_dir}
 startup_verbosity=quiet
+startbanner=false
+quit warning=false
 [render]
 aspect=true
 scaler=none
@@ -192,7 +194,7 @@ def launch(program=None, home=None, timeout=None):
         lf = os.path.join(desk, label + " (DOS).desktop")
         if not os.path.exists(lf):
             with open(lf, "w", encoding="utf-8") as f:
-                f.write("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -conf \"%s\"\nIcon=dosbox-x\n" % (label, conf))
+                f.write("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -nopromptfolder -fastlaunch -conf \"%s\"\nIcon=dosbox-x\n" % (label, conf))
             os.chmod(lf, 0o755)
     env = dict(os.environ, LANG=os.environ.get("LANG") or "ru_RU.UTF-8")
     proc = subprocess.Popen(["dosbox-x", "-nopromptfolder", "-fastlaunch", "-conf", conf], env=env)
