@@ -21,18 +21,19 @@ rs=$(findmnt -no SOURCE / 2>/dev/null | sed 's/\[.*//')
 ru=$(findmnt -no UUID / 2>/dev/null || true)
 [ -n "$ru" ] || ru=$(${grub_probe} --device "$(${grub_probe} --target=device /)" --target=fs_uuid)
 [ -f /matryoshka-live/live/filesystem.squashfs ] && entry "$ru" /matryoshka-live/live "Матрёшка — живая система (с диска)" /matryoshka-live/live
-lsblk -lnpo NAME,TYPE,HOTPLUG,FSTYPE,LABEL 2>/dev/null | while read -r dev typ hp fs lab; do
+lsblk -lnpo NAME,TYPE,FSTYPE,LABEL 2>/dev/null | while read -r dev typ fs lab; do
   [ "$typ" = part ] || continue
-  [ "$hp" = 1 ] && continue
   [ "$dev" = "$rs" ] && continue
   case "$fs" in ext2|ext3|ext4|vfat|exfat|iso9660|ntfs) ;; *) continue ;; esac
   case "$lab" in *[Mm][Aa][Tt][Rr][Yy][Oo][Ss][Hh][Kk][Aa]*|*[Mm][Aa][Tt][Rr]*) ;; *) [ "$fs" = vfat ] && [ "$(lsblk -no PARTTYPE "$dev" 2>/dev/null)" = c12a7328-f81f-11d2-ba4b-00a0c93ec93b ] && continue ;; esac
   u=$(blkid -s UUID -o value "$dev" 2>/dev/null || true); [ -n "$u" ] || continue
-  m=$(findmnt -no TARGET -S "$dev" 2>/dev/null | grep -v '^/tmp/\|^/var/tmp/' | head -1 || true)
+  m=$(findmnt -no TARGET -S "$dev" 2>/dev/null | head -1 || true); t=""
+  if [ -z "$m" ]; then t=$(mktemp -d); if mount -o ro "$dev" "$t" 2>/dev/null; then m=$t; fi; fi
   if [ -n "$m" ]; then
     for p in /live /matryoshka-live/live; do
       [ -f "$m$p/filesystem.squashfs" ] && entry "$u" "$p" "Матрёшка — живая система (раздел $(basename "$dev"))" "$m$p" && break
     done
   fi
+  if [ -n "$t" ]; then umount "$t" 2>/dev/null || true; rmdir "$t" 2>/dev/null || true; fi
 done
 exit 0
