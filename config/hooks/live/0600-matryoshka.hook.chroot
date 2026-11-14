@@ -26,7 +26,7 @@ sed -i 's/Debian/Матрёшка/g' /etc/calamares/branding/debian/branding.des
 update-mime-database /usr/share/mime
 /usr/lib/matryoshka/os-release.sh || true
 echo matryoshka > /etc/hostname
-grep -q StevenBlack /etc/hosts || { echo; echo "# StevenBlack unified hosts"; grep -E '^0\.0\.0\.0 ' /usr/share/matryoshka/hosts/stevenblack | grep -v ' 0\.0\.0\.0$'; } >> /etc/hosts
+grep -q StevenBlack /etc/hosts || { echo; echo "# StevenBlack unified hosts"; grep -E '^0\.0\.0\.0 ' /usr/share/matryoshka/hosts/stevenblack | grep -v ' 0\.0\.0\.0$' | grep -v -E ' ([a-z0-9.-]+\.)?zoom\.(us|com)$'; } >> /etc/hosts
 sed -i 's/^ENABLED=no/ENABLED=yes/' /etc/ufw/ufw.conf 2>/dev/null || true
 sed -i 's/^DEFAULT_INPUT_POLICY=.*/DEFAULT_INPUT_POLICY="DROP"/' /etc/default/ufw 2>/dev/null || true
 mkdir -p /etc/fwupd && printf '[fwupd]\nOnlyTrusted=true\nUpdateMotd=false\n' > /etc/fwupd/fwupd.conf

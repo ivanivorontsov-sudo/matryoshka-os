@@ -223,6 +223,42 @@ case "$cmd" in
   apt-remove)
     for p in "$@"; do [[ "$p" =~ ^[a-z0-9][a-z0-9+.-]+$ ]] || exit 2; grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }; done
     DEBIAN_FRONTEND=noninteractive apt-get remove -y -o DPkg::Lock::Timeout=120 "$@" ;;
+  zoom-fix)
+    for a in "$@"; do
+      case "$a" in
+        pkgs=*)
+          IFS=, read -ra P <<< "${a#pkgs=}"
+          for p in "${P[@]}"; do [[ "$p" =~ ^[a-z0-9.+-]+$ ]] || exit 2; done
+          DEBIAN_FRONTEND=noninteractive apt-get install -y "${P[@]}" && echo "установлено: ${P[*]}" ;;
+        hosts)
+          cp -a /etc/hosts /etc/hosts.matryoshka-zoom.bak
+          sed -i -E 's/^((0\.0\.0\.0|127\.0\.0\.1|::1?)[[:space:]]+([a-z0-9.-]+\.)?zoom\.(us|com))[[:space:]]*$/# zoom-doctor: \1/' /etc/hosts
+          echo "адреса Zoom разблокированы в /etc/hosts (копия: /etc/hosts.matryoshka-zoom.bak)" ;;
+        ufw)
+          ufw allow out 443/tcp comment "zoom" >/dev/null
+          ufw allow out 8801:8802/tcp comment "zoom" >/dev/null
+          ufw allow out 8801:8810/udp comment "zoom" >/dev/null
+          ufw allow out 3478:3479/udp comment "zoom" >/dev/null
+          echo "ufw: исходящие порты Zoom разрешены" ;;
+        ntp)
+          timedatectl set-ntp true && systemctl restart systemd-timesyncd 2>/dev/null; echo "синхронизация времени включена" ;;
+        chown)
+          for f in "$H/.zoom" "$H/.config/zoomus.conf" "$H/.config/zoom.conf" "$H/.cache/zoom"; do [ -e "$f" ] && chown -R "$U:" "$f" && chmod -R u+rwX "$f"; done
+          echo "права на профиль Zoom возвращены $U" ;;
+        snitch=*)
+          d="${a#snitch=}"
+          case "$d" in /opt/zoom|/usr/share/zoom|"$H"/*) ;; *) exit 2 ;; esac
+          [ -d "$d" ] || exit 2
+          mkdir -p /etc/opensnitchd/rules
+          e=$(printf '%s' "$d" | sed 's/[][\\.^$*+?(){}|/]/\\\\&/g')
+          n=$(printf '%s' "$d" | md5sum | cut -c1-8)
+          t=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          printf '{"created":"%s","updated":"%s","name":"matryoshka-zoom-%s","description":"Zoom","enabled":true,"precedence":true,"nolog":false,"action":"allow","duration":"always","operator":{"type":"regexp","operand":"process.path","sensitive":false,"data":"^%s/.*$","list":[]}}\n' "$t" "$t" "$n" "$e" > "/etc/opensnitchd/rules/matryoshka-zoom-$n.json"
+          systemctl reload-or-restart opensnitch 2>/dev/null || true
+          echo "OpenSnitch: Zoom из $d разрешён" ;;
+        *) exit 2 ;;
+      esac
+    done ;;
   fix-boot) /usr/lib/matryoshka/fix-boot.sh ;;
   admin-groups) /usr/lib/matryoshka/admin-groups.sh ;;
   sysbackup)

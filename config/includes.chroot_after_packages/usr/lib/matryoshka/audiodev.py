@@ -37,24 +37,55 @@ def parse_sinks(text):
         if line.startswith("Sink #") or line.startswith("Source #"):
             if cur:
                 sinks.append(cur)
-            cur = {"name": "", "port": "", "volume": ""}
+            cur = {"name": "", "port": "", "volume": "", "off": []}
             continue
         if cur is None:
             continue
         s = line.strip()
         if s.startswith("Name:"):
             cur["name"] = s.split(":", 1)[1].strip()
-        elif s.startswith("Active Port:"):
+        elif line.startswith("\t\t") and ": " in s and "(" in s and ("not available" in s or "недоступ" in s) and "type:" in s:
+            cur["off"].append(s.split(":", 1)[0].strip())
+        elif s.startswith(("Active Port:", "Активный порт:")):
             cur["port"] = s.split(":", 1)[1].strip()
         elif s.startswith("Volume:") and not cur["volume"]:
             if "/" in s and "%" in s:
                 cur["volume"] = s.split("%")[0].split()[-1] + "%"
     if cur:
         sinks.append(cur)
+    for x in sinks:
+        x["dead"] = bool(x["port"]) and x["port"] in x.pop("off", [])
     return [s for s in sinks if s["name"]]
 
+def real_sink(name):
+    return bool(name) and name.startswith(("alsa_output.", "bluez_output."))
+
+def sink_rank(x):
+    n, p = x["name"], (x.get("port") or "").lower()
+    return (x.get("dead", False), "hdmi" in n.lower() or "hdmi" in p or "displayport" in p, not n.startswith("alsa_output.pci"))
+
+def sink_fix(data, sinks, default, user_pick):
+    by = {x["name"]: x for x in sinks or []}
+    live = [x for x in sinks or [] if real_sink(x["name"]) and not x.get("dead")]
+    if real_sink(default) and default in by and not by[default].get("dead"):
+        data["sink_virtual_ok"] = False
+        return None
+    if default and default in by and not real_sink(default):
+        if user_pick:
+            data["sink_virtual_ok"] = True
+            return None
+        if data.get("sink_virtual_ok") and data.get("sink") == default:
+            return None
+    if not live:
+        return None
+    saved = data.get("sink") or ""
+    if real_sink(saved) and saved in by and not by[saved].get("dead") and saved != default:
+        return saved
+    best = sorted(live, key=sink_rank)[0]["name"]
+    return best if best != default else None
+
 def remember(data, sinks, default_sink):
-    if default_sink:
+    if default_sink and (real_sink(default_sink) or data.get("sink_virtual_ok")):
         data["sink"] = default_sink
     for s in sinks:
         if s["volume"]:
@@ -87,8 +118,12 @@ def preset_for(settings, sink, port):
 def real_source(name):
     return bool(name) and not name.endswith(".monitor") and name.startswith(("alsa_input.", "bluez_input."))
 
-def source_fix(data, sources, default, user_pick):
+def source_fix(data, sources, default, user_pick, dead=()):
     names = [x for x in (sources or []) if x and not x.endswith(".monitor")]
+    if default in dead and real_source(default):
+        alive = [x for x in names if real_source(x) and x not in dead]
+        internal = [x for x in alive if x.startswith("alsa_input.pci")]
+        return (internal or alive or [None])[0]
     if real_source(default):
         data["source"] = default
         data["source_virtual_ok"] = False
@@ -102,9 +137,9 @@ def source_fix(data, sources, default, user_pick):
     if data.get("source_virtual_ok") and data.get("source") == default:
         return None
     saved = data.get("source") or ""
-    if real_source(saved) and saved in names:
+    if real_source(saved) and saved in names and saved not in dead:
         return saved
-    real = [x for x in names if real_source(x)]
+    real = [x for x in names if real_source(x) and x not in dead]
     internal = [x for x in real if x.startswith("alsa_input.pci")]
     return (internal or real or [None])[0]
 

@@ -349,3 +349,16 @@ mesa-va-drivers
 vainfo
 intel-media-va-driver
 podsvetka-myshi
+libxcb-icccm4
+libxcb-render-util0
+libxcb-util1
+libxcb-xkb1
+libopengl0
+libxtst6
+libxcb-randr0
+libxcb-shape0
+libxcb-glx0
+libnss3
+libgbm1
+libegl1
+libgl1

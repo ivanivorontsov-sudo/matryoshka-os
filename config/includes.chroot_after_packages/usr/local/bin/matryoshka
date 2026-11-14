@@ -1,0 +1,12 @@
+#!/bin/sh
+c="$1"
+case "$c" in
+  ""|-h|--help|help)
+    echo "matryoshka <команда> [параметры]"
+    for f in /usr/local/bin/matryoshka-*; do printf '  %s\n' "${f##*/matryoshka-}"; done
+    exit 0 ;;
+esac
+case "$c" in *[!a-z0-9-]*) echo "неизвестная команда: $c"; exit 2 ;; esac
+shift
+[ -x "/usr/local/bin/matryoshka-$c" ] || { echo "неизвестная команда: $c"; exit 2; }
+exec "/usr/local/bin/matryoshka-$c" "$@"

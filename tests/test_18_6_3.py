@@ -87,8 +87,47 @@ class Archive(unittest.TestCase):
             r = archiveinst.analyze(p)
             self.assertEqual(r["exe"], "zoom/ZoomLauncher")
             t = archiveinst.desktop_text("Zoom", "/h/Программы/Zoom/zoom/ZoomLauncher", None, r["profile"], "/h/Программы/Zoom/zoom")
-            self.assertIn('Exec="/h/Программы/Zoom/zoom/ZoomLauncher" %U', t)
+            self.assertIn('Exec=env QT_QPA_PLATFORM=xcb "/h/Программы/Zoom/zoom/ZoomLauncher" %U', t)
             self.assertIn("x-scheme-handler/zoommtg", t)
+
+class Sink(unittest.TestCase):
+    RU = """Sink #1
+\tState: SUSPENDED
+\tName: alsa_output.pci-0000_00_1f.3.analog-stereo
+\tVolume: front-left: 40000 /  61% / -12.88 dB
+\tPorts:
+\t\tanalog-output-speaker: Speakers (type: Speaker, priority: 10000, availability unknown)
+\t\tanalog-output-headphones: Headphones (type: Headphones, priority: 9900, not available)
+\tАктивный порт: analog-output-headphones
+Sink #2
+\tName: easyeffects_sink
+\tVolume: front-left: 65536 / 100% / 0.00 dB
+"""
+
+    def test_parse_ru_and_dead(self):
+        s = audiodev.parse_sinks(self.RU)
+        self.assertEqual(s[0]["port"], "analog-output-headphones")
+        self.assertTrue(s[0]["dead"])
+        self.assertFalse(s[1]["dead"])
+
+    def test_virtual_default_replaced(self):
+        sinks = [{"name": "easyeffects_sink", "port": "", "dead": False}, {"name": "alsa_output.pci-0000_00_1f.3.hdmi-stereo", "port": "hdmi-output-0", "dead": False}, {"name": "alsa_output.pci-0000_00_1f.3.analog-stereo", "port": "analog-output-speaker", "dead": False}]
+        self.assertEqual(audiodev.sink_fix({}, sinks, "easyeffects_sink", False), "alsa_output.pci-0000_00_1f.3.analog-stereo")
+
+    def test_virtual_user_pick_kept(self):
+        d = {}
+        sinks = [{"name": "easyeffects_sink", "port": "", "dead": False}, {"name": "alsa_output.pci-x.analog-stereo", "port": "p", "dead": False}]
+        self.assertIsNone(audiodev.sink_fix(d, sinks, "easyeffects_sink", True))
+        d["sink"] = "easyeffects_sink"
+        self.assertIsNone(audiodev.sink_fix(d, sinks, "easyeffects_sink", False))
+
+    def test_remember_skips_virtual(self):
+        d = {"volumes": {}}
+        audiodev.remember(d, [], "easyeffects_sink")
+        self.assertNotIn("sink", d)
+
+    def test_dead_mic(self):
+        self.assertEqual(audiodev.source_fix({}, ["alsa_input.usb-headset", "alsa_input.pci-x.analog-stereo"], "alsa_input.usb-headset", False, {"alsa_input.usb-headset"}), "alsa_input.pci-x.analog-stereo")
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,8 +7,10 @@ LOCK_SRC = "/usr/share/matryoshka/lockscreen/LockScreenUi.qml"
 LOCK_DST = "/usr/share/plasma/shells/org.kde.plasma.desktop/contents/lockscreen/LockScreenUi.qml"
 PRESET = "/etc/skel/.config/easyeffects/output"
 
+PA_ENV = dict(os.environ, LC_ALL="C", LANG="C", LANGUAGE="")
+
 def pactl(*a):
-    return C.run(["pactl", *a], timeout=8).stdout
+    return C.run(["pactl", *a], timeout=8, env=PA_ENV).stdout
 
 def sinks():
     return audiodev.parse_sinks(pactl("list", "sinks"))
@@ -163,10 +165,22 @@ def ensure_devices(wait=4):
 def fix_source(user_pick=False):
     data = audiodev.load_audio(AUDIO)
     default = pactl("get-default-source").strip()
-    want = audiodev.source_fix(data, short_names("sources"), default, user_pick)
+    srcs = audiodev.parse_sinks(pactl("list", "sources"))
+    dead = {x["name"] for x in srcs if x.get("dead")}
+    want = audiodev.source_fix(data, [x["name"] for x in srcs], default, user_pick, dead)
     if want and want != default:
         C.run(["pactl", "set-default-source", want], timeout=8)
         C.run(["logger", "-t", "matryoshka-audio", "микрофон по умолчанию: %s вместо %s" % (want, default)], timeout=5)
+    audiodev.save_audio(AUDIO, data)
+
+def fix_sink(user_pick=False):
+    data = audiodev.load_audio(AUDIO)
+    default = pactl("get-default-sink").strip()
+    want = audiodev.sink_fix(data, sinks(), default, user_pick)
+    if want and want != default:
+        C.run(["pactl", "set-default-sink", want], timeout=8)
+        C.run(["logger", "-t", "matryoshka-audio", "вывод звука по умолчанию: %s вместо %s" % (want, default)], timeout=5)
+        data["sink"] = want
     audiodev.save_audio(AUDIO, data)
 
 def watch_session():
@@ -190,6 +204,7 @@ def watch_session():
                 suspend_hw(False)
                 ensure_devices()
                 restore_audio()
+                fix_sink()
                 fix_source()
                 apply_profile(force=True)
         except Exception:
@@ -232,6 +247,11 @@ def watch_audio():
                     age = now - state["src_seen"].get(d, now)
                     user_pick = age > 15 and now - state["boot"] > 60
                     fix_source(user_pick)
+                    dk = pactl("get-default-sink").strip()
+                    for x in all_sinks:
+                        state["src_seen"].setdefault("sink:" + x["name"], now)
+                    sage = now - state["src_seen"].get("sink:" + dk, now)
+                    fix_sink(sage > 15 and now - state["boot"] > 60)
                 apply_profile(force=fresh)
             except Exception:
                 pass
@@ -245,7 +265,7 @@ def watch_audio():
             with lock:
                 state["dirty"] = state["src"] = True
     def listen():
-        p = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, text=True)
+        p = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, text=True, env=PA_ENV)
         for line in p.stdout:
             if "sink-input" in line or "source-output" in line or "client" in line:
                 continue
@@ -260,6 +280,7 @@ def watch_audio():
                     state["src"] = True
     try:
         state["route"] = audiodev.hw_routes(sinks())
+        fix_sink()
         fix_source()
     except Exception:
         pass
