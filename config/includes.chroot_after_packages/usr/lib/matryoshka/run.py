@@ -70,7 +70,8 @@ def dos(path):
     return dosbox.launch(path, C.HOME)
 
 def main(path):
-    res = {"malicious": False, "activator": False} if os.path.exists("/run/matryoshka-sandbox") else av.scan(path)
+    import scangate
+    res = scangate.check(path)
     if res["malicious"] or res["activator"]:
         av.dialog(res)
         if not os.path.exists(path): return 4

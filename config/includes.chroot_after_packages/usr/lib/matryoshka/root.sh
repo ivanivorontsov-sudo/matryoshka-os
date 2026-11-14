@@ -223,6 +223,11 @@ case "$cmd" in
   apt-remove)
     for p in "$@"; do [[ "$p" =~ ^[a-z0-9][a-z0-9+.-]+$ ]] || exit 2; grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }; done
     DEBIAN_FRONTEND=noninteractive apt-get remove -y -o DPkg::Lock::Timeout=120 "$@" ;;
+  archive-install)
+    [ -f "$1" ] || exit 2
+    [[ "$2" =~ ^[0-9a-f]{64}$ ]] || exit 2
+    [[ "$3" =~ ^[A-Za-z0-9._\ -]{1,64}$ ]] || exit 2
+    exec python3 /usr/lib/matryoshka/archiveinst.py root-install "$1" "$2" "$3" ;;
   zoom-fix)
     for a in "$@"; do
       case "$a" in

@@ -1,0 +1,11 @@
+[Unit]
+Description=Матрёшка: антивирус ClamAV запускается по требованию
+After=local-fs.target
+ConditionPathExists=!/var/lib/matryoshka/clamd-always
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/matryoshka/clamd-lazy.sh boot
+
+[Install]
+WantedBy=multi-user.target

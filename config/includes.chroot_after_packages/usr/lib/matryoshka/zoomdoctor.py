@@ -67,7 +67,7 @@ class Report:
 
 def installs():
     found = set()
-    for p in ["/opt/zoom/ZoomLauncher", "/usr/share/zoom/ZoomLauncher"]:
+    for p in ["/opt/zoom/ZoomLauncher", "/usr/share/zoom/ZoomLauncher"] + glob.glob("/opt/*/ZoomLauncher") + glob.glob("/opt/*/*/ZoomLauncher"):
         if os.path.isfile(p):
             found.add(p)
     found |= archiveinst.zoom_dirs(HOME)
@@ -369,7 +369,7 @@ def fix_handler():
     fixed = archiveinst.repair_zoom(HOME)
     for d in installs():
         if d.startswith(("/opt/", "/usr/")):
-            for desk in ["Zoom.desktop", "zoom.desktop"]:
+            for desk in ["Zoom.desktop", "zoom.desktop"] + [os.path.basename(x) for x in glob.glob("/usr/share/applications/matryoshka-archive-zoom*.desktop")]:
                 if os.path.isfile("/usr/share/applications/" + desk):
                     for s in SCHEMES[:3]:
                         run(["xdg-mime", "default", desk, s])

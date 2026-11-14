@@ -186,8 +186,9 @@ class Center(QWidget):
         kc = QCheckBox("KDE Connect (связь с телефоном, слушает локальную сеть)"); kc.setChecked(os.path.exists(os.path.expanduser("~/.config/autostart/org.kde.kdeconnect.daemon.desktop"))); kc.toggled.connect(lambda x: C.kdeconnect(x)); v.addWidget(kc)
         v.addWidget(btn("Проверить папку", scan)); v.addWidget(btn("Песочница (одноразовая Матрёшка)", lambda: subprocess.Popen(["matryoshka-sandbox"]))); v.addWidget(btn("Другие системы в окне", lambda: subprocess.Popen(["matryoshka-vms"]))); v.addWidget(btn("Обновить базы (нужна сеть)", lambda: (o.setPlainText("Обновляю базы…"), C.Task(self, C.root_argv("av-update"), lambda c, t: o.setPlainText(t[-4000:] or ("готово" if c == 0 else "ошибка %d" % c)), timeout=900))))
         v.addWidget(btn("Журнал обновления баз", lambda: (o.setPlainText("Читаю журнал…"), C.Task(self, C.root_argv("av-log"), lambda c, t: o.setPlainText(t[-6000:]), timeout=60))))
-        st = C.run(["systemctl", "is-active", "clamav-daemon"]).stdout.strip(); g = C.run(["pgrep", "-f", "av.py guard"]).returncode == 0
-        v.addWidget(QLabel("Движок ClamAV: %s · страж папок: %s" % (st, "работает" if g else "не запущен")))
+        st = C.run(["systemctl", "is-active", "clamav-daemon"]).stdout.strip(); sk = C.run(["systemctl", "is-active", "clamav-daemon.socket"]).stdout.strip(); g = C.run(["pgrep", "-f", "av.py guard"]).returncode == 0
+        eng = "работает" if st == "active" else ("запустится при первой проверке (экономит около 1 ГБ памяти)" if sk == "active" else st)
+        v.addWidget(QLabel("Движок ClamAV: %s · страж папок: %s" % (eng, "работает" if g else "не запущен")))
     def p_apps(self, v):
         v.addWidget(QLabel("<h2>Программы</h2>Linux-программы работают сразу. .exe и .msi — через Wine, .apk/.xapk — через Waydroid. Двойной щелчок по файлу делает всё сам (сначала проверка антивирусом).<br>Папка <b>~/Общее</b> видна всем: в Windows-программах это диск S:, в Android — папка «Общее» во внутренней памяти. Буфер обмена общий.", wordWrap=True))
         o = self.out(v)

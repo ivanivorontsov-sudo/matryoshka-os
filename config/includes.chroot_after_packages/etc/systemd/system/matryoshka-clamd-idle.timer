@@ -1,0 +1,9 @@
+[Unit]
+Description=Матрёшка: проверка простоя ClamAV
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

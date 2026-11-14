@@ -22,14 +22,16 @@ def own_release(path):
         for b in iter(lambda: f.read(1 << 20), b""): h.update(b)
     return h.hexdigest() == want[n]
 
-def scan(path):
+def scan(path, fallback=True, clamd_timeout=120):
     res = {"file": path, "clam": [], "yara": [], "activator": False}
     if own_release(path):
         res.update(own=True, confirmed=[], heuristic=[], by_name=False, malicious=False, size=os.path.getsize(path))
         return res
-    r = C.run(["clamdscan", "--fdpass", "--no-summary", path])
-    if r.returncode == 2 or "ERROR" in r.stdout:
+    r = C.run(["clamdscan", "--fdpass", "--no-summary", path], timeout=clamd_timeout)
+    res["clam_ok"] = r.returncode in (0, 1) and "ERROR" not in r.stdout
+    if not res["clam_ok"] and fallback:
         r = C.run(["clamscan", "--no-summary", "-d", "/var/lib/clamav", path])
+        res["clam_ok"] = r.returncode in (0, 1)
     res["clam"] = [l.split(": ", 1)[1].replace(" FOUND", "") for l in r.stdout.splitlines() if l.endswith("FOUND")]
     y = C.run(["yara", "-w", "-r", RULES, path], timeout=120)
     res["yara"] = sorted({l.split()[0] for l in y.stdout.splitlines() if l.strip()})
@@ -144,6 +146,11 @@ def guard():
         f = line.strip()
         if not os.path.isfile(f) or f.endswith((".part", ".crdownload", ".tmp")): continue
         res = scan(f)
+        try:
+            import scangate
+            scangate.remember(f, res)
+        except Exception:
+            pass
         if res["malicious"] or res["activator"]:
             subprocess.Popen([sys.executable, __file__, "dialog-json", json.dumps(res)])
 

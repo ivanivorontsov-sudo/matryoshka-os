@@ -1,0 +1,7 @@
+[Unit]
+Description=Матрёшка: остановить простаивающий ClamAV
+ConditionPathExists=!/var/lib/matryoshka/clamd-always
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/matryoshka/clamd-lazy.sh idle

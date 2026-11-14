@@ -12,7 +12,9 @@ DEBIAN_FRONTEND=noninteractive apt-get purge -y popularity-contest avahi-daemon 
 DEBIAN_FRONTEND=noninteractive apt-get autoremove -y --purge
 for t in e2scrub_all.timer man-db.timer dpkg-db-backup.timer fwupd-refresh.timer; do systemctl mask $t || true; done
 systemctl disable clamav-freshclam.service || true
-systemctl enable clamav-daemon.service || true
+systemctl disable clamav-daemon.service || true
+systemctl enable clamav-daemon.socket || true
+systemctl enable matryoshka-clamd-lazy.service matryoshka-clamd-idle.timer || true
 systemctl disable waydroid-container.service || true
 systemctl enable matryoshka-bootcheck.service matryoshka-bootok.service matryoshka-sandbox-mode.service || true
 systemctl disable opensnitch.service 2>/dev/null || true

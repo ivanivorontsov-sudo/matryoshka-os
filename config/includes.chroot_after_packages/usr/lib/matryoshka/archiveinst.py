@@ -1,4 +1,7 @@
+import glob
 import os
+import re
+import shutil
 
 PROG_EXT = (".appimage", ".exe", ".msi", ".deb", ".apk", ".jar", ".bin", ".run")
 SOURCE_MARK = ("makefile", "cmakelists.txt", "configure", "setup.py", "cargo.toml", "go.mod", "package.json", "meson.build")
@@ -152,3 +155,114 @@ def repair_zoom(home):
             fixed.append(dp)
         register(dp, prof)
     return fixed
+
+def slug(name):
+    s = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.").lower()
+    return s or "program"
+
+def sha256(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+
+def sig_age_days():
+    import time
+    ts = [os.path.getmtime(p) for p in glob.glob("/var/lib/clamav/daily.c[lv]d") + glob.glob("/var/lib/clamav/main.c[lv]d")]
+    return None if not ts else int((time.time() - max(ts)) // 86400)
+
+def clam_scan(target):
+    import subprocess
+    found, ok = [], False
+    if shutil.which("clamdscan"):
+        r = subprocess.run(["clamdscan", "--fdpass", "--multiscan", "--no-summary", "--infected", target], capture_output=True, text=True, timeout=3600)
+        if r.returncode in (0, 1) and "ERROR" not in r.stdout:
+            ok = True
+            found = [l for l in r.stdout.splitlines() if l.endswith(" FOUND")]
+    if not ok and shutil.which("clamscan"):
+        r = subprocess.run(["clamscan", "-r", "--no-summary", "--infected", "--max-filesize=400M", "--max-scansize=2000M", target], capture_output=True, text=True, timeout=7200)
+        if r.returncode in (0, 1):
+            ok = True
+            found = [l for l in r.stdout.splitlines() if l.endswith(" FOUND")]
+    return ok, found
+
+def extract(path, dest):
+    import tarfile
+    with tarfile.open(path, "r:*") as t:
+        t.extractall(dest, filter="data")
+
+def scan_archive(path):
+    import json, tempfile
+    base = os.path.join(os.path.expanduser("~"), ".cache", "matryoshka")
+    os.makedirs(base, exist_ok=True)
+    need = 0
+    try:
+        import tarfile
+        with tarfile.open(path, "r:*") as t:
+            need = sum(m.size for m in t.getmembers() if m.isfile())
+    except Exception as e:
+        return {"ok": False, "error": "архив повреждён: %s" % e}
+    if shutil.disk_usage(base).free < need + 200 * 1024 * 1024:
+        return {"ok": False, "error": "мало места для проверки (нужно %d МБ)" % (need // 1048576)}
+    tmp = tempfile.mkdtemp(prefix="scan-", dir=base)
+    try:
+        print("Распаковываю для проверки…", flush=True)
+        extract(path, tmp)
+        print("Проверяю антивирусом ClamAV…", flush=True)
+        ok, found = clam_scan(tmp)
+        found = [f.replace(tmp + "/", "") for f in found]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return {"ok": ok, "found": found, "sha256": sha256(path), "age": sig_age_days(), "size": need}
+
+def root_install(path, digest, name):
+    import pwd, subprocess, time
+    info = analyze(path)
+    if info.get("kind") != "program":
+        print("в архиве нет программы")
+        return 2
+    if sha256(path) != digest:
+        print("архив изменился после проверки антивирусом, установка остановлена")
+        return 3
+    s = slug(name)
+    dst = os.path.join("/opt", s)
+    stage = os.path.join("/opt", ".matryoshka-stage-" + s)
+    shutil.rmtree(stage, ignore_errors=True)
+    os.makedirs(stage, mode=0o755)
+    extract(path, stage)
+    ok, found = clam_scan(stage)
+    if found:
+        shutil.rmtree(stage, ignore_errors=True)
+        print("ОБНАРУЖЕНА УГРОЗА, установка запрещена:\n" + "\n".join(found))
+        return 4
+    subprocess.run(["chown", "-R", "root:root", stage], check=False)
+    subprocess.run(["chmod", "-R", "u+rwX,go+rX,go-w", stage], check=False)
+    if os.path.exists(dst):
+        os.rename(dst, dst + ".old-" + time.strftime("%Y%m%d-%H%M%S"))
+    os.rename(stage, dst)
+    exe = os.path.join(dst, info["exe"])
+    os.chmod(exe, os.stat(exe).st_mode | 0o755)
+    prof = info.get("profile") or {}
+    launcher = os.path.join("/usr/local/bin", s)
+    if not os.path.exists(launcher) or "X_MATRYOSHKA_ARCHIVE=1" in open(launcher, errors="replace").read():
+        env = ("export %s\n" % prof["env"]) if prof.get("env") else ""
+        open(launcher, "w").write('#!/bin/sh\nX_MATRYOSHKA_ARCHIVE=1\n%scd "%s" || exit 1\nexec "%s" "$@"\n' % (env, os.path.dirname(exe), exe))
+        os.chmod(launcher, 0o755)
+    icon = os.path.join(dst, info["icon"]) if info.get("icon") else None
+    dp = "/usr/share/applications/matryoshka-archive-%s.desktop" % s
+    open(dp, "w", encoding="utf-8").write(desktop_text(prof.get("name") or name, exe, icon, prof, os.path.dirname(exe)))
+    subprocess.run(["update-desktop-database", "-q", "/usr/share/applications"], check=False)
+    print("установлено в %s, команда: %s" % (dst, s))
+    return 0
+
+if __name__ == "__main__":
+    import json, sys
+    if len(sys.argv) >= 3 and sys.argv[1] == "scan":
+        r = scan_archive(sys.argv[2])
+        print("RESULT " + json.dumps(r, ensure_ascii=False), flush=True)
+        sys.exit(0)
+    if len(sys.argv) >= 5 and sys.argv[1] == "root-install" and os.geteuid() == 0:
+        sys.exit(root_install(sys.argv[2], sys.argv[3], sys.argv[4]))
+    sys.exit(2)
