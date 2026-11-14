@@ -83,3 +83,41 @@ def preset_for(settings, sink, port):
     if output_kind(sink, port) == "phones":
         return settings.get("sound_phones", settings.get("sound_preset", "Пространство-наушники"))
     return settings.get("sound_speakers", "@ee")
+
+def real_source(name):
+    return bool(name) and not name.endswith(".monitor") and name.startswith(("alsa_input.", "bluez_input."))
+
+def source_fix(data, sources, default, user_pick):
+    names = [x for x in (sources or []) if x and not x.endswith(".monitor")]
+    if real_source(default):
+        data["source"] = default
+        data["source_virtual_ok"] = False
+        return None
+    if not default or default not in names:
+        return None
+    if user_pick:
+        data["source"] = default
+        data["source_virtual_ok"] = True
+        return None
+    if data.get("source_virtual_ok") and data.get("source") == default:
+        return None
+    saved = data.get("source") or ""
+    if real_source(saved) and saved in names:
+        return saved
+    real = [x for x in names if real_source(x)]
+    internal = [x for x in real if x.startswith("alsa_input.pci")]
+    return (internal or real or [None])[0]
+
+def hw_routes(sinks):
+    return {x["name"]: x["port"] for x in sinks if x["name"].startswith(("alsa_output.", "bluez_output."))}
+
+def phones_on(routes):
+    return any(output_kind(n, p) == "phones" for n, p in (routes or {}).items())
+
+def route_events(prev, cur):
+    changed = [n for n, p in cur.items() if prev is not None and prev.get(n) != p]
+    unplugged = prev is not None and phones_on(prev) and not phones_on(cur)
+    return changed, unplugged
+
+def has_hw_sink(names):
+    return any(n.startswith(("alsa_output.", "bluez_output.")) for n in names or [])

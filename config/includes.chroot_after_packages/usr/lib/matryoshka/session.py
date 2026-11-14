@@ -20,6 +20,10 @@ def restore_audio():
         C.run(["pactl", "set-default-sink", sink], timeout=8)
     if sink and vol:
         C.run(["pactl", "set-sink-volume", sink, vol], timeout=8)
+    for n, port in audiodev.hw_routes(sinks()).items():
+        v = data.get("volumes", {}).get(audiodev.vol_key(n, port), "")
+        if v and n != sink:
+            C.run(["pactl", "set-sink-volume", n, v], timeout=8)
 
 def current_output():
     d = pactl("get-default-sink").strip()
@@ -80,27 +84,188 @@ def apply_profile(force=False):
     else:
         C.run(["easyeffects", "--bypass", "1"], timeout=10)
 
+def short_names(kind):
+    out = []
+    for line in pactl("list", "short", kind).splitlines():
+        parts = line.split("\t")
+        if len(parts) > 1:
+            out.append(parts[1])
+    return out
+
+def mpris_players():
+    r = C.run(["busctl", "--user", "--no-legend", "list"], timeout=8)
+    return [line.split()[0] for line in (r.stdout or "").splitlines() if line.startswith("org.mpris.MediaPlayer2.")]
+
+def player_session(name):
+    r = C.run(["busctl", "--user", "call", "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetConnectionUnixProcessID", "s", name], timeout=5)
+    try:
+        pid = int((r.stdout or "").split()[-1])
+        env = open("/proc/%d/environ" % pid, "rb").read().split(b"\0")
+    except (ValueError, IndexError, OSError):
+        return None
+    for x in env:
+        if x.startswith(b"XDG_SESSION_ID="):
+            return x.split(b"=", 1)[1].decode()
+    return None
+
+def pause_players(only_session=None):
+    for n in mpris_players():
+        if only_session and player_session(n) != only_session:
+            continue
+        r = C.run(["busctl", "--user", "get-property", n, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "PlaybackStatus"], timeout=5)
+        if "Playing" in (r.stdout or ""):
+            C.run(["busctl", "--user", "call", n, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player", "Pause"], timeout=5)
+
+def my_session():
+    sid = os.environ.get("XDG_SESSION_ID", "")
+    if sid:
+        return sid
+    r = C.run(["loginctl", "show-user", str(os.getuid()), "-p", "Display", "--value"], timeout=5)
+    return (r.stdout or "").strip()
+
+def session_active(sid):
+    r = C.run(["loginctl", "show-session", sid, "-p", "Active", "--value"], timeout=5)
+    return (r.stdout or "").strip() == "yes"
+
+def other_active_session(sid):
+    r = C.run(["loginctl", "show-user", str(os.getuid()), "-p", "Sessions", "--value"], timeout=5)
+    return any(x != sid and session_active(x) for x in (r.stdout or "").split())
+
+def suspend_hw(on):
+    flag = "1" if on else "0"
+    for n in short_names("sinks"):
+        if n.startswith("alsa_output."):
+            C.run(["pactl", "suspend-sink", n, flag], timeout=8)
+    for n in short_names("sources"):
+        if n.startswith("alsa_input."):
+            C.run(["pactl", "suspend-source", n, flag], timeout=8)
+
+def cards_present():
+    try:
+        return any(line[:3].strip().isdigit() for line in open("/proc/asound/cards", encoding="utf-8"))
+    except OSError:
+        return False
+
+AUDIO_FIX = {"times": []}
+
+def ensure_devices(wait=4):
+    time.sleep(wait)
+    if audiodev.has_hw_sink(short_names("sinks")) or not cards_present():
+        return
+    now = time.time()
+    AUDIO_FIX["times"] = [t for t in AUDIO_FIX["times"] if now - t < 3600]
+    if len(AUDIO_FIX["times"]) >= 3 or (AUDIO_FIX["times"] and now - AUDIO_FIX["times"][-1] < 300):
+        return
+    AUDIO_FIX["times"].append(now)
+    C.run(["logger", "-t", "matryoshka-audio", "нет звуковых устройств в активном сеансе, перезапуск PipeWire"], timeout=5)
+    restart_audio()
+
+def fix_source(user_pick=False):
+    data = audiodev.load_audio(AUDIO)
+    default = pactl("get-default-source").strip()
+    want = audiodev.source_fix(data, short_names("sources"), default, user_pick)
+    if want and want != default:
+        C.run(["pactl", "set-default-source", want], timeout=8)
+        C.run(["logger", "-t", "matryoshka-audio", "микрофон по умолчанию: %s вместо %s" % (want, default)], timeout=5)
+    audiodev.save_audio(AUDIO, data)
+
+def watch_session():
+    sid = my_session()
+    if not sid:
+        return
+    was = session_active(sid)
+    while True:
+        time.sleep(2)
+        try:
+            now = session_active(sid)
+            if now == was:
+                continue
+            was = now
+            if not now:
+                other = other_active_session(sid)
+                pause_players(sid if other else None)
+                if not other:
+                    suspend_hw(True)
+            else:
+                suspend_hw(False)
+                ensure_devices()
+                restore_audio()
+                fix_source()
+                apply_profile(force=True)
+        except Exception:
+            pass
+
 def watch_audio():
-    def loop():
-        p = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, text=True)
-        last = 0
-        for line in p.stdout:
-            if "sink" not in line and "'change' on server" not in line:
-                continue
-            fresh = "'new' on sink" in line
-            now = time.time()
-            if now - last < 1.2:
-                continue
-            last = now
+    state = {"dirty": False, "fresh": False, "src": False, "route": None, "src_seen": {}, "boot": time.time()}
+    lock = threading.Lock()
+    def worker():
+        while True:
+            time.sleep(0.3)
+            with lock:
+                if not state["dirty"]:
+                    continue
+                fresh, src = state["fresh"], state["src"]
+                state["dirty"] = state["fresh"] = state["src"] = False
             try:
                 data = audiodev.load_audio(AUDIO)
+                all_sinks = sinks()
                 default = pactl("get-default-sink").strip()
-                audiodev.remember(data, sinks(), default)
+                cur = audiodev.hw_routes(all_sinks)
+                changed, unplugged = audiodev.route_events(state["route"], cur)
+                state["route"] = cur
+                if unplugged:
+                    pause_players()
+                for n in changed:
+                    vol = data.get("volumes", {}).get(audiodev.vol_key(n, cur[n]), "")
+                    if vol:
+                        C.run(["pactl", "set-sink-volume", n, vol], timeout=8)
+                if changed:
+                    all_sinks = sinks()
+                audiodev.remember(data, all_sinks, default)
                 audiodev.save_audio(AUDIO, data)
+                if src:
+                    srcs = short_names("sources")
+                    now = time.time()
+                    for n in srcs:
+                        state["src_seen"].setdefault(n, now)
+                    d = pactl("get-default-source").strip()
+                    age = now - state["src_seen"].get(d, now)
+                    user_pick = age > 15 and now - state["boot"] > 60
+                    fix_source(user_pick)
                 apply_profile(force=fresh)
             except Exception:
                 pass
+    def loop():
+        while True:
+            try:
+                listen()
+            except Exception:
+                pass
+            time.sleep(3)
+            with lock:
+                state["dirty"] = state["src"] = True
+    def listen():
+        p = subprocess.Popen(["pactl", "subscribe"], stdout=subprocess.PIPE, text=True)
+        for line in p.stdout:
+            if "sink-input" in line or "source-output" in line or "client" in line:
+                continue
+            is_src = "source" in line
+            if "sink" not in line and not is_src and "'change' on server" not in line:
+                continue
+            with lock:
+                state["dirty"] = True
+                if "'new' on sink" in line:
+                    state["fresh"] = True
+                if is_src or "'change' on server" in line:
+                    state["src"] = True
+    try:
+        state["route"] = audiodev.hw_routes(sinks())
+        fix_source()
+    except Exception:
+        pass
+    threading.Thread(target=worker, daemon=True).start()
     threading.Thread(target=loop, daemon=True).start()
+    threading.Thread(target=watch_session, daemon=True).start()
     def resume():
         try:
             p = subprocess.Popen(["gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1", "--object-path", "/org/freedesktop/login1"], stdout=subprocess.PIPE, text=True)
@@ -115,6 +280,7 @@ def watch_audio():
                             sound_enhance()
                         else:
                             apply_profile(force=True)
+                    fix_source()
                 except Exception:
                     pass
     threading.Thread(target=resume, daemon=True).start()
