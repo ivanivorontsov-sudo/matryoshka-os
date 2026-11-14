@@ -521,8 +521,6 @@ def icons_fix():
     os.makedirs(d, exist_ok=True)
     open(stamp, "w", encoding="utf-8").write(" ".join(changed) + "\n")
     C.run(["logger", "-t", "matryoshka-icons", "кэш значков пересобран %s" % " ".join(changed)], timeout=5)
-    if C.run(["systemctl", "--user", "is-active", "-q", "plasma-plasmashell.service"], timeout=10).returncode == 0:
-        C.run(["systemctl", "--user", "restart", "plasma-plasmashell.service"], timeout=60)
 
 KWIN_RULES = {
     "matryoshka-print-okular": {"Description": "Матрёшка: окно печати Okular поверх", "wmclass": "okular", "wmclassmatch": "2", "types": "32", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2", "acceptfocus": "true", "acceptfocusrule": "2"},

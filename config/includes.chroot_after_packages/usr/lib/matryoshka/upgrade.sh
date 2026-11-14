@@ -50,6 +50,7 @@ dpkg --configure -a || rollback
 mkdir -p "$(dirname "$PAMSNAP")"
 PL=(); for x in etc/pam.d etc/matryoshka/auth.conf var/lib/matryoshka/auth/owned etc/polkit-1/rules.d/47-matryoshka-noask.rules etc/sddm.conf.d/10-matryoshka-greeter.conf; do [ -e "/$x" ] && PL+=("$x"); done
 tar -C / -cpf "$PAMSNAP" "${PL[@]}" || die "не удалось сохранить настройки входа"
+ls -1 /usr/share/applications/*.desktop 2>/dev/null > $W/desktop-before.txt
 say "Копирую файлы системы"
 rsync -aK --exclude=/etc/sddm.conf.d/ --exclude=/etc/hostname --exclude=/etc/hosts $W/includes/ / || rollback
 rm -f /etc/debian_chroot
@@ -112,6 +113,18 @@ if [ -s $W/packages.list ]; then
     echo "Не установлены (нет в образе): $(echo $miss | tr '\n' ' ')"
   else rm -f /var/lib/matryoshka/pending-packages; fi
   say "Версии пакетов Матрёшки:"; dpkg-query -W -f='  ${Package} ${Version}\n' 'matryoshka-*' 2>/dev/null
+fi
+while read -r f; do
+  [ -e "$f" ] || [ -L "$f" ] || [ ! -e "$LAST/root$f" ] && continue
+  grep -qx "file $f" $W/remove.list 2>/dev/null && continue
+  o=$(dpkg -S "$f" 2>/dev/null | head -n 1 | cut -d: -f1)
+  [ -n "$o" ] && [ "$(dpkg-query -W -f='${db:Status-Abbrev}' "$o" 2>/dev/null)" != "ii " ] && continue
+  cp -a "$LAST/root$f" "$f" && echo "ярлык возвращён из копии: $f"
+done < $W/desktop-before.txt
+miss=$(grep -H '^/usr/share/applications/[^/]*\.desktop$' /var/lib/dpkg/info/*.list 2>/dev/null | while IFS=: read -r l f; do [ -e "$f" ] || basename "$l" .list; done | cut -d: -f1 | sort -u | while read -r p; do [ "$(dpkg-query -W -f='${db:Status-Abbrev}' "$p" 2>/dev/null)" = "ii " ] && echo "$p"; done)
+if [ -n "$miss" ]; then
+  say "У установленных программ нет ярлыков в меню: $(echo $miss)"
+  for p in $miss; do DEBIAN_FRONTEND=noninteractive apt-get install -y --reinstall --no-download -o Dpkg::Options::=--force-confold "$p" >>/tmp/matryoshka-apt.log 2>&1 && echo "ярлыки восстановлены: $p" || echo "ВНИМАНИЕ: ярлыки $p не восстановлены без сети, переустановите программу: sudo apt-get install --reinstall $p"; done
 fi
 systemctl daemon-reload
 update-mime-database /usr/share/mime >/dev/null 2>&1 || true
