@@ -74,7 +74,7 @@ def info(path):
     r = C.run(["dpkg-query", "-S", real], timeout=20)
     if r.returncode != 0 and real != path:
         r = C.run(["dpkg-query", "-S", path], timeout=20)
-    pkg = r.stdout.split(":")[0].strip() if r.returncode == 0 else ""
+    pkg = r.stdout.splitlines()[0].split(":")[0].split(",")[0].strip() if r.returncode == 0 and r.stdout.strip() else ""
     if pkg:
         q = C.run(["dpkg-query", "-W", "-f", "${Version}\t${Installed-Size}\t${Maintainer}", pkg], timeout=20).stdout.split("\t")
         d["kind"], d["package"] = "Пакет Debian", pkg
@@ -198,10 +198,35 @@ def removal_plan(pkg):
     return gone, ""
 
 
+def pkg_installed(pkg):
+    r = C.run(["dpkg-query", "-W", "-f", "${db:Status-Abbrev}", pkg], timeout=20)
+    return r.returncode == 0 and r.stdout.startswith("ii")
+
+
+def flatpak_installed(fid, scope):
+    return C.run(["flatpak", "info", scope, fid], timeout=20).returncode == 0
+
+
+def outcome(name, x, gone):
+    out = ((x.stdout or "") + (x.stderr or "")).strip()
+    if gone:
+        return True, "«%s» удалена." % name
+    if x.returncode in (126, 127) or (x.returncode != 0 and not out):
+        why = "нет прав администратора или запрос пароля отменён"
+    elif x.returncode == 0:
+        why = "команда завершилась, но программа осталась установленной"
+    else:
+        why = "код ошибки %d" % x.returncode
+    return False, "«%s» НЕ удалена: %s.%s" % (name, why, ("\n\n" + out[-1200:]) if out else "")
+
+
 def remove(d, parent=None):
     from PyQt6.QtWidgets import QMessageBox
     ask = lambda t: QMessageBox.question(parent, "Удаление", t) == QMessageBox.StandardButton.Yes
-    say = lambda t: QMessageBox.information(parent, "Удаление", t[-1500:] or "готово")
+    say = lambda t: QMessageBox.information(parent, "Удаление", t[-1500:])
+    def report(ok, text):
+        (QMessageBox.information if ok else QMessageBox.warning)(parent, "Удаление", text[-1800:])
+        return ok
     if d["package"]:
         gone, why = removal_plan(d["package"])
         if gone is None:
@@ -210,21 +235,19 @@ def remove(d, parent=None):
         if not ask("Удалить «%s» (пакет %s)?\nБудут удалены пакеты: %s\nНастройки в домашней папке останутся." % (d["name"], d["package"], ", ".join(gone))):
             return False
         x = C.root("remove-app", d["package"])
-        say(x.stdout + x.stderr)
-        return x.returncode == 0
+        return report(*outcome(d["name"], x, not pkg_installed(d["package"])))
     if d["flatpak"]:
         if not ask("Удалить Flatpak-программу «%s» (%s)?" % (d["name"], d["flatpak"])):
             return False
         scope = "--user" if d["path"].startswith(C.HOME) else "--system"
         x = C.run(["flatpak", "uninstall", scope, "-y", "--noninteractive", d["flatpak"]], timeout=600)
-        say(x.stdout + x.stderr)
-        return x.returncode == 0
+        return report(*outcome(d["name"], x, not flatpak_installed(d["flatpak"], scope)))
     if d["waydroid"]:
         if not ask("Удалить Android-приложение %s?" % d["waydroid"]):
             return False
         x = C.run(["waydroid", "app", "remove", d["waydroid"]], timeout=300)
-        say(x.stdout + x.stderr)
-        return x.returncode == 0
+        left = d["waydroid"] in C.run(["waydroid", "app", "list"], timeout=60).stdout
+        return report(*outcome(d["name"], x, x.returncode == 0 and not left))
     if d["path"].startswith(LOCAL_DIR):
         if not ask("Удалить ярлык «%s» из меню?" % d["name"]):
             return False

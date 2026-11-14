@@ -133,16 +133,18 @@ case "$cmd" in
     esac ;;
   remove-app)
     for p in "$@"; do
-      echo "$p" | grep -Eq '^[a-z0-9][a-z0-9+.-]+$' || exit 2
+      echo "$p" | grep -Eq '^[a-z0-9][a-z0-9+.-]+$' || { echo "неверное имя пакета: $p"; exit 2; }
       case "$p" in matryoshka-*) echo "часть Матрёшки, не удаляется: $p"; exit 3 ;; esac
       grep -qx "$p" /usr/lib/matryoshka/protected.list && { echo "защищён: $p"; exit 3; }
       case "$(dpkg-query -W -f='${Essential} ${Priority}' "$p" 2>/dev/null)" in "yes "*|*" required"|*" important") echo "системный пакет, не удаляется: $p"; exit 3 ;; esac
     done
     sim=$(apt-get -s remove "$@" 2>&1) || { echo "$sim" | tail -n 5; exit 4; }
-    bad=$(echo "$sim" | awk '$1=="Remv"{print $2}' | while read -r q; do case "$q" in matryoshka-*|plasma-*|kwin*|sddm*|systemd*|linux-image*) echo "$q" ;; *) grep -qx "$q" /usr/lib/matryoshka/protected.list && echo "$q" ;; esac; done)
+    bad=$(echo "$sim" | awk '$1=="Remv"{print $2}' | while read -r q; do case "$q" in matryoshka-*|plasma-*|kwin*|sddm*|systemd*|linux-image*) echo "$q" ;; *) if grep -qx "$q" /usr/lib/matryoshka/protected.list; then echo "$q"; fi ;; esac; done; true)
     [ -n "$bad" ] && { echo "удаление затронет части системы, отменено: $(echo $bad)"; exit 3; }
-    DEBIAN_FRONTEND=noninteractive apt-get remove -y "$@"
-    for s in ufw apparmor; do printf '%s: %s\n' "$s" "$(systemctl is-active $s)"; done; ufw status | head -1 ;;
+    if DEBIAN_FRONTEND=noninteractive apt-get remove -y "$@"; then rc=0; else rc=$?; fi
+    left=""; for p in "$@"; do if [ "$(dpkg-query -W -f='${db:Status-Abbrev}' "$p" 2>/dev/null)" = "ii " ]; then left="$left $p"; fi; done
+    [ -n "$left" ] && { echo "не удалены:$left"; [ "$rc" = 0 ] && rc=5; }
+    exit $rc ;;
   update-all)
     nmcli -t networking | grep -q enabled || { echo "Сеть выключена"; exit 4; }
     if ! grep -qw boot=live /proc/cmdline; then /usr/lib/matryoshka/sysbackup.sh create same || { echo "РЕЗЕРВНАЯ КОПИЯ НЕ СОЗДАНА: обновление отменено"; exit 8; }; fi

@@ -197,7 +197,13 @@ case "$1" in
     [ -e /var/lib/matryoshka/fp-reenroll ] && echo "Отпечатки нужно добавить заново"
     exit 0;;
   auto)
-    [ -e "$F" ] && { load; exit 0; }
+    if [ -e "$F" ]; then
+      if load && ! systemctl is-active -q fprintd && timeout 12 $L/bin/gxfp_recovery --reset-mcu --reset-sensor >/dev/null 2>&1; then
+        : > /run/matryoshka-gxfp-boot
+        logger -t matryoshka-gxfp "сканер подготовлен до экрана входа"
+      fi
+      exit 0
+    fi
     [ -e "$OFF" ] && exit 0
     grep -qs GXFP5130 /sys/bus/acpi/devices/*/hid || exit 0
     mokutil --sb-state 2>/dev/null | grep -q enabled && [ ! -f $MOK/MOK.key ] && exit 0

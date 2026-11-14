@@ -51,7 +51,15 @@ class Apps(QWidget):
     def remove(self):
         pk = [self.list.item(i).data(256) for i in range(self.list.count()) if self.list.item(i).checkState() == Qt.CheckState.Checked]
         if not pk or QMessageBox.question(self, "Удаление", "Удалить: %s?\nНенужные зависимости тоже уберутся." % ", ".join(pk)) != QMessageBox.StandardButton.Yes: return
-        r = C.root("remove-app", *pk); QMessageBox.information(self, "Готово", (r.stdout[-1500:] + r.stderr[-800:]) or "готово"); self.data = apps(); self.fill()
+        r = C.root("remove-app", *pk)
+        left = [p for p in pk if C.run(["dpkg-query", "-W", "-f", "${db:Status-Abbrev}", p], timeout=20).stdout.startswith("ii")]
+        out = (r.stdout[-1500:] + r.stderr[-800:]).strip()
+        if left:
+            why = "нет прав администратора или запрос пароля отменён" if r.returncode in (126, 127) or (r.returncode != 0 and not out) else "код %d" % r.returncode
+            QMessageBox.warning(self, "Удаление", "Не удалены: %s (%s).\n\n%s" % (", ".join(left), why, out))
+        else:
+            QMessageBox.information(self, "Удаление", "Удалены: %s" % ", ".join(pk))
+        self.data = apps(); self.fill()
     def cat_inst(self):
         it = self.cat.currentItem()
         if not it: return
