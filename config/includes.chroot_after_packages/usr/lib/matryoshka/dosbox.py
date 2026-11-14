@@ -15,12 +15,21 @@ LNG = "/usr/share/dosbox-x/languages/ru_RU.lng"
 def keyrus_line():
     return "if exist d:\\KEYRUS\\KEYRUS.COM d:\\KEYRUS\\KEYRUS.COM\n"
 
+FREEDOS = "/usr/share/matryoshka/freedos"
+
+def freedos_lines():
+    if not os.path.isfile(os.path.join(FREEDOS, "BIN", "EDIT.EXE")):
+        return "", ""
+    mount = 'mount -q h "%s" -ro\nset DOSDIR=H:\\\nset NLSPATH=H:\\NLS\nset HELPPATH=H:\\HELP\nset LANG=RU\n' % FREEDOS
+    return mount, ";h:\\bin"
+
 def session_text(program_dir, program, dos_root, home, shared, print_dir, desktop=None):
     program_dir, dos_root, home, shared, print_dir = (q(p) for p in (program_dir, dos_root, home, shared, print_dir))
     lang = "language=%s\n" % LNG if os.path.isfile(LNG) else ""
     desk = 'mount -q g "%s" -freesize 2048\n' % q(desktop) if desktop else ""
+    fd_mount, fd_path = freedos_lines()
     name = program.replace('"', "")
-    run = run_line(name) if name else "echo C: программа, D: DOS, E: домашняя папка, F: Общее, G: рабочий стол\n"
+    run = run_line(name) if name else "echo C: программа, D: DOS, E: домашняя папка, F: Общее, G: рабочий стол, H: FreeDOS\n"
     return """[sdl]
 fullscreen=false
 autolock=false
@@ -105,12 +114,12 @@ mount -q c "{program_dir}" -freesize 2048
 mount -q d "{dos_root}" -freesize 2048
 mount -q e "{home}" -freesize 2048
 mount -q f "{shared}" -freesize 2048
-{desk}set TEMP=C:\\
+{desk}{fd_mount}set TEMP=C:\\
 set TMP=C:\\
 set BLASTER=A220 I7 D1 H5 P330 T6
-path c:\\;d:\\;z:\\;z:\\system;z:\\bin;z:\\dos;z:\\4dos;z:\\textutil
+path c:\\;d:\\;z:\\;z:\\system;z:\\bin;z:\\dos;z:\\4dos;z:\\textutil{fd_path}
 {keyrus}c:
-{run}""".format(program_dir=program_dir, dos_root=dos_root, home=home, shared=shared, print_dir=print_dir, run=run, lang=lang, desk=desk, keyrus=keyrus_line())
+{run}""".format(program_dir=program_dir, dos_root=dos_root, home=home, shared=shared, print_dir=print_dir, run=run, lang=lang, desk=desk, keyrus=keyrus_line(), fd_mount=fd_mount, fd_path=fd_path)
 
 def link_base(home):
     for b in (os.path.join(home, ".config", "matryoshka", "dos", "links"), os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "matryoshka-dos-%d" % os.getuid())):

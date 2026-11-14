@@ -77,7 +77,7 @@ def run(args, **kw):
 
 ROOT_SH = "/usr/lib/matryoshka/root.sh"
 
-NOPASS = ("install-check", "drivers-check", "snap-list", "waydroid-share", "guest-mount", "sandbox-grant", "av-update", "snap-create", "firstrun-done")
+NOPASS = ("install-check", "drivers-check", "snap-list", "waydroid-share", "guest-mount", "sandbox-grant", "av-update", "av-start", "snap-create", "firstrun-done")
 
 def root_argv(*args):
     if args and args[0] in NOPASS and run(["sudo", "-n", "-l", ROOT_SH, *args], timeout=10).returncode == 0:

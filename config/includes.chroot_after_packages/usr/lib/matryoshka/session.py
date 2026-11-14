@@ -23,7 +23,7 @@ def restore_audio():
     if sink and vol:
         C.run(["pactl", "set-sink-volume", sink, vol], timeout=8)
     for n, port in audiodev.hw_routes(sinks()).items():
-        v = data.get("volumes", {}).get(audiodev.vol_key(n, port), "")
+        v = audiodev.saved_volume(data, n, port)
         if v and n != sink:
             C.run(["pactl", "set-sink-volume", n, v], timeout=8)
 
@@ -211,8 +211,17 @@ def watch_session():
             pass
 
 def watch_audio():
-    state = {"dirty": False, "fresh": False, "src": False, "route": None, "src_seen": {}, "boot": time.time()}
+    state = {"dirty": False, "fresh": False, "src": False, "route": None, "src_seen": {}, "boot": time.time(), "hold": {}}
     lock = threading.Lock()
+    def settle(n, port, vol, first_vol):
+        try:
+            for x in sinks():
+                if x["name"] == n and x["port"] == port and audiodev.needs_reapply(x["volume"], vol, first_vol):
+                    C.run(["pactl", "set-sink-volume", n, vol], timeout=8)
+        except Exception:
+            pass
+        with lock:
+            state["dirty"] = True
     def worker():
         while True:
             time.sleep(0.3)
@@ -227,16 +236,24 @@ def watch_audio():
                 default = pactl("get-default-sink").strip()
                 cur = audiodev.hw_routes(all_sinks)
                 changed, unplugged = audiodev.route_events(state["route"], cur)
+                now = time.time()
+                for n in audiodev.new_sinks(state["route"], cur):
+                    state["hold"][n] = now
                 state["route"] = cur
                 if unplugged:
                     pause_players()
+                first = {x["name"]: x["volume"] for x in all_sinks}
                 for n in changed:
-                    vol = data.get("volumes", {}).get(audiodev.vol_key(n, cur[n]), "")
+                    vol = audiodev.saved_volume(data, n, cur[n])
                     if vol:
                         C.run(["pactl", "set-sink-volume", n, vol], timeout=8)
+                        if n in state["hold"] and now - state["hold"][n] < 1:
+                            threading.Timer(3, settle, (n, cur[n], vol, first.get(n, ""))).start()
                 if changed:
                     all_sinks = sinks()
-                audiodev.remember(data, all_sinks, default)
+                for n in [k for k, t in state["hold"].items() if now - t > 6]:
+                    state["hold"].pop(n, None)
+                audiodev.remember(data, all_sinks, default, hold=tuple(state["hold"]))
                 audiodev.save_audio(AUDIO, data)
                 if src:
                     srcs = short_names("sources")
@@ -482,7 +499,7 @@ def icon_theme_ok(name):
 
 def icons_fix():
     d = os.path.expanduser("~/.local/state/matryoshka")
-    stamp = os.path.join(d, "icons-v2")
+    stamp = os.path.join(d, "icons-v4")
     if os.path.exists(stamp):
         return
     changed = []

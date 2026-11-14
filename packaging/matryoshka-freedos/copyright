@@ -1,0 +1,51 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: FreeDOS 1.3 base packages
+Source: https://www.ibiblio.org/pub/micro/pc-stuff/freedos/files/repositories/1.3/base/
+Comment: Unmodified FreeDOS 1.3 packages. Each package keeps its own license
+ text in DOC/<package>/ and its sources in SOURCE/<package>/ inside
+ /usr/share/matryoshka/freedos. Licenses per package (Copying-policy from
+ APPINFO/*.LSM):
+ ambhelp: GNU Free Documentation License, Version 1.1
+ append: GNU General Public License, Version 2
+ assign: GNU General Public License, Version 2
+ attrib: GNU General Public License, Version 2
+ choice: GNU General Public License, Version 2
+ comp: MIT license
+ cpidos: GNU General Public License, Version 2
+ ctmouse: GNU General Public License, Version 2
+ debug: MIT License
+ deltree: GNU General Public License, Version 2
+ diskcomp: GNU General Public License, Version 2
+ diskcopy: GNU General Public License, Version 2
+ display: GNU General Public License, Version 2
+ edit: GNU General Public License, Version 2
+ edlin: GNU General Public License, Version 2
+ exe2bin: Sybase Open Watcom Public License, Version 1.0
+ fc: GNU General Public License, Version 2
+ fdhelper: GNU General Public License, Version 2 or later
+ find: GNU General Public License, Version 2
+ freecom: GNU General Public License, Version 2 (GPL)
+ graphics: GNU General Public License
+ keyb: GNU General Public License, Version 2
+ keyb_lay: GNU General Public License, Version 2
+ label: GNU General Public License, Version 2
+ mem: GNU General Public License, Version 2
+ mode: GNU General Public License, Version 2
+ more: GNU General Public License, Version 2
+ move: GNU General Public License, Version 2
+ nansi: GNU General Public License, Version 2
+ nlsfunc: GNU General Public License, Version 2
+ print: GNU General Public License, Version 2
+ replace: GNU General Public License, Version 2
+ share: GNU General Public License
+ sort: GNU General Public License, Version 2
+ swsubst: GNU General Public License, Version 2
+ tree: GNU General Public License, Version 2 (using public domain findfile by Jeremy Davis and optional use of LGPL catgets by Jim Hall)
+ xcopy: GNU General Public License, Version 2
+ KeyRus is not included: it is freeware without a free software license.
+
+Files: *
+Copyright: FreeDOS project contributors, see DOC/ and APPINFO/ of each package
+License: various-free
+ GPL-2 (/usr/share/common-licenses/GPL-2), MIT, Artistic, Sybase Open Watcom
+ Public License 1.0, GFDL-1.1 and public domain, as listed above.

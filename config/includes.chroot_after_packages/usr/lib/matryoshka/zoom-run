@@ -1,0 +1,13 @@
+#!/bin/sh
+EXE=$1
+shift
+[ -x "$EXE" ] || { notify-send -a Матрёшка -i camera-web "Zoom" "Zoom не найден: $EXE. Запустите matryoshka zoom-doctor --fix" 2>/dev/null; exit 1; }
+unset QT_PLUGIN_PATH QML2_IMPORT_PATH QML_IMPORT_PATH QT_STYLE_OVERRIDE QT_QPA_PLATFORMTHEME QT_QUICK_CONTROLS_STYLE LD_LIBRARY_PATH LD_PRELOAD OPENSSL_CONF OPENSSL_MODULES OPENSSL_ENGINES GTK_MODULES
+export QT_QPA_PLATFORM=xcb
+[ -z "$SSL_CERT_FILE" ] && [ -f /etc/ssl/certs/ca-certificates.crt ] && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+[ -z "$SSL_CERT_DIR" ] && [ -d /etc/ssl/certs ] && export SSL_CERT_DIR=/etc/ssl/certs
+L="$HOME/.zoom/logs"
+mkdir -p "$L"
+printf '%s %s %s\n' "$(date -Is)" "$EXE" "$(printf '%s' "$*" | sed -E 's/(pwd|tk|zak|uname)=[^&]*/\1=…/g')" >> "$L/matryoshka-run.log"
+cd "$(dirname "$EXE")" || exit 1
+exec "$EXE" "$@"

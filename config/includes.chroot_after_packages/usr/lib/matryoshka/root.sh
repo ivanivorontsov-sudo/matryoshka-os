@@ -22,6 +22,7 @@ case "$cmd" in
     /usr/lib/matryoshka/netup.sh ;;
   av-update)
     if systemctl is-active -q clamav-freshclam; then systemctl restart clamav-freshclam; sleep 25; tail -n 25 /var/log/clamav/freshclam.log; else freshclam; fi ;;
+  av-start) systemctl start clamav-daemon.socket >/dev/null 2>&1; systemctl reset-failed clamav-daemon.service >/dev/null 2>&1; systemctl start clamav-daemon.service; systemctl is-active clamav-daemon.service ;;
   av-log) tail -n 60 /var/log/clamav/freshclam.log 2>/dev/null || journalctl -u clamav-freshclam -n 60 --no-pager ;;
   snitch-on) systemctl enable --now opensnitch.service; echo "OpenSnitch включён" ;;
   snitch-off) systemctl disable --now opensnitch.service; echo "OpenSnitch выключен" ;;
@@ -240,11 +241,7 @@ case "$cmd" in
           sed -i -E 's/^((0\.0\.0\.0|127\.0\.0\.1|::1?)[[:space:]]+([a-z0-9.-]+\.)?zoom\.(us|com))[[:space:]]*$/# zoom-doctor: \1/' /etc/hosts
           echo "адреса Zoom разблокированы в /etc/hosts (копия: /etc/hosts.matryoshka-zoom.bak)" ;;
         ufw)
-          ufw allow out 443/tcp comment "zoom" >/dev/null
-          ufw allow out 8801:8802/tcp comment "zoom" >/dev/null
-          ufw allow out 8801:8810/udp comment "zoom" >/dev/null
-          ufw allow out 3478:3479/udp comment "zoom" >/dev/null
-          echo "ufw: исходящие порты Zoom разрешены" ;;
+          echo "ufw: исходящие соединения запрещены вашей политикой. Матрёшка не открывает порты для всей системы; разрешите Zoom сами (TCP 443, 8801-8802, UDP 8801-8810) или верните исходящую политику allow" ;;
         ntp)
           timedatectl set-ntp true && systemctl restart systemd-timesyncd 2>/dev/null; echo "синхронизация времени включена" ;;
         chown)
@@ -254,13 +251,9 @@ case "$cmd" in
           d="${a#snitch=}"
           case "$d" in /opt/zoom|/usr/share/zoom|"$H"/*) ;; *) exit 2 ;; esac
           [ -d "$d" ] || exit 2
-          mkdir -p /etc/opensnitchd/rules
-          e=$(printf '%s' "$d" | sed 's/[][\\.^$*+?(){}|/]/\\\\&/g')
-          n=$(printf '%s' "$d" | md5sum | cut -c1-8)
-          t=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          printf '{"created":"%s","updated":"%s","name":"matryoshka-zoom-%s","description":"Zoom","enabled":true,"precedence":true,"nolog":false,"action":"allow","duration":"always","operator":{"type":"regexp","operand":"process.path","sensitive":false,"data":"^%s/.*$","list":[]}}\n' "$t" "$t" "$n" "$e" > "/etc/opensnitchd/rules/matryoshka-zoom-$n.json"
+          python3 /usr/lib/matryoshka/zoomsnitch.py write "$d" >/dev/null || exit 1
           systemctl reload-or-restart opensnitch 2>/dev/null || true
-          echo "OpenSnitch: Zoom из $d разрешён" ;;
+          echo "OpenSnitch: Zoom из $d разрешён только к доменам Zoom и портам 443, 8801-8810, 3478-3479" ;;
         *) exit 2 ;;
       esac
     done ;;

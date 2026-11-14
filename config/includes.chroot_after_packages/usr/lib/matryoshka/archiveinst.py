@@ -28,7 +28,7 @@ def members_of(path):
 
 SKIP = ("crashpad", "chrome-sandbox", "chrome_crashpad", "helper", "host", "update", "uninstall", "install-", "xdg-", "sandbox", "gpu", "ffmpeg", "qtwebengine", "bsdtar", "7z", "curl", "wget", "python", "perl", "java", "node")
 PROFILES = {
-    "zoomlauncher": {"name": "Zoom", "args": "%U", "mime": ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-handler/zoomphonecall", "x-scheme-handler/tel", "x-scheme-handler/callto", "application/x-zoom"], "wm": "zoom", "icon": "camera-web", "env": "QT_QPA_PLATFORM=xcb"},
+    "zoomlauncher": {"name": "Zoom", "args": "%U", "mime": ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-handler/zoomphonecall", "x-scheme-handler/tel", "x-scheme-handler/callto", "application/x-zoom"], "wm": "zoom", "icon": "camera-web", "env": "QT_QPA_PLATFORM=xcb", "wrap": "/usr/lib/matryoshka/zoom-run"},
 }
 
 def exec_members(path):
@@ -108,7 +108,12 @@ def analyze(path):
 
 def desktop_text(name, exe, icon, prof, workdir):
     args = (" " + prof["args"]) if prof.get("args") else ""
-    lines = ["[Desktop Entry]", "Type=Application", "Name=%s" % name, 'Exec=%s%s%s' % (("env " + prof["env"] + " ") if prof.get("env") else "", exe if re.fullmatch(r"[^\s\"'\\`$;&|<>()*?#~=%]+", exe) else '"%s"' % exe, args), "Path=%s" % workdir, "Icon=%s" % (icon or prof.get("icon") or "application-x-executable"), "Terminal=false", "Categories=Utility;"]
+    q = exe if re.fullmatch(r"[^\s\"'\\`$;&|<>()*?#~=%]+", exe) else '"%s"' % exe
+    if prof.get("wrap") and os.path.isfile(prof["wrap"]):
+        cmd = "%s %s%s" % (prof["wrap"], q, args)
+    else:
+        cmd = "%s%s%s" % (("env " + prof["env"] + " ") if prof.get("env") else "", q, args)
+    lines = ["[Desktop Entry]", "Type=Application", "Name=%s" % name, "Exec=%s" % cmd, "Path=%s" % workdir, "Icon=%s" % (icon or prof.get("icon") or "application-x-executable"), "Terminal=false", "Categories=Utility;"]
     if prof.get("mime"):
         lines.append("MimeType=%s;" % ";".join(prof["mime"]))
     if prof.get("wm"):
@@ -178,7 +183,13 @@ def sig_age_days():
 def clam_scan(target):
     import subprocess
     found, ok = [], False
-    if shutil.which("clamdscan"):
+    ready = False
+    try:
+        import av
+        ready = av.engine_ready(180)
+    except Exception:
+        ready = True
+    if ready and shutil.which("clamdscan"):
         r = subprocess.run(["clamdscan", "--fdpass", "--multiscan", "--no-summary", "--infected", target], capture_output=True, text=True, timeout=3600)
         if r.returncode in (0, 1) and "ERROR" not in r.stdout:
             ok = True

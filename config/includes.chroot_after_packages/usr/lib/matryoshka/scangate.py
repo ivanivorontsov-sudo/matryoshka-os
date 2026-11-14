@@ -84,10 +84,12 @@ def check(path, quiet=False):
     touch_stamp()
     if not quiet and not clamd_up():
         notify("Проверка антивирусом", "Запускаю ClamAV для проверки «%s»… Первый раз после включения это занимает до минуты." % os.path.basename(path))
-    res = av.scan(path, fallback=False, clamd_timeout=150)
+    res = av.scan(path, fallback=True, clamd_timeout=300, wait=180)
     res.setdefault("clam_ok", True)
+    if res.get("engine") == "clamscan" and not quiet:
+        notify("Проверка антивирусом", "Служба ClamAV не запустилась, «%s» проверен напрямую." % os.path.basename(path))
     if not res["clam_ok"] and not quiet:
-        notify("Антивирус недоступен", "«%s» запущен без проверки ClamAV: движок не ответил. Проверьте антивирус в Центре Матрёшки." % os.path.basename(path))
+        notify("Антивирус недоступен", "«%s» запускается без проверки ClamAV: движок не запустился. Проверьте антивирус в Центре Матрёшки." % os.path.basename(path))
     remember(path, res)
     return res
 

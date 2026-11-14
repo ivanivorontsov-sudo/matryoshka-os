@@ -84,12 +84,33 @@ def sink_fix(data, sinks, default, user_pick):
     best = sorted(live, key=sink_rank)[0]["name"]
     return best if best != default else None
 
-def remember(data, sinks, default_sink):
+def dev_key(sink):
+    n = sink or ""
+    if n.startswith("bluez_output."):
+        mac = n[len("bluez_output."):].split(".")[0]
+        return "bt:" + mac.upper() if mac else None
+    if n.startswith("alsa_output.usb-"):
+        card = n[len("alsa_output.usb-"):].rsplit(".", 1)[0]
+        return "usb:" + card if card else None
+    return None
+
+def saved_volume(data, sink, port):
+    k = dev_key(sink)
+    if k:
+        v = data.get("devices", {}).get(k, {}).get(port or "", "")
+        if v:
+            return v
+    return data.get("volumes", {}).get(vol_key(sink, port), "")
+
+def remember(data, sinks, default_sink, hold=()):
     if default_sink and (real_sink(default_sink) or data.get("sink_virtual_ok")):
         data["sink"] = default_sink
     for s in sinks:
-        if s["volume"]:
+        if s["volume"] and s["name"] not in hold:
             data["volumes"][vol_key(s["name"], s["port"])] = s["volume"]
+            k = dev_key(s["name"])
+            if k:
+                data.setdefault("devices", {}).setdefault(k, {})[s["port"] or ""] = s["volume"]
     return data
 
 def restore_plan(data, sinks):
@@ -99,7 +120,7 @@ def restore_plan(data, sinks):
         if s["name"] == sink:
             port = s["port"]
             break
-    vol = data.get("volumes", {}).get(vol_key(sink, port), "") if sink else ""
+    vol = saved_volume(data, sink, port) if sink else ""
     return sink, vol
 
 PHONES = ("headphone", "headset", "наушник", "гарнитур", "bluez", "bluetooth", "a2dp", "usb")
@@ -148,6 +169,12 @@ def hw_routes(sinks):
 
 def phones_on(routes):
     return any(output_kind(n, p) == "phones" for n, p in (routes or {}).items())
+
+def new_sinks(prev, cur):
+    return [n for n in cur if prev is not None and n not in prev]
+
+def needs_reapply(now_vol, saved, first_vol):
+    return bool(saved) and bool(now_vol) and now_vol != saved and (now_vol == first_vol or now_vol == "100%")
 
 def route_events(prev, cur):
     changed = [n for n, p in cur.items() if prev is not None and prev.get(n) != p]

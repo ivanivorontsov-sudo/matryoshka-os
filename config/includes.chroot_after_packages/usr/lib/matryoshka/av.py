@@ -24,16 +24,49 @@ def own_release(path):
         for b in iter(lambda: f.read(1 << 20), b""): h.update(b)
     return h.hexdigest() == want[n]
 
-def scan(path, fallback=True, clamd_timeout=120):
+def engine_ping():
+    return C.run(["clamdscan", "--ping", "1"], timeout=15).returncode == 0
+
+
+def engine_ready(wait=180, log=None):
+    import time
+    if engine_ping():
+        return True
+    if log:
+        log("Запускаю движок ClamAV…")
+    argv = C.root_argv("av-start")
+    if argv[0] == "sudo":
+        C.run(argv, timeout=60)
+    t0 = time.time()
+    while time.time() - t0 < wait:
+        if engine_ping():
+            return True
+        st = C.run(["systemctl", "is-active", "clamav-daemon.service"], timeout=10).stdout.strip()
+        if st in ("inactive", "failed") and time.time() - t0 > 15:
+            return False
+        time.sleep(2)
+    return engine_ping()
+
+
+def scan(path, fallback=True, clamd_timeout=300, wait=180):
     res = {"file": path, "clam": [], "yara": [], "activator": False}
     if own_release(path):
         res.update(own=True, confirmed=[], heuristic=[], by_name=False, malicious=False, size=os.path.getsize(path))
         return res
-    r = C.run(["clamdscan", "--fdpass", "--no-summary", path], timeout=clamd_timeout)
-    res["clam_ok"] = r.returncode in (0, 1) and "ERROR" not in r.stdout
+    r = subprocess.CompletedProcess([], 2, "", "")
+    res["clam_ok"] = False
+    for attempt in range(2):
+        if not engine_ready(wait if attempt == 0 else 60):
+            break
+        r = C.run(["clamdscan", "--fdpass", "--no-summary", path], timeout=clamd_timeout)
+        res["clam_ok"] = r.returncode in (0, 1) and "ERROR" not in r.stdout
+        if res["clam_ok"]:
+            break
+    res["engine"] = "clamd" if res["clam_ok"] else ""
     if not res["clam_ok"] and fallback:
-        r = C.run(["clamscan", "--no-summary", "-d", "/var/lib/clamav", path])
+        r = C.run(["clamscan", "--no-summary", "-d", "/var/lib/clamav", path], timeout=600)
         res["clam_ok"] = r.returncode in (0, 1)
+        res["engine"] = "clamscan" if res["clam_ok"] else ""
     res["clam"] = [l.split(": ", 1)[1].replace(" FOUND", "") for l in r.stdout.splitlines() if l.endswith("FOUND")]
     y = C.run(["yara", "-w", "-r", RULES, path], timeout=120)
     res["yara"] = sorted({l.split()[0] for l in y.stdout.splitlines() if l.strip()})

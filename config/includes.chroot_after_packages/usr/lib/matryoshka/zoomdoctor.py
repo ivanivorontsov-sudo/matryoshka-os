@@ -227,8 +227,7 @@ def check_firewall(r):
         except OSError:
             pass
         if re.search(r'^DEFAULT_OUTPUT_POLICY="?(DROP|REJECT)', pol, re.M):
-            r.add("bad", "Брандмауэр ufw запрещает исходящие соединения: Zoom нужны TCP 443, 8801-8802 и UDP 8801-8810", "root")
-            r.root["ufw"] = True
+            r.add("bad", "Брандмауэр ufw запрещает исходящие соединения (это ваша настройка, Матрёшка её не меняет): Zoom нужны TCP 443, 8801-8802 и UDP 8801-8810")
         else:
             r.add("ok", "Брандмауэр ufw пропускает исходящие соединения (Zoom работает только через исходящие)")
     else:
@@ -361,6 +360,34 @@ def check_display(r):
     else:
         r.add("ok", f"Сеанс {sess or 'x11'}")
 
+LOGRX = re.compile(r"(ssl|certif|proxy|timed? ?out|refused|unreachable|reset by peer|handshake|dns|resolve|error ?code|errcode|result ?= ?[1-9]\d{3,}|fail)", re.I)
+
+def check_logs(r):
+    d = os.path.join(HOME, ".zoom", "logs")
+    files = sorted(glob.glob(os.path.join(d, "*.log")) + glob.glob(os.path.join(d, "*.txt")), key=os.path.getmtime)[-6:]
+    hits = []
+    for f in files:
+        try:
+            lines = open(f, encoding="utf-8", errors="replace").read().splitlines()[-4000:]
+        except OSError:
+            continue
+        for line in lines:
+            if LOGRX.search(line) and "matryoshka-run" not in f:
+                hits.append(line.strip()[:220])
+    if hits:
+        r.add("info", "Последние ошибки в журналах Zoom (~/.zoom/logs):\n      " + "\n      ".join(hits[-12:]))
+    codes = sorted({c for h in hits for c in re.findall(r"\b(1\d{8}|10\d{4}|50\d{2})\b", h)})
+    for c in codes:
+        if c in CODES:
+            r.add("info", f"Код {c}: {CODES[c]}")
+
+def web_url(link):
+    m = re.search(r"confno=(\d+)", link) or re.search(r"/j/(\d+)", link)
+    if not m:
+        return None
+    p = re.search(r"pwd=([^&\s]+)", link)
+    return "https://app.zoom.us/wc/join/%s%s" % (m.group(1), ("?pwd=" + p.group(1)) if p else "")
+
 def check_audio(r):
     if run(["pactl", "info"]).returncode != 0:
         r.add("warn", "Звуковой сервер не отвечает: Zoom может зависать при подключении к звуку")
@@ -476,6 +503,7 @@ def diagnose():
     check_conf(r)
     check_display(r)
     check_audio(r)
+    check_logs(r)
     return r
 
 def main():
@@ -488,6 +516,15 @@ def main():
         c = re.sub(r"\D", "", args[i + 1] if i + 1 < len(args) else "")
         print(CODES.get(c, f"Код {c} не известен доктору. Пришлите его вместе с выводом matryoshka zoom-doctor."))
         print()
+    if "--web" in args:
+        i = args.index("--web")
+        u = web_url(args[i + 1] if i + 1 < len(args) else "")
+        if not u:
+            print("Нужна ссылка на встречу: matryoshka zoom-doctor --web 'https://zoom.us/j/…' или zoommtg://…")
+            return 2
+        print("Открываю встречу в браузере:", re.sub(r"pwd=.*", "pwd=…", u))
+        subprocess.Popen(["xdg-open", u], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return 0
     if "--test" in args:
         return run_test()
     if "--update" in args:
@@ -509,7 +546,7 @@ def main():
     if "--fix" not in args:
         if r.fixes:
             print("\nЧтобы исправить найденное: matryoshka zoom-doctor --fix")
-        print("Если Zoom всё равно пишет ошибку с кодом, пришлите код. Запасной путь: войти в конференцию из браузера по ссылке https://app.zoom.us/wc/join/<номер>")
+        print("Если Zoom всё равно пишет ошибку с кодом, пришлите код. Запасной путь: войти в конференцию из браузера: matryoshka zoom-doctor --web 'ссылка на встречу'")
         return 1 if any(l == "bad" for l, _ in r.items) else 0
     if "handler" in r.fixes:
         print("Ярлык и ссылки zoommtg:// перепривязаны:", ", ".join(fix_handler()) or "без изменений")
