@@ -24,9 +24,13 @@ def session_text(program_dir, program, dos_root, home, shared, print_dir, deskto
     return """[sdl]
 fullscreen=false
 autolock=false
-output=surface
+output=ttf
 usesystemcursor=true
 mouse_emulation=always
+[ttf]
+outputswitch=auto
+lins=25
+cols=80
 [dosbox]
 machine=svga_s3
 memsize=64
@@ -137,7 +141,7 @@ def conf_text(drive, folder, program):
 
 def write_conf(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="cp866", errors="replace") as f:
         f.write(text)
 
 def to_pdf(print_dir):
