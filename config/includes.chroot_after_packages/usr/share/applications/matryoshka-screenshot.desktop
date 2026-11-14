@@ -4,5 +4,12 @@ Name=Быстрый скрин
 Exec=matryoshka-screenshot
 Icon=spectacle
 Categories=Utility;
-Comment=Снимок области в Изображения/Скрины
+Comment=Снимок области: выделите и готово. Esc или правая кнопка — отменить
+StartupNotify=false
+X-KDE-StartupNotify=false
 X-KDE-Shortcuts=Meta+Shift+S
+Actions=Settings;
+
+[Desktop Action Settings]
+Name=Настройки быстрого скрина
+Exec=matryoshka-screenshot --settings
