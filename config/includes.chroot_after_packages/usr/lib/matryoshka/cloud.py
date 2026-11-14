@@ -177,7 +177,11 @@ def tray():
     from PyQt6.QtGui import QIcon
     from PyQt6.QtCore import QTimer
     app = QApplication(sys.argv); C.qt_ru(app); app.setQuitOnLastWindowClosed(False); app.setDesktopFileName("matryoshka-cloud")
-    ic = QSystemTrayIcon(QIcon.fromTheme("folder-cloud", QIcon.fromTheme("folder-remote")))
+    ico = QIcon.fromTheme("folder-cloud", QIcon.fromTheme("folder-remote"))
+    if ico.isNull():
+        from PyQt6.QtWidgets import QStyle
+        ico = app.style().standardIcon(QStyle.StandardPixmap.SP_DriveNetIcon)
+    ic = QSystemTrayIcon(ico)
     m = QMenu()
     st = m.addAction(""); st.setEnabled(False)
     m.addSeparator()
