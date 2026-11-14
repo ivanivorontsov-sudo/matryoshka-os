@@ -156,6 +156,8 @@ def repair_zoom(home):
         register(dp, prof)
     return fixed
 
+MARK = ".matryoshka-archive"
+
 def slug(name):
     s = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.").lower()
     return s or "program"
@@ -226,7 +228,12 @@ def root_install(path, digest, name):
     if sha256(path) != digest:
         print("архив изменился после проверки антивирусом, установка остановлена")
         return 3
-    s = slug(name)
+    base = slug(name)
+    s = base
+    n = 1
+    while os.path.lexists(os.path.join("/opt", s)) and not os.path.isfile(os.path.join("/opt", s, MARK)):
+        n += 1
+        s = "%s-%d" % (base, n)
     dst = os.path.join("/opt", s)
     stage = os.path.join("/opt", ".matryoshka-stage-" + s)
     shutil.rmtree(stage, ignore_errors=True)
@@ -237,6 +244,7 @@ def root_install(path, digest, name):
         shutil.rmtree(stage, ignore_errors=True)
         print("ОБНАРУЖЕНА УГРОЗА, установка запрещена:\n" + "\n".join(found))
         return 4
+    open(os.path.join(stage, MARK), "w").write(name + "\n")
     subprocess.run(["chown", "-R", "root:root", stage], check=False)
     subprocess.run(["chmod", "-R", "u+rwX,go+rX,go-w", stage], check=False)
     if os.path.exists(dst):
@@ -245,7 +253,12 @@ def root_install(path, digest, name):
     exe = os.path.join(dst, info["exe"])
     os.chmod(exe, os.stat(exe).st_mode | 0o755)
     prof = info.get("profile") or {}
-    launcher = os.path.join("/usr/local/bin", s)
+    cmd = s
+    other = shutil.which(cmd, path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+    if other and not (other.startswith("/usr/local/bin/") and "X_MATRYOSHKA_ARCHIVE=1" in open(other, errors="replace").read()):
+        cmd = s + "-app"
+    s_cmd = cmd
+    launcher = os.path.join("/usr/local/bin", cmd)
     if not os.path.exists(launcher) or "X_MATRYOSHKA_ARCHIVE=1" in open(launcher, errors="replace").read():
         env = ("export %s\n" % prof["env"]) if prof.get("env") else ""
         open(launcher, "w").write('#!/bin/sh\nX_MATRYOSHKA_ARCHIVE=1\n%scd "%s" || exit 1\nexec "%s" "$@"\n' % (env, os.path.dirname(exe), exe))
@@ -254,7 +267,7 @@ def root_install(path, digest, name):
     dp = "/usr/share/applications/matryoshka-archive-%s.desktop" % s
     open(dp, "w", encoding="utf-8").write(desktop_text(prof.get("name") or name, exe, icon, prof, os.path.dirname(exe)))
     subprocess.run(["update-desktop-database", "-q", "/usr/share/applications"], check=False)
-    print("установлено в %s, команда: %s" % (dst, s))
+    print("установлено в %s, команда: %s" % (dst, s_cmd))
     return 0
 
 if __name__ == "__main__":

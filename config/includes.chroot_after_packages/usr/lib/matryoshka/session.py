@@ -532,9 +532,11 @@ KWIN_RULES = {
 def kwin_rules():
     import configparser
     f = os.path.expanduser("~/.config/kwinrulesrc")
-    cp = configparser.ConfigParser(interpolation=None, strict=False)
+    cp = configparser.ConfigParser(interpolation=None, strict=False, delimiters=("=",), comment_prefixes=("#",), empty_lines_in_values=False)
     cp.optionxform = str
     if os.path.isfile(f):
+        if "[$i]" in open(f, encoding="utf-8", errors="replace").read():
+            return
         cp.read(f, encoding="utf-8")
     elif os.path.isfile("/etc/xdg/kwinrulesrc"):
         cp.read("/etc/xdg/kwinrulesrc", encoding="utf-8")

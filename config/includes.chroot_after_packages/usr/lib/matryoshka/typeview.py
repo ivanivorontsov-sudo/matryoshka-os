@@ -1,4 +1,4 @@
-import os, sys, time, shutil, hashlib
+import re, os, sys, time, shutil, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 HOME = os.path.expanduser("~")
@@ -79,24 +79,34 @@ def bookmark(k):
     href = "file://" + os.path.join(BASE, k)
     return ' <bookmark href="%s"><title>%s</title><info><metadata owner="http://freedesktop.org"><bookmark:icon name="%s"/></metadata><metadata owner="http://www.kde.org"><ID>matryoshka-types-%s</ID></metadata></info></bookmark>\n' % (href, TITLES[k], ICONS[k], k)
 
+BM_RE = re.compile(r"[ \t]*<bookmark\b(?:(?!</bookmark>).)*?<ID>matryoshka-types-[a-z]+</ID>(?:(?!</bookmark>).)*?</bookmark>[ \t]*\n?", re.S)
+
 def places(on=True):
-    head = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xbel>\n<xbel xmlns:bookmark="http://www.freedesktop.org/standards/desktop-bookmarks" xmlns:kdepriv="http://www.kde.org/kdepriv" xmlns:mime="http://www.freedesktop.org/standards/shared-mime-info">\n</xbel>\n'
-    t = open(PLACES, encoding="utf-8").read() if os.path.isfile(PLACES) else head
+    if not os.path.isfile(PLACES):
+        return False
+    t = open(PLACES, encoding="utf-8").read()
     if "<xbel" not in t or "</xbel>" not in t:
         return False
-    lines = [l for l in t.splitlines(True) if "matryoshka-types-" not in l]
-    t2 = "".join(lines)
+    found = BM_RE.findall(t)
+    want = [k for k in TITLES] if on else []
+    have = re.findall(r"<ID>matryoshka-types-([a-z]+)</ID>", t)
+    if have == want and len(found) == len(have):
+        return True
+    t2 = BM_RE.sub("", t)
+    if "matryoshka-types-" in t2:
+        return False
     if on:
-        add = "".join(bookmark(k) for k in TITLES)
         i = t2.rindex("</xbel>")
-        t2 = t2[:i] + add + t2[i:]
-    if t2 != t:
-        os.makedirs(os.path.dirname(PLACES), exist_ok=True)
-        if os.path.isfile(PLACES):
-            shutil.copy2(PLACES, PLACES + ".matryoshka.bak")
-        with open(PLACES + ".tmp", "w", encoding="utf-8") as f:
-            f.write(t2)
-        os.replace(PLACES + ".tmp", PLACES)
+        t2 = t2[:i] + "".join(bookmark(k) for k in TITLES) + t2[i:]
+    try:
+        import xml.dom.minidom
+        xml.dom.minidom.parseString(t2.encode("utf-8"))
+    except Exception:
+        return False
+    shutil.copy2(PLACES, PLACES + ".matryoshka.bak")
+    with open(PLACES + ".tmp", "w", encoding="utf-8") as f:
+        f.write(t2)
+    os.replace(PLACES + ".tmp", PLACES)
     return True
 
 def gtk_places(on=True):
