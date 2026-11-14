@@ -3,3 +3,6 @@ file /usr/local/bin/matryoshka-netclient
 file /usr/lib/matryoshka/netclient.py
 file /usr/share/applications/matryoshka-netclient.desktop
 file /etc/NetworkManager/system-connections/netclient.nmconnection
+file /etc/systemd/system/matryoshka-novpn.service
+file /etc/systemd/system/multi-user.target.wants/matryoshka-novpn.service
+file /usr/lib/matryoshka/novpn.sh
