@@ -618,6 +618,11 @@ def on_login():
     except Exception:
         pass
     try:
+        if C.settings().get("type_places", True) and C.run(["pgrep", "-u", str(os.getuid()), "-f", "typeview.py watch"], timeout=5).returncode != 0:
+            subprocess.Popen(["python3", "/usr/lib/matryoshka/typeview.py", "watch"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception:
+        pass
+    try:
         caches_fix()
     except Exception:
         pass

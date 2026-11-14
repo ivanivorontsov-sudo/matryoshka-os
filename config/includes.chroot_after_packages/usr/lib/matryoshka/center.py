@@ -196,6 +196,18 @@ class Center(QWidget):
             p, _ = QFileDialog.getOpenFileName(self, "Программа", os.path.expanduser("~"), "Программы (*.exe *.msi *.apk *.xapk *.apks *.AppImage *.deb *.sh);;Все (*)")
             if p: subprocess.Popen(["matryoshka-run", p])
         v.addWidget(btn("Запустить или установить файл…", pick))
+        import fmchoice
+        fmh = QHBoxLayout(); fmh.addWidget(QLabel("Файловый менеджер по умолчанию:"))
+        fmc = QComboBox(); fms = fmchoice.managers(); cur_fm = fmchoice.current()
+        for did, name in fms: fmc.addItem(name, did)
+        if fmc.findData(cur_fm) >= 0: fmc.setCurrentIndex(fmc.findData(cur_fm))
+        fmc.activated.connect(lambda _: o.setPlainText(fmchoice.set_default(fmc.currentData())))
+        fmh.addWidget(fmc, 1); v.addLayout(fmh)
+        tp = QCheckBox("Папки «Все изображения», «Всё видео», «Все документы», «Установочные файлы» в Dolphin и окнах выбора файлов"); tp.setChecked(self.s.get("type_places", True))
+        def tpset(x):
+            self.s["type_places"] = x; self.save()
+            subprocess.Popen(["python3", "/usr/lib/matryoshka/typeview.py", "watch" if x else "off"], start_new_session=True)
+        tp.toggled.connect(tpset); v.addWidget(tp)
         di = QCheckBox("Значок на рабочем столе для каждой новой программы (Debian, Flatpak, Android)"); di.setChecked(self.s.get("desktop_icons", True) is not False)
         def di_set(x):
             self.s["desktop_icons"] = bool(x); self.save()
