@@ -129,7 +129,12 @@ Item {
                 fadeoutTimer.restart();
                 bioRetryTimer.left = 3;
             }
-            authenticator.startAuthenticating();
+            if (uiVisible || blockUI) {
+                authenticator.startAuthenticating();
+            } else {
+                bioRetryTimer.stop();
+                authenticator.stopAuthenticating();
+            }
         }
         onBlockUIChanged: {
             if (blockUI) {
