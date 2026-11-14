@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<oor:data xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:oor="http://openoffice.org/2001/registry">
+<dependency file="main"/>
+<oor:component-data oor:name="Linguistic" oor:package="org.openoffice.Office">
+<node oor:name="General">
+<prop oor:name="DefaultLocale" oor:op="fuse"><value>ru-RU</value></prop>
+</node>
+<node oor:name="SpellChecking">
+<prop oor:name="IsSpellAuto" oor:op="fuse"><value>true</value></prop>
+</node>
+<node oor:name="ServiceManager">
+<node oor:name="SpellCheckerList">
+<prop oor:name="ru-RU" oor:op="fuse" oor:type="oor:string-list"><value>org.openoffice.lingu.MySpellSpellChecker</value></prop>
+</node>
+<node oor:name="HyphenatorList">
+<prop oor:name="ru-RU" oor:op="fuse" oor:type="oor:string-list"><value>org.openoffice.lingu.LibHnjHyphenator</value></prop>
+</node>
+<node oor:name="ThesaurusList">
+<prop oor:name="ru-RU" oor:op="fuse" oor:type="oor:string-list"><value>org.openoffice.lingu.new.Thesaurus</value></prop>
+</node>
+</node>
+</oor:component-data>
+</oor:data>
