@@ -454,6 +454,54 @@ def caches_fix():
     os.makedirs(d, exist_ok=True)
     open(stamp, "w", encoding="utf-8").write(ver + "\n")
 
+def icon_theme_ok(name):
+    dirs = ["/usr/share/icons", os.path.expanduser("~/.local/share/icons"), os.path.expanduser("~/.icons")]
+    return any(os.path.isfile(os.path.join(d, name, "index.theme")) for d in dirs)
+
+def icons_fix():
+    d = os.path.expanduser("~/.local/state/matryoshka")
+    stamp = os.path.join(d, "icons-v2")
+    if os.path.exists(stamp):
+        return
+    changed = []
+    kg = os.path.expanduser("~/.config/kdeglobals")
+    if os.path.isfile(kg):
+        r = C.run(["kreadconfig6", "--file", kg, "--group", "Icons", "--key", "Theme"], timeout=10)
+        name = (r.stdout or "").strip()
+        if name and not icon_theme_ok(name):
+            shutil.copy2(kg, kg + ".matryoshka-icons.bak")
+            C.run(["kwriteconfig6", "--file", kg, "--group", "Icons", "--key", "Theme", "--delete"], timeout=10)
+            changed.append("kdeglobals:" + name)
+    for gtk in ("~/.config/gtk-3.0/settings.ini", "~/.config/gtk-4.0/settings.ini"):
+        f = os.path.expanduser(gtk)
+        if not os.path.isfile(f):
+            continue
+        lines = open(f, encoding="utf-8", errors="replace").read().splitlines(True)
+        out = []
+        for line in lines:
+            k, sep, v = line.partition("=")
+            if sep and k.strip() == "gtk-icon-theme-name" and v.strip() and not icon_theme_ok(v.strip()):
+                changed.append(gtk + ":" + v.strip())
+                continue
+            out.append(line)
+        if len(out) != len(lines):
+            shutil.copy2(f, f + ".matryoshka-icons.bak")
+            open(f, "w", encoding="utf-8").writelines(out)
+    cache = os.path.expanduser("~/.cache")
+    for n in os.listdir(cache) if os.path.isdir(cache) else []:
+        if n.startswith(("ksycoca6_", "ksycoca5_", "plasma_theme_", "plasma-svgelements", "icon-cache")):
+            p = os.path.join(cache, n)
+            try:
+                shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+            except OSError:
+                pass
+    C.run(["kbuildsycoca6", "--noincremental"], timeout=180)
+    os.makedirs(d, exist_ok=True)
+    open(stamp, "w", encoding="utf-8").write(" ".join(changed) + "\n")
+    C.run(["logger", "-t", "matryoshka-icons", "кэш значков пересобран %s" % " ".join(changed)], timeout=5)
+    if C.run(["systemctl", "--user", "is-active", "-q", "plasma-plasmashell.service"], timeout=10).returncode == 0:
+        C.run(["systemctl", "--user", "restart", "plasma-plasmashell.service"], timeout=60)
+
 def fp_reenroll():
     try:
         mark = open("/var/lib/matryoshka/fp-reenroll", encoding="utf-8").read().strip()
@@ -486,6 +534,7 @@ def on_login():
         fp_reenroll()
     except Exception:
         pass
+    threading.Thread(target=icons_fix, daemon=True).start()
     try:
         import waydroid_desktop
         waydroid_desktop.fix_user_files()
