@@ -87,7 +87,7 @@ class Archive(unittest.TestCase):
             r = archiveinst.analyze(p)
             self.assertEqual(r["exe"], "zoom/ZoomLauncher")
             t = archiveinst.desktop_text("Zoom", "/h/Программы/Zoom/zoom/ZoomLauncher", None, r["profile"], "/h/Программы/Zoom/zoom")
-            self.assertIn('Exec=env QT_QPA_PLATFORM=xcb "/h/Программы/Zoom/zoom/ZoomLauncher" %U', t)
+            self.assertIn('Exec=env QT_QPA_PLATFORM=xcb /h/Программы/Zoom/zoom/ZoomLauncher %U', t)
             self.assertIn("x-scheme-handler/zoommtg", t)
 
 class Sink(unittest.TestCase):

@@ -23,7 +23,7 @@ SCHEMES = ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-hand
 PROXY_VARS = ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "no_proxy", "NO_PROXY"]
 
 CODES = {
-    "100000400": "Сервер Zoom отказал во входе в конкретную конференцию (MEETING_STATUS_FAILED). Связь с Zoom при этом есть. Обычные причины: организатор ещё не начал встречу и вход до организатора выключен; встреча закончилась или ссылка устарела; в ссылке потерялся пароль (pwd=...); встреча только для вошедших в аккаунт Zoom или для определённого домена; устаревший клиент; повреждённый профиль ~/.zoom. Проверка: matryoshka zoom-doctor --test (тестовая встреча Zoom). Если тестовая встреча открывается, дело в настройках этой конференции, а не в Матрёшке.",
+    "100000400": "Сервер Zoom не пустил клиент в конференцию (MEETING_STATUS_FAILED). Если та же встреча открывается в браузере, сеть и Россия тут ни при чём: виноват сам клиент. Частые причины: повреждённый профиль ~/.zoom и ~/.config/zoomus.conf, устаревший клиент, запуск под Wayland без xcb. Доктор с --code 100000400 --fix переносит профиль в резервную копию, чинит ярлык (QT_QPA_PLATFORM=xcb) и проверяет версию. Ещё причины на стороне встречи: организатор не начал её, вход только для вошедших в аккаунт Zoom, ссылка без pwd=. Проверка клиента: matryoshka zoom-doctor --test.",
     "100000403": "Нет доступа к службе Zoom: сеть, фильтр провайдера, брандмауэр или устаревший клиент.",
     "5003": "Нет соединения с серверами Zoom: сеть, DNS или брандмауэр.",
     "5004": "Нет соединения с серверами Zoom: сеть, DNS или брандмауэр.",
@@ -388,16 +388,9 @@ def reset_cache():
     z = os.path.join(HOME, ".zoom")
     if not os.path.isdir(z):
         return None
+    run(["pkill", "-u", str(os.getuid()), "-x", "zoom"])
     dst = os.path.join(HOME, ".zoom-backup-" + time.strftime("%Y%m%d-%H%M%S"))
-    keep = os.path.join(z, "data")
-    if os.path.isdir(keep):
-        os.makedirs(dst, exist_ok=True)
-        shutil.move(keep, os.path.join(dst, "data"))
-    for n in ["logs", "reports"]:
-        p = os.path.join(z, n)
-        if os.path.isdir(p):
-            os.makedirs(dst, exist_ok=True)
-            shutil.move(p, os.path.join(dst, n))
+    shutil.move(z, dst)
     return dst
 
 def test_meeting():
@@ -503,6 +496,13 @@ def main():
     r.show()
     if "--json" in args:
         print(json.dumps({"items": r.items, "root": root_args(r)}, ensure_ascii=False))
+    if "--fix" in args and "--code" in args and "100000400" in " ".join(args) and "--reset-cache" not in args:
+        args.append("--reset-cache")
+        zc = zconf()
+        if os.path.isfile(zc):
+            bak = zc + ".before-reset-" + time.strftime("%Y%m%d-%H%M%S")
+            shutil.move(zc, bak)
+            print("zoomus.conf перенесён в", bak)
     if "--reset-cache" in args:
         d = reset_cache()
         print("Кэш и данные Zoom перенесены в", d if d else "(нечего переносить)")

@@ -108,7 +108,7 @@ def analyze(path):
 
 def desktop_text(name, exe, icon, prof, workdir):
     args = (" " + prof["args"]) if prof.get("args") else ""
-    lines = ["[Desktop Entry]", "Type=Application", "Name=%s" % name, 'Exec=%s"%s"%s' % (("env " + prof["env"] + " ") if prof.get("env") else "", exe, args), "Path=%s" % workdir, "Icon=%s" % (icon or prof.get("icon") or "application-x-executable"), "Terminal=false", "Categories=Utility;"]
+    lines = ["[Desktop Entry]", "Type=Application", "Name=%s" % name, 'Exec=%s%s%s' % (("env " + prof["env"] + " ") if prof.get("env") else "", exe if re.fullmatch(r"[^\s\"'\\`$;&|<>()*?#~=%]+", exe) else '"%s"' % exe, args), "Path=%s" % workdir, "Icon=%s" % (icon or prof.get("icon") or "application-x-executable"), "Terminal=false", "Categories=Utility;"]
     if prof.get("mime"):
         lines.append("MimeType=%s;" % ";".join(prof["mime"]))
     if prof.get("wm"):
