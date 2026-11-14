@@ -99,6 +99,18 @@ def places(on=True):
         os.replace(PLACES + ".tmp", PLACES)
     return True
 
+def gtk_places(on=True):
+    from urllib.parse import quote
+    p = os.path.join(HOME, ".config", "gtk-3.0", "bookmarks")
+    t = open(p, encoding="utf-8").read().splitlines() if os.path.isfile(p) else []
+    pre = "file://" + quote(BASE)
+    keep = [l for l in t if not l.startswith(pre + "/")]
+    if on:
+        keep += ["%s/%s %s" % (pre, k, TITLES[k]) for k in TITLES]
+    if keep != t:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        open(p, "w", encoding="utf-8").write("\n".join(keep) + ("\n" if keep else ""))
+
 def enabled():
     import common as C
     return C.settings().get("type_places", True)
@@ -107,6 +119,7 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "off":
         places(False)
+        gtk_places(False)
         shutil.rmtree(BASE, ignore_errors=True)
         sys.exit(0)
     if a and a[0] == "watch":
@@ -115,9 +128,11 @@ if __name__ == "__main__":
             try:
                 build()
                 places(True)
+                gtk_places(True)
             except Exception:
                 pass
             time.sleep(1800)
         sys.exit(0)
     print(build())
     places(True)
+    gtk_places(True)
