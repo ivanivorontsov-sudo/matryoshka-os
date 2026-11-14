@@ -6,11 +6,44 @@
 
 ## Как обновиться
 
-Скачайте `matryoshka-upgrade_1.1.0_all.deb` (если ещё не стоит), `matryoshka-update-18.6.2.tar.gz` и `matryoshka-update-18.6.2.tar.gz.sha256` в одну папку. В «Копия и обновление Матрёшки» сделайте копию и выберите архив. После обновления перезагрузите компьютер.
+Репозиторий закрытый, поэтому проверка обновлений в Центре этот выпуск не видит. Обновляйтесь вручную.
 
-Подлинность: `SHA256SUMS` подписан ключом выпуска `45A2D53B7751F4A8` (`SHA256SUMS.asc`), к архиву приложена подпись `matryoshka-update-18.6.2.tar.gz.sig`.
+1. Войдите в GitHub в браузере и скачайте из этого выпуска в папку `~/Загрузки` файлы: `matryoshka-update-18.6.2.tar.gz`, `matryoshka-update-18.6.2.tar.gz.sha256`, `matryoshka-update-18.6.2.tar.gz.sig`, `SHA256SUMS`, `SHA256SUMS.asc`. Если браузер добавил к имени « (1)», переименуйте файл.
 
-Проверка обновлений в Центре видит только основной выпуск (Latest). Предварительные выпуски она не показывает. Начиная с 18.6.2 их можно включить строкой `CHANNEL=pre` в `/etc/matryoshka/update-source.conf`.
+2. Проверьте подпись и контрольные суммы:
+
+```
+cd ~/Загрузки
+G=$(mktemp -d)
+gpg --homedir "$G" -q --import /usr/share/matryoshka/update-keys/matryoshka-release.gpg
+gpg --homedir "$G" --verify SHA256SUMS.asc SHA256SUMS
+gpg --homedir "$G" --verify matryoshka-update-18.6.2.tar.gz.sig matryoshka-update-18.6.2.tar.gz
+rm -rf "$G"
+sha256sum -c --ignore-missing SHA256SUMS
+```
+
+Обе проверки gpg должны написать «Good signature from "Matryoshka OS Release"» (по-русски «Действительная подпись»), отпечаток ключа `4532 8D5C 7182 16A0 9728 0102 45A2 D53B 7751 F4A8`. `sha256sum` должен написать `OK` для трёх файлов. Если что-то не совпало, не обновляйтесь. Предупреждение «ключ не заверен доверенной подписью» — нормально.
+
+3. Проверьте, что стоит программа обновления 1.1.0:
+
+```
+dpkg-query -W matryoshka-upgrade
+```
+
+Если её нет или версия ниже 1.1.0, скачайте из выпуска `matryoshka-upgrade_1.1.0_all.deb` и выполните `sudo apt install ~/Загрузки/matryoshka-upgrade_1.1.0_all.deb`.
+
+4. Обновление тем же путём, что и в программе обновления. Запустите «Копия и обновление Матрёшки» (`matryoshka-upgrade`). На шаге 1 сделайте копию. На шаге 2 выберите `~/Загрузки/matryoshka-update-18.6.2.tar.gz`, SHA256 подставится сам из файла `.sha256`. Нажмите «Обновить» и после окончания перезагрузите компьютер.
+
+То же самое из терминала:
+
+```
+sudo bash /usr/lib/matryoshka-upgrade/sysbackup.sh plan same
+sudo bash /usr/lib/matryoshka-upgrade/sysbackup.sh create same
+sudo bash /usr/lib/matryoshka-upgrade/upgrade.sh ~/Загрузки/matryoshka-update-18.6.2.tar.gz "$(cut -d' ' -f1 ~/Загрузки/matryoshka-update-18.6.2.tar.gz.sha256)" same
+sudo reboot
+```
+
+`plan` показывает, хватает ли места для копии. `create` делает копию (без неё `upgrade.sh` не запустится). Копию лучше делать на другой диск: вместо `same` укажите папку на нём.
 
 ## Отпечаток пальца (Goodix GXFP5130), matryoshka-gxfp 0.1.11
 
@@ -66,7 +99,7 @@
 ## Безопасность
 
 - admin-run проверяет согласие только для активного местного сеанса пользователя, а не для первого сеанса в списке.
-- VPN-клиентов и прокси в составе нет. openvpn, wireguard-tools, network-manager-openvpn, strongswan и matryoshka-netclient один раз удаляются после обновления, даже если вы ставили их сами (тогда поставьте заново). Настройки и подключения пользователя остаются. Другие VPN-программы, например AmneziaVPN, не трогаются.
+- VPN-клиентов и прокси в составе Матрёшки нет. Программы, которые вы поставили сами, обновление не удаляет.
 
 ## Не вошло
 
