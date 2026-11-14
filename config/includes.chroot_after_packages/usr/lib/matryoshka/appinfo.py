@@ -220,8 +220,50 @@ def outcome(name, x, gone):
     return False, "«%s» НЕ удалена: %s.%s" % (name, why, ("\n\n" + out[-1200:]) if out else "")
 
 
+def busy(parent, text, fn):
+    import threading
+    from PyQt6.QtCore import Qt, QEventLoop, QTimer
+    from PyQt6.QtWidgets import QApplication, QProgressDialog
+    box = {}
+    def work():
+        try:
+            box["r"] = fn()
+        except Exception as e:
+            box["r"] = subprocess.CompletedProcess([], 127, "", str(e))
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    if QApplication.instance() is None:
+        t.join()
+        return box["r"]
+    dlg = QProgressDialog(text, None, 0, 0, parent)
+    dlg.setWindowTitle("Удаление")
+    dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+    dlg.setMinimumDuration(0)
+    dlg.show()
+    loop = QEventLoop()
+    tm = QTimer()
+    tm.timeout.connect(lambda: loop.quit() if not t.is_alive() else None)
+    tm.start(150)
+    loop.exec()
+    tm.stop()
+    dlg.close()
+    return box["r"]
+
+
+def log(msg):
+    try:
+        d = os.path.join(C.HOME, ".cache/matryoshka")
+        os.makedirs(d, exist_ok=True)
+        import datetime
+        with open(os.path.join(d, "appinfo.log"), "a", encoding="utf-8") as f:
+            f.write("%s %s\n" % (datetime.datetime.now().isoformat(timespec="seconds"), msg))
+    except Exception:
+        pass
+
+
 def remove(d, parent=None):
     from PyQt6.QtWidgets import QMessageBox
+    log("удаление: %s пакет=%s flatpak=%s android=%s" % (d.get("path"), d.get("package"), d.get("flatpak"), d.get("waydroid")))
     ask = lambda t: QMessageBox.question(parent, "Удаление", t) == QMessageBox.StandardButton.Yes
     say = lambda t: QMessageBox.information(parent, "Удаление", t[-1500:])
     def report(ok, text):
@@ -234,18 +276,19 @@ def remove(d, parent=None):
             return False
         if not ask("Удалить «%s» (пакет %s)?\nБудут удалены пакеты: %s\nНастройки в домашней папке останутся." % (d["name"], d["package"], ", ".join(gone))):
             return False
-        x = C.root("remove-app", d["package"])
+        x = busy(parent, "Удаляю «%s»… Подождите, это может занять минуту." % d["name"], lambda: C.root("remove-app", d["package"]))
+        log("remove-app %s: код %s" % (d["package"], x.returncode))
         return report(*outcome(d["name"], x, not pkg_installed(d["package"])))
     if d["flatpak"]:
         if not ask("Удалить Flatpak-программу «%s» (%s)?" % (d["name"], d["flatpak"])):
             return False
         scope = "--user" if d["path"].startswith(C.HOME) else "--system"
-        x = C.run(["flatpak", "uninstall", scope, "-y", "--noninteractive", d["flatpak"]], timeout=600)
+        x = busy(parent, "Удаляю «%s»…" % d["name"], lambda: C.run(["flatpak", "uninstall", scope, "-y", "--noninteractive", d["flatpak"]], timeout=600))
         return report(*outcome(d["name"], x, not flatpak_installed(d["flatpak"], scope)))
     if d["waydroid"]:
         if not ask("Удалить Android-приложение %s?" % d["waydroid"]):
             return False
-        x = C.run(["waydroid", "app", "remove", d["waydroid"]], timeout=300)
+        x = busy(parent, "Удаляю «%s»…" % d["name"], lambda: C.run(["waydroid", "app", "remove", d["waydroid"]], timeout=300))
         left = d["waydroid"] in C.run(["waydroid", "app", "list"], timeout=60).stdout
         return report(*outcome(d["name"], x, x.returncode == 0 and not left))
     if d["path"].startswith(LOCAL_DIR):
@@ -371,6 +414,24 @@ def dialog(path):
 
 
 def main():
+    log("запуск: %s" % " ".join(sys.argv[1:]))
+    try:
+        return run_main()
+    except Exception:
+        import traceback
+        err = traceback.format_exc()
+        log(err)
+        try:
+            from PyQt6.QtWidgets import QApplication, QMessageBox
+            if QApplication.instance() is None:
+                QApplication(sys.argv)
+            QMessageBox.critical(None, "Удаление и сведения о программе", "Ошибка:\n\n" + err[-1500:])
+        except Exception:
+            pass
+        return 1
+
+
+def run_main():
     from PyQt6.QtWidgets import QApplication
     if len(sys.argv) < 3 or sys.argv[1] not in ("--info", "--remove", "--appstream"):
         print("appinfo.py --info|--remove ФАЙЛ.desktop | --appstream appstream://ID")

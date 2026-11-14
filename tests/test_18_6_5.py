@@ -122,5 +122,18 @@ class Uninstall(unittest.TestCase):
         self.assertEqual(subprocess.run(["bash", "-c", sh], capture_output=True, text=True).stdout.strip(), "ok")
 
 
+    def test_busy_without_gui(self):
+        import appinfo
+        r = appinfo.busy(None, "x", lambda: subprocess.CompletedProcess([], 0, "ok", ""))
+        self.assertEqual((r.returncode, r.stdout), (0, "ok"))
+        r = appinfo.busy(None, "x", lambda: 1 / 0)
+        self.assertEqual(r.returncode, 127)
+
+    def test_main_catches_errors(self):
+        with open(os.path.join(LIB, "appinfo.py"), encoding="utf-8") as f:
+            s = f.read()
+        self.assertIn("return run_main()", s)
+        self.assertIn("QMessageBox.critical", s)
+
 if __name__ == "__main__":
     unittest.main()

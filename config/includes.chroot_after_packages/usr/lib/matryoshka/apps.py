@@ -51,7 +51,8 @@ class Apps(QWidget):
     def remove(self):
         pk = [self.list.item(i).data(256) for i in range(self.list.count()) if self.list.item(i).checkState() == Qt.CheckState.Checked]
         if not pk or QMessageBox.question(self, "Удаление", "Удалить: %s?\nНенужные зависимости тоже уберутся." % ", ".join(pk)) != QMessageBox.StandardButton.Yes: return
-        r = C.root("remove-app", *pk)
+        import appinfo
+        r = appinfo.busy(self, "Удаляю: %s… Подождите." % ", ".join(pk), lambda: C.root("remove-app", *pk))
         left = [p for p in pk if C.run(["dpkg-query", "-W", "-f", "${db:Status-Abbrev}", p], timeout=20).stdout.startswith("ii")]
         out = (r.stdout[-1500:] + r.stderr[-800:]).strip()
         if left:
