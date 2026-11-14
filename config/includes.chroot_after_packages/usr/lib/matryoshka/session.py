@@ -614,6 +614,11 @@ def on_login():
     except Exception:
         pass
     try:
+        import dosbox
+        dosbox.refresh_launchers()
+    except Exception:
+        pass
+    try:
         threading.Timer(8, cloud_tray).start()
     except Exception:
         pass

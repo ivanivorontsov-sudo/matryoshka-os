@@ -5,3 +5,14 @@ Comment=DOSBox-X: свои программы, Norton Commander и старый 
 Exec=matryoshka-dos
 Icon=dosbox-x
 Categories=Utility;Emulator;
+Actions=addfile;opendir;
+
+[Desktop Action addfile]
+Name=Добавить файл в папку DOS (диск D:)
+Icon=list-add
+Exec=python3 /usr/lib/matryoshka/dosbox.py --add-file-dos
+
+[Desktop Action opendir]
+Name=Открыть папку DOS (диск D:)
+Icon=folder-open
+Exec=python3 /usr/lib/matryoshka/dosbox.py --open-dir-dos

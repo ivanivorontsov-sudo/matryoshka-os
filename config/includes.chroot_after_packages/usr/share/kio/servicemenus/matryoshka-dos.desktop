@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/x-dosexec;application/x-ms-dos-executable;application/x-bat;application/x-dos-com;
+Actions=dosrun;dosaddfile;dosopendir;
+X-KDE-Submenu=DOS
+X-KDE-Priority=TopLevel
+
+[Desktop Action dosrun]
+Name=Запустить в DOS (DOSBox-X)
+Icon=dosbox-x
+Exec=python3 /usr/lib/matryoshka/dosbox.py %f
+
+[Desktop Action dosaddfile]
+Name=Добавить файл в папку программы
+Icon=list-add
+Exec=python3 /usr/lib/matryoshka/dosbox.py --add-file %f
+
+[Desktop Action dosopendir]
+Name=Открыть папку диска программы (C:)
+Icon=folder-open
+Exec=python3 /usr/lib/matryoshka/dosbox.py --open-dir %f

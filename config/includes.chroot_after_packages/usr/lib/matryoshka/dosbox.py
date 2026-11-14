@@ -1,4 +1,4 @@
-import glob, os, shutil, subprocess, sys, zlib
+import glob, os, re, shutil, subprocess, sys, zlib
 
 def q(path):
     return path.replace('"', "").replace("\\", "/")
@@ -10,10 +10,17 @@ def run_line(name):
         return "call %s\n" % cmd
     return "%s\n" % cmd
 
-def session_text(program_dir, program, dos_root, home, shared, print_dir):
+LNG = "/usr/share/dosbox-x/languages/ru_RU.lng"
+
+def keyrus_line():
+    return "if exist d:\\KEYRUS\\KEYRUS.COM d:\\KEYRUS\\KEYRUS.COM\n"
+
+def session_text(program_dir, program, dos_root, home, shared, print_dir, desktop=None):
     program_dir, dos_root, home, shared, print_dir = (q(p) for p in (program_dir, dos_root, home, shared, print_dir))
+    lang = "language=%s\n" % LNG if os.path.isfile(LNG) else ""
+    desk = 'mount -q g "%s" -freesize 2048\n' % q(desktop) if desktop else ""
     name = program.replace('"', "")
-    run = run_line(name) if name else "echo C: program, D: DOS, E: home, F: shared\n"
+    run = run_line(name) if name else "echo C: программа, D: DOS, E: домашняя папка, F: Общее, G: рабочий стол\n"
     return """[sdl]
 fullscreen=false
 autolock=false
@@ -27,6 +34,7 @@ captures={print_dir}
 startup_verbosity=quiet
 startbanner=false
 quit warning=false
+{lang}
 [render]
 aspect=true
 scaler=none
@@ -93,12 +101,12 @@ mount -q c "{program_dir}" -freesize 2048
 mount -q d "{dos_root}" -freesize 2048
 mount -q e "{home}" -freesize 2048
 mount -q f "{shared}" -freesize 2048
-set TEMP=C:\\
+{desk}set TEMP=C:\\
 set TMP=C:\\
 set BLASTER=A220 I7 D1 H5 P330 T6
 path c:\\;d:\\;z:\\;z:\\system;z:\\bin;z:\\dos;z:\\4dos;z:\\textutil
-c:
-{run}""".format(program_dir=program_dir, dos_root=dos_root, home=home, shared=shared, print_dir=print_dir, run=run)
+{keyrus}c:
+{run}""".format(program_dir=program_dir, dos_root=dos_root, home=home, shared=shared, print_dir=print_dir, run=run, lang=lang, desk=desk, keyrus=keyrus_line())
 
 def link_base(home):
     for b in (os.path.join(home, ".config", "matryoshka", "dos", "links"), os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp", "matryoshka-dos-%d" % os.getuid())):
@@ -160,6 +168,111 @@ def places(home=None):
             f.write("Norton Commander и Festa в систему не входят. Положите свои легальные копии в DOS/NC и DOS/CAD и откройте EXE, COM или BAT двойным щелчком.\nПечать из DOS сохраняется в DOS/Печать в PDF.\n")
     return home, dos_root, shared, prints
 
+def desktop_dir(home):
+    return next((p for p in (os.path.join(home, "Рабочий стол"), os.path.join(home, "Desktop")) if os.path.isdir(p)), None)
+
+def launcher_text(label, conf, program):
+    me = "/usr/lib/matryoshka/dosbox.py"
+    pq = program.replace('"', "")
+    return ("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -nopromptfolder -fastlaunch -conf \"%s\"\nIcon=dosbox-x\n"
+            "X-Matryoshka-DOS-Program=%s\nActions=addfile;opendir;\n\n"
+            "[Desktop Action addfile]\nName=Добавить файл в папку программы\nIcon=list-add\nExec=python3 %s --add-file \"%s\"\n\n"
+            "[Desktop Action opendir]\nName=Открыть папку диска программы (C:)\nIcon=folder-open\nExec=python3 %s --open-dir \"%s\"\n") % (label, conf, pq, me, pq, me, pq)
+
+def write_launcher(home, label, conf, program):
+    desk = desktop_dir(home)
+    if not desk or not program:
+        return None
+    lf = os.path.join(desk, label + " (DOS).desktop")
+    text = launcher_text(label, conf, program)
+    if os.path.exists(lf):
+        old = open(lf, encoding="utf-8", errors="replace").read()
+        if old == text or "dosbox-x" not in old:
+            return lf
+    with open(lf, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.chmod(lf, 0o755)
+    return lf
+
+def program_dir_of(target):
+    target = os.path.abspath(target)
+    if target.endswith(".desktop") and os.path.isfile(target):
+        m = re.search(r"^X-Matryoshka-DOS-Program=(.+)$", open(target, encoding="utf-8", errors="replace").read(), re.M)
+        if m:
+            target = m.group(1).strip()
+    return target if os.path.isdir(target) else os.path.dirname(target)
+
+def add_file(target):
+    d = program_dir_of(target)
+    if not os.path.isdir(d):
+        subprocess.run(["kdialog", "--error", "Папка программы не найдена: %s" % d])
+        return 2
+    r = subprocess.run(["kdialog", "--title", "Добавить файл в папку программы (диск C:)", "--multiple", "--separate-output", "--getopenfilename", os.path.expanduser("~")], capture_output=True, text=True)
+    files = [x for x in r.stdout.splitlines() if x.strip()]
+    if not files:
+        return 1
+    done, skipped = [], []
+    for f in files:
+        dst = os.path.join(d, os.path.basename(f))
+        if os.path.abspath(f) == dst:
+            skipped.append(os.path.basename(f))
+            continue
+        if os.path.exists(dst) and subprocess.call(["kdialog", "--yesno", "«%s» уже есть в папке программы. Заменить?" % os.path.basename(f)]) != 0:
+            skipped.append(os.path.basename(f))
+            continue
+        try:
+            if os.path.isdir(f):
+                shutil.copytree(f, dst, dirs_exist_ok=True)
+            else:
+                shutil.copy2(f, dst)
+            done.append(os.path.basename(f))
+        except OSError as e:
+            skipped.append("%s (%s)" % (os.path.basename(f), e.strerror))
+    msg = "Скопировано в %s (в DOS это диск C:):\n%s" % (d, "\n".join(done) or "ничего")
+    if skipped:
+        msg += "\n\nПропущено:\n" + "\n".join(skipped)
+    subprocess.run(["kdialog", "--title", "DOS", "--msgbox", msg])
+    return 0
+
+def open_dir(target):
+    d = program_dir_of(target)
+    return subprocess.call(["xdg-open", d])
+
+def refresh_launchers(home=None):
+    home = home or os.path.expanduser("~")
+    desk = desktop_dir(home)
+    if not desk:
+        return 0
+    n = 0
+    for lf in glob.glob(os.path.join(desk, "* (DOS).desktop")):
+        t = open(lf, encoding="utf-8", errors="replace").read()
+        if "X-Matryoshka-DOS-Program=" in t or "dosbox-x" not in t:
+            continue
+        m = re.search(r'-conf "([^"]+)"', t)
+        if not m or not os.path.isfile(m.group(1)):
+            continue
+        conf = m.group(1)
+        c = open(conf, encoding="utf-8", errors="replace").read()
+        mc = re.search(r'mount -q c "([^"]+)"', c)
+        my = re.search(r'mount -q y "([^"]+)"', c)
+        prog = None
+        if my:
+            runs = glob.glob(os.path.join(my.group(1), "RUN.*"))
+            if runs:
+                prog = os.path.realpath(runs[0])
+        if not prog and mc:
+            lines = c.split("\nc:\n", 1)
+            name = lines[1].strip().splitlines()[0].replace("call ", "").strip('"') if len(lines) > 1 and lines[1].strip() else ""
+            if name:
+                prog = os.path.join(os.path.realpath(mc.group(1)), name)
+        if not prog:
+            continue
+        label = os.path.basename(lf)[:-len(" (DOS).desktop")]
+        with open(lf, "w", encoding="utf-8") as f:
+            f.write(launcher_text(label, conf, prog))
+        n += 1
+    return n
+
 def launch(program=None, home=None, timeout=None):
     home, dos_root, shared, prints = places(home)
     if program:
@@ -177,7 +290,8 @@ def launch(program=None, home=None, timeout=None):
         tag = "prog%08x" % (zlib.crc32(program.encode()) if program else 0)
     conf = os.path.join(conf_dir, tag + ".conf")
     base = os.path.join(link_base(home), tag)
-    text = session_text(ascii_link(base, "c", program_dir), name, ascii_link(base, "d", dos_root), ascii_link(base, "e", home), ascii_link(base, "f", shared), ascii_link(base, "p", prints))
+    desk = desktop_dir(home)
+    text = session_text(ascii_link(base, "c", program_dir), name, ascii_link(base, "d", dos_root), ascii_link(base, "e", home), ascii_link(base, "f", shared), ascii_link(base, "p", prints), ascii_link(base, "g", desk) if desk else None)
     if name and not dos_name(name):
         ext = os.path.splitext(name)[1].upper()
         if ext not in (".EXE", ".COM", ".BAT"):
@@ -189,13 +303,8 @@ def launch(program=None, home=None, timeout=None):
         os.symlink(program, os.path.join(run_dir, "RUN" + ext))
         text = text.replace("c:\n" + run_line(name), "mount -q y \"%s\"\nc:\n%s" % (run_dir, run_line("y:\\RUN" + ext)), 1)
     write_conf(conf, text)
-    desk = next((p for p in (os.path.join(home, "Рабочий стол"), os.path.join(home, "Desktop")) if os.path.isdir(p)), None)
-    if desk and name:
-        lf = os.path.join(desk, label + " (DOS).desktop")
-        if not os.path.exists(lf):
-            with open(lf, "w", encoding="utf-8") as f:
-                f.write("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -nopromptfolder -fastlaunch -conf \"%s\"\nIcon=dosbox-x\n" % (label, conf))
-            os.chmod(lf, 0o755)
+    if name:
+        write_launcher(home, label, conf, program)
     env = dict(os.environ, LANG=os.environ.get("LANG") or "ru_RU.UTF-8")
     proc = subprocess.Popen(["dosbox-x", "-nopromptfolder", "-fastlaunch", "-conf", conf], env=env)
     try:
@@ -208,6 +317,17 @@ def launch(program=None, home=None, timeout=None):
     return code
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2 and sys.argv[1] == "--add-file":
+        sys.exit(add_file(sys.argv[2]))
+    if len(sys.argv) > 2 and sys.argv[1] == "--open-dir":
+        sys.exit(open_dir(sys.argv[2]))
+    if len(sys.argv) > 1 and sys.argv[1] == "--refresh-launchers":
+        print(refresh_launchers())
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "--add-file-dos":
+        sys.exit(add_file(places()[1]))
+    if len(sys.argv) > 1 and sys.argv[1] == "--open-dir-dos":
+        sys.exit(open_dir(places()[1]))
     if len(sys.argv) > 1 and sys.argv[1] != "--shell":
         sys.exit(launch(sys.argv[1]))
     sys.exit(launch(None))
