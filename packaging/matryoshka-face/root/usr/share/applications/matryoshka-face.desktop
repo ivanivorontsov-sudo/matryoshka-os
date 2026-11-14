@@ -1,8 +1,18 @@
 [Desktop Entry]
 Type=Application
 Name=Вход по лицу
-Comment=Записать лицо и включить вход по лицу
+GenericName=Лицо для входа и блокировки
+Comment=Записать лицо, проверить и включить вход по лицу
 Exec=matryoshka-face-gui
 Icon=user-identity
 Categories=Settings;Security;
-Keywords=face;howdy;лицо;вход;
+Keywords=face;howdy;лицо;вход;пользователь;учётная запись;
+Actions=record;users;
+
+[Desktop Action record]
+Name=Записать лицо ещё раз (другой свет)
+Exec=matryoshka-face-gui
+
+[Desktop Action users]
+Name=Пользователи (пароль, аватар)
+Exec=systemsettings kcm_users

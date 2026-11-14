@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-1.0.7}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")"); W=${FACE_WORK:-/workspace/face}
+V=${1:-1.0.8}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")"); W=${FACE_WORK:-/workspace/face}
 HDEB=$W/howdy_2.6.1_all.deb; HSUM=c104329d8c7f54508b317ac7fb9782eae4104187bac657ee8a80aeeeb406c84f
 mkdir -p "$W"
 [ -f "$HDEB" ] || curl -fsSL -o "$HDEB" https://launchpad.net/~boltgolt/+archive/ubuntu/howdy/+files/howdy_2.6.1_all.deb
@@ -21,6 +21,7 @@ mkdir -p "$T/usr/lib/security" "$T/usr/lib/python3/dist-packages" "$T/usr/share/
 cp -a "$X/lib/security/howdy" "$T/usr/lib/security/howdy"
 rm -f "$T/usr/lib/security/howdy/dlib-data/install.sh"
 sed -i 's/^import ConfigParser$/import configparser as ConfigParser/' "$T/usr/lib/security/howdy/pam.py"
+python3 "$D/patch-compare.py" "$T/usr/lib/security/howdy/compare.py"
 sed -i 's/^detection_notice = false/detection_notice = true/; s/^ignore_ssh = false/ignore_ssh = true/; s/^capture_failed = true/capture_failed = false/; s/^capture_successful = true/capture_successful = false/' "$T/usr/lib/security/howdy/config.ini"
 for m in dlib_face_recognition_resnet_model_v1 mmod_human_face_detector shape_predictor_5_face_landmarks; do install -m 644 "$W/$m.dat" "$T/usr/lib/security/howdy/dlib-data/"; done
 (cd "$T/usr/lib/python3/dist-packages" && unzip -q "$WHL" && rm -rf dlib-19.24.6.dist-info)

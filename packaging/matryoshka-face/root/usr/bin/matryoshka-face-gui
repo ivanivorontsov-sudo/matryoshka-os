@@ -74,7 +74,7 @@ class W(QWidget):
         self.setWindowTitle("Вход по лицу")
         self.resize(640, 720)
         v = QVBoxLayout(self)
-        v.addWidget(QLabel("<h2>Вход по лицу</h2>Несколько снимков подряд, разные углы. Пароль работает всегда. Без инфракрасной камеры защиту можно обмануть фотографией.", wordWrap=True))
+        v.addWidget(QLabel("<h2>Вход по лицу</h2>Несколько снимков подряд, разные углы. Если лицо плохо узнаётся вечером или против окна, запишите снимки ещё раз при таком свете: новые добавятся к старым. Пароль работает всегда. Без инфракрасной камеры защиту можно обмануть фотографией.", wordWrap=True))
         self.view = QLabel("Камера появится здесь")
         self.view.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.view.setMinimumHeight(280)
@@ -111,6 +111,7 @@ class W(QWidget):
         self.pause = 0
         self.user = target_user()
         self.models = None
+        self.extra = []
         self.rgb = None
         if self.user != os.environ.get("USER", ""):
             self.setWindowTitle("Вход по лицу: %s" % self.user)
@@ -175,6 +176,7 @@ class W(QWidget):
                 return
         self.stable = 0
         self.got = []
+        self.extra = []
         self.prev = None
         self.pause = 0
         for b in self.bs:
@@ -194,8 +196,15 @@ class W(QWidget):
         if not faces:
             return None
         lm = sp(frame, faces[0])
-        enc = rec.compute_face_descriptor(frame, lm, 1)
-        return [float(x) for x in enc]
+        out = [[float(x) for x in rec.compute_face_descriptor(frame, lm, 1)]]
+        try:
+            lab = self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2LAB)
+            l, a, b = self.cv2.split(lab)
+            fixed = self.cv2.cvtColor(self.cv2.merge((self.cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8)).apply(l), a, b)), self.cv2.COLOR_LAB2BGR)
+            out.append([float(x) for x in rec.compute_face_descriptor(fixed, sp(fixed, faces[0]), 1)])
+        except Exception:
+            pass
+        return out
 
     def frame(self):
         try:
@@ -242,7 +251,9 @@ class W(QWidget):
                 self.o.setPlainText("Не удалось посчитать снимок: %s" % e)
                 return
             if data:
-                self.got.append({"label": "ракурс %d" % (len(self.got) + 1), "data": data})
+                n = len(self.got) + 1
+                self.got.append({"label": "ракурс %d" % n, "data": data[0]})
+                self.extra += [{"label": "ракурс %d свет" % n, "data": d} for d in data[1:]]
                 self.stable = 0
                 self.pause = 10
                 self.o.setPlainText("Снимок %d из %d. Чуть поверните голову." % (len(self.got), SHOTS))
@@ -273,7 +284,7 @@ class W(QWidget):
     def store(self):
         fd, path = tempfile.mkstemp(suffix=".json")
         os.close(fd)
-        json.dump(self.got, open(path, "w"))
+        json.dump(self.got + getattr(self, "extra", []), open(path, "w"))
         os.chmod(path, 0o600)
         self.o.setPlainText("Сохраняю %d снимков…" % len(self.got))
         for b in self.bs:
