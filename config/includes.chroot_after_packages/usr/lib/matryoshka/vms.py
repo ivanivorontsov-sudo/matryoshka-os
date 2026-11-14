@@ -12,7 +12,7 @@ class Vms(QWidget):
     def __init__(self):
         super().__init__(); self.setWindowTitle("Другие системы"); self.resize(640, 560); os.makedirs(DIR, exist_ok=True)
         v = QVBoxLayout(self)
-        l = QLabel("Бесплатные системы скачиваются с официальных сайтов через quickget. Windows — только ваш ISO или официальная загрузка Microsoft, нужна своя лицензия. macOS не поддерживается: лицензия Apple разрешает его только на компьютерах Apple."); l.setWordWrap(True); v.addWidget(l)
+        l = QLabel("Бесплатные системы скачиваются с официальных сайтов через quickget. Windows — только ваш ISO или официальная загрузка Microsoft, нужна своя лицензия. Из России сайт Microsoft обычно не отдаёт образ: скачайте ISO заранее и нажмите «Свой ISO…» (Windows 11: 4 ГБ памяти, TPM включается сам). Android-эмуляторы для Windows (Nox и подобные) внутри такой машины работают медленно; для приложений Android есть встроенный Waydroid. macOS не поддерживается: лицензия Apple разрешает его только на компьютерах Apple."); l.setWordWrap(True); v.addWidget(l)
         self.list = QListWidget(); v.addWidget(self.list, 1)
         for k, n, rel in FREE:
             it = QListWidgetItem(n); it.setData(256, (k, rel)); self.list.addItem(it)
@@ -27,7 +27,12 @@ class Vms(QWidget):
         open(conf, "w").write(s)
     def launch(self, conf):
         self.conf_net(conf)
-        if self.once.isChecked():
+        m = re.search(r'^disk_img="([^"]+)"', open(conf).read(), re.M)
+        disk = os.path.join(DIR, m.group(1)) if m else ""
+        fresh = not disk or not os.path.exists(disk)
+        if self.once.isChecked() and fresh:
+            QMessageBox.information(self, "Одноразово", "Система ещё не установлена: сначала установите её, откат начнёт работать со следующего запуска.")
+        if self.once.isChecked() and not fresh:
             if subprocess.run(["quickemu", "--vm", conf, "--snapshot", "info"], cwd=DIR, capture_output=True, text=True).stdout.find("matryoshka-clean") < 0:
                 subprocess.run(["quickemu", "--vm", conf, "--snapshot", "create", "matryoshka-clean"], cwd=DIR)
             else:
@@ -48,7 +53,10 @@ class Vms(QWidget):
         arch = "aarch64" if re.search(r"arm64|aarch64", p, re.I) else "riscv64" if "riscv" in p.lower() else "x86_64"
         name = re.sub(r"\W+", "-", os.path.splitext(os.path.basename(p))[0]); conf = os.path.join(DIR, name + ".conf")
         kind = "windows" if re.search(r"win", p, re.I) else "linux"
-        open(conf, "w").write('#!/usr/bin/quickemu --vm\nguest_os="%s"\narch="%s"\ndisk_img="%s/disk.qcow2"\niso="%s"\ndisk_size="40G"\n' % (kind, arch, name, p))
+        if kind == "linux" and QMessageBox.question(self, "Свой ISO", "Это образ Windows?") == QMessageBox.StandardButton.Yes:
+            kind = "windows"
+        extra = 'ram="4G"\ncpu_cores="2"\ntpm="on"\nsecureboot="off"\n' if kind == "windows" else ""
+        open(conf, "w").write('#!/usr/bin/quickemu --vm\nguest_os="%s"\narch="%s"\ndisk_img="%s/disk.qcow2"\niso="%s"\ndisk_size="%s"\n%s' % (kind, arch, name, p, "64G" if kind == "windows" else "40G", extra))
         os.makedirs(os.path.join(DIR, name), exist_ok=True); self.launch(conf)
     def box86(self):
         dst = os.path.join(C.HOME, ".local", "bin", "86Box.AppImage")
