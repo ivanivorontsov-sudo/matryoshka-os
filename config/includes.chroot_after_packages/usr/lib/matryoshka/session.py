@@ -601,9 +601,20 @@ def home_defaults():
     C.save("settings", s)
     C.run(["pkill", "-u", str(os.getuid()), "-f", "supersmart.py --home"], timeout=5)
 
+def cloud_tray():
+    if not C.settings().get("cloud_tray", True) or not shutil.which("rclone"):
+        return
+    if C.run(["pgrep", "-u", str(os.getuid()), "-f", "cloud.py --tray"], timeout=5).returncode == 0:
+        return
+    subprocess.Popen(["python3", "/usr/lib/matryoshka/cloud.py", "--tray"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
 def on_login():
     try:
         home_defaults()
+    except Exception:
+        pass
+    try:
+        threading.Timer(8, cloud_tray).start()
     except Exception:
         pass
     try:

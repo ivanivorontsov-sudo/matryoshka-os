@@ -166,5 +166,75 @@ class Cloud(QWidget):
         else:
             self.msg("Gofile работает без ключа.")
 
+def configured():
+    try:
+        return "infinite" in rc("listremotes").stdout.replace(":", " ").split()
+    except OSError:
+        return False
+
+def tray():
+    from PyQt6.QtWidgets import QSystemTrayIcon, QMenu
+    from PyQt6.QtGui import QIcon
+    from PyQt6.QtCore import QTimer
+    app = QApplication(sys.argv); C.qt_ru(app); app.setQuitOnLastWindowClosed(False); app.setDesktopFileName("matryoshka-cloud")
+    ic = QSystemTrayIcon(QIcon.fromTheme("folder-cloud", QIcon.fromTheme("folder-remote")))
+    m = QMenu()
+    st = m.addAction(""); st.setEnabled(False)
+    m.addSeparator()
+    a_open = m.addAction(QIcon.fromTheme("folder-open"), "Открыть папку")
+    a_mount = m.addAction("")
+    a_space = m.addAction(QIcon.fromTheme("drive-harddisk"), "Свободное место в облаках")
+    a_set = m.addAction(QIcon.fromTheme("configure"), "Настройки…")
+    m.addSeparator()
+    a_hide = m.addAction("Убрать значок из трея")
+    win = {}
+    def update():
+        on = os.path.ismount(MNT)
+        ok = configured()
+        st.setText("Подключена" if on else ("Не подключена" if ok else "Облака не настроены"))
+        a_mount.setText("Отключить" if on else "Подключить")
+        a_mount.setEnabled(ok)
+        ic.setToolTip("Бесконечная память: " + st.text().lower())
+    def openf():
+        if not os.path.ismount(MNT) and configured():
+            mount()
+        subprocess.Popen(["xdg-open", MNT if os.path.isdir(MNT) else C.HOME])
+    def toggle():
+        if os.path.ismount(MNT):
+            r = subprocess.run(["fusermount3", "-u", MNT], capture_output=True, text=True)
+            if r.returncode != 0:
+                r = subprocess.run(["fusermount", "-u", MNT], capture_output=True, text=True)
+            if r.returncode != 0:
+                ic.showMessage("Бесконечная память", "Не удалось отключить: папка занята программой.")
+        else:
+            e = mount()
+            if e.strip():
+                ic.showMessage("Бесконечная память", e.strip()[-300:])
+        update()
+    def settings():
+        w = win.get("w")
+        if w is None or not w.isVisible():
+            win["w"] = Cloud()
+        win["w"].show(); win["w"].raise_(); win["w"].activateWindow()
+    def hide():
+        s = C.settings(); s["cloud_tray"] = False; C.save("settings", s)
+        ic.showMessage("Бесконечная память", "Значок убран. Вернуть: Центр Матрёшки или запуск «Бесконечная память».")
+        QTimer.singleShot(3000, app.quit)
+    a_open.triggered.connect(openf); a_mount.triggered.connect(toggle); a_set.triggered.connect(settings); a_hide.triggered.connect(hide)
+    a_space.triggered.connect(lambda: ic.showMessage("Бесконечная память", space()))
+    ic.activated.connect(lambda r: openf() if r == QSystemTrayIcon.ActivationReason.Trigger else None)
+    ic.setContextMenu(m)
+    update(); ic.show()
+    t = QTimer(); t.timeout.connect(update); t.start(15000)
+    sys.exit(app.exec())
+
 if __name__ == "__main__":
-    app = QApplication(sys.argv); C.qt_ru(app); w = Cloud(); w.show(); sys.exit(app.exec())
+    if "--tray" in sys.argv:
+        tray()
+    app = QApplication(sys.argv); C.qt_ru(app); w = Cloud(); w.show()
+    s = C.settings()
+    if not s.get("cloud_tray", True):
+        s["cloud_tray"] = True; C.save("settings", s)
+    if subprocess.run(["pgrep", "-u", str(os.getuid()), "-f", "cloud.py --tray"], capture_output=True).returncode != 0:
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), "--tray"], start_new_session=True)
+    sys.exit(app.exec())
