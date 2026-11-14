@@ -30,7 +30,7 @@ def main():
     if not os.path.exists("/var/lib/matryoshka/firstrun.done") and not os.path.exists(os.path.join(C.CONF, "firstrun.done")):
         subprocess.call(["matryoshka-firstrun"])
     st = C.settings()
-    if st.get("launcher_v") != 2:
+    if st.get("launcher_v", 0) < 2:
         if st["launcher"].get("kind") == "builtin" and not st["launcher"].get("chosen"): st["launcher"] = {"kind": "plasma", "target": ""}
         st["launcher_v"] = 2; C.save("settings", st)
     l = st["launcher"]; k, t = l.get("kind", "plasma"), l.get("target", "")

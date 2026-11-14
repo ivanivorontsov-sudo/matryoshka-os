@@ -115,7 +115,7 @@ class Center(QWidget):
             if p: tgt.setText(p)
         v.addWidget(btn("Выбрать файл…", pick))
         def ok():
-            self.s["launcher"] = {"kind": k.currentData(), "target": tgt.text(), "chosen": True}; self.s["launcher_v"] = 2; self.save()
+            self.s["launcher"] = {"kind": k.currentData(), "target": tgt.text(), "chosen": True}; self.s["launcher_v"] = 3; self.s["home_chosen"] = True; self.save()
             QMessageBox.information(self, "Главный экран", "Сохранено. Применится при следующем входе.")
         v.addWidget(btn("Сохранить", ok)); v.addWidget(btn("Открыть СуперСмарт сейчас", lambda: subprocess.Popen(["supersmart"])))
         v.addWidget(QLabel("<h3>Дополнительный лаунчер</h3>Можно выключить полностью или запускать Android-лаунчер в обычном окне. По умолчанию выключен.", wordWrap=True))
@@ -129,7 +129,7 @@ class Center(QWidget):
         ask = QCheckBox("Спрашивать при входе, что открыть"); ask.setChecked(bool(self.s.get("startup_chooser")))
         v.addWidget(ex); v.addWidget(apk); v.addWidget(boot); v.addWidget(ask)
         def exok():
-            self.s["extra_launcher"] = ex.currentData(); self.s["extra_launcher_apk"] = apk.text().strip(); self.s["waydroid_autostart"] = boot.isChecked(); self.s["startup_chooser"] = ask.isChecked(); self.save()
+            self.s["extra_launcher"] = ex.currentData(); self.s["extra_launcher_apk"] = apk.text().strip(); self.s["waydroid_autostart"] = boot.isChecked(); self.s["startup_chooser"] = ask.isChecked(); self.s["home_chosen"] = True; self.save()
             QMessageBox.information(self, "Лаунчер", "Сохранено. Применится при следующем входе.")
         v.addWidget(btn("Сохранить дополнительный лаунчер", exok))
         v.addWidget(btn("Автозапуск всех программ", lambda: subprocess.Popen(["matryoshka-autostart"])))

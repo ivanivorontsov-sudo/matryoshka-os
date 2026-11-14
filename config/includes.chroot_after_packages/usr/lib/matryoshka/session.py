@@ -419,6 +419,7 @@ def chooser():
             s["extra_launcher"] = "off"
             s["launcher"] = {"kind": "plasma", "target": "", "chosen": True}
         s["startup_chooser"] = again.isChecked()
+        s["home_chosen"] = True
         C.save("settings", s)
         d.accept()
     b.clicked.connect(ok)
@@ -585,7 +586,26 @@ def fp_reenroll():
             pass
     threading.Thread(target=ask, daemon=True).start()
 
+def home_defaults():
+    s = C.settings()
+    if s.get("launcher_v", 0) >= 3:
+        return
+    if not s.get("home_chosen"):
+        if s.get("extra_launcher") == "supersmart":
+            s["extra_launcher"] = "off"
+        if (s.get("launcher") or {}).get("kind") == "builtin":
+            s["launcher"] = {"kind": "plasma", "target": ""}
+        s["startup_chooser"] = False
+        s["waydroid_autostart"] = bool(s.get("waydroid_autostart")) and s.get("extra_launcher") == "apk"
+    s["launcher_v"] = 3
+    C.save("settings", s)
+    C.run(["pkill", "-u", str(os.getuid()), "-f", "supersmart.py --home"], timeout=5)
+
 def on_login():
+    try:
+        home_defaults()
+    except Exception:
+        pass
     try:
         caches_fix()
     except Exception:
