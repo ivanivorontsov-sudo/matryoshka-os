@@ -1,0 +1,56 @@
+diff -ru a/libfprint/libfprint/drivers/gxfp.c b/libfprint/libfprint/drivers/gxfp.c
+--- a/libfprint/libfprint/drivers/gxfp.c	2026-11-14 22:30:22.996591147 +1000
++++ b/libfprint/libfprint/drivers/gxfp.c	2026-11-14 22:30:23.000591222 +1000
+@@ -13,7 +13,7 @@
+ #include "gxfp/algo/common.h"
+ #include "gxfp/flow/session.h"
+ 
+-#define DEFAULT_ENROLL_SAMPLES 24
++#define DEFAULT_ENROLL_SAMPLES 16
+ #define GXFP_DEFAULT_PSK_PATH  "/var/lib/fprintd/gxfp/psk_raw32.bin"
+ 
+ struct _FpiDeviceGxfp {
+@@ -363,6 +363,8 @@
+   g_return_if_fail (self);
+   if (g_getenv ("FP_GXFP_ENROLL_STAGES") && g_ascii_strtoll (g_getenv ("FP_GXFP_ENROLL_STAGES"), NULL, 10) >= 8 && g_ascii_strtoll (g_getenv ("FP_GXFP_ENROLL_STAGES"), NULL, 10) <= 40)
+     fpi_device_set_nr_enroll_stages (FP_DEVICE (dev), (gint) g_ascii_strtoll (g_getenv ("FP_GXFP_ENROLL_STAGES"), NULL, 10));
++  else if (g_strcmp0 (g_getenv ("FP_GXFP_MATCHER"), "combined") == 0)
++    fpi_device_set_nr_enroll_stages (FP_DEVICE (dev), 24);
+   if (thr_env && g_ascii_strtoll (thr_env, NULL, 10) >= 4 && g_ascii_strtoll (thr_env, NULL, 10) <= 400)
+     fpi_image_device_set_bz3_threshold (dev, (gint) g_ascii_strtoll (thr_env, NULL, 10));
+ 
+diff -ru a/libfprint/libfprint/fpi-print.c b/libfprint/libfprint/fpi-print.c
+--- a/libfprint/libfprint/fpi-print.c	2026-11-14 22:30:22.996591147 +1000
++++ b/libfprint/libfprint/fpi-print.c	2026-11-14 22:30:22.996591147 +1000
+@@ -300,6 +300,7 @@
+   gint sum_threshold = sum_env ? (gint) g_ascii_strtoll (sum_env, NULL, 10) : 20;
+   gint best[3] = { 0, 0, 0 };
+   gint top;
++  gboolean classic = g_strcmp0 (g_getenv ("FP_GXFP_MATCHER"), "combined") != 0;
+ 
+   for (guint i = 0; i < template->prints->len; ++i)
+     {
+@@ -312,6 +313,11 @@
+           return FPI_MATCH_ERROR;
+         }
+       g_string_append_printf (line, " %d", score);
++      if (classic && score >= bz3_threshold)
++        {
++          g_message ("sigfm classic scores [%s ] template %u of %u threshold %d -> match", line->str, i + 1, template->prints->len, bz3_threshold);
++          return FPI_MATCH_SUCCESS;
++        }
+       if (score > best[0])
+         {
+           best[2] = best[1];
+@@ -329,6 +335,11 @@
+         }
+     }
+   top = best[0] + best[1] + best[2];
++  if (classic)
++    {
++      g_message ("sigfm classic scores [%s ] max %d threshold %d -> no-match", line->str, best[0], bz3_threshold);
++      return FPI_MATCH_FAIL;
++    }
+   g_message ("sigfm scores [%s ] max %d top3 %d threshold %d sum-threshold %d -> %s", line->str, best[0], top, bz3_threshold, sum_threshold,
+              (best[0] >= bz3_threshold || (sum_threshold > 0 && top >= sum_threshold)) ? "match" : "no-match");
+   if (best[0] >= bz3_threshold || (sum_threshold > 0 && top >= sum_threshold))

@@ -6,6 +6,23 @@ DI=/etc/systemd/system/fprintd.service.d/50-matryoshka-gxfp.conf
 PSK=/var/lib/fprintd/gxfp/psk_raw32.bin
 [ "$(id -u)" = 0 ] || exec pkexec "$0" "$@"
 MOK=/var/lib/matryoshka-mok
+KM=/var/lib/matryoshka-gxfp/kmod
+DD=/etc/systemd/system/fprintd.service.d
+modpath() {
+  for K in "$L/gxfp-$1.ko" "$KM/gxfp-$1.ko"; do [ -f "$K" ] && { echo "$K"; return 0; }; done
+  return 1
+}
+buildkmod() {
+  KV=$1; H=/usr/src/linux-headers-$KV
+  [ -d "$H" ] || { echo "Нет заголовков ядра $KV (пакет linux-headers-$KV)"; return 1; }
+  command -v make >/dev/null && command -v gcc >/dev/null || { echo "Нет make или gcc"; return 1; }
+  B=$(mktemp -d); cp -a /usr/src/matryoshka-gxfp/. "$B/"
+  if make -C "$B" KERNELDIR="$H" -j"$(nproc)" >"$B/build.log" 2>&1 && [ -f "$B/gxfp.ko" ]; then
+    install -d -m 755 "$KM"; install -m 644 "$B/gxfp.ko" "$KM/gxfp-$KV.ko"; rm -rf "$B"
+    logger -t matryoshka-gxfp "модуль собран для ядра $KV"; echo "Модуль собран: $KM/gxfp-$KV.ko"; return 0
+  fi
+  tail -n 20 "$B/build.log"; rm -rf "$B"; logger -t matryoshka-gxfp "модуль для ядра $KV не собрался"; return 1
+}
 sign() {
   K=$1; KV=$2
   [ -f "$K" ] || return 0
@@ -19,8 +36,7 @@ sign() {
 }
 load() {
   [ -c /dev/gxfp ] && return 0
-  K=$L/gxfp-$(uname -r).ko
-  [ -f "$K" ] || { echo "Нет модуля для ядра $(uname -r)"; return 1; }
+  K=$(modpath "$(uname -r)") || { buildkmod "$(uname -r)" && K=$(modpath "$(uname -r)"); } || { echo "Нет модуля для ядра $(uname -r)"; logger -t matryoshka-gxfp "нет модуля для ядра $(uname -r)"; return 1; }
   sign "$K" "$(uname -r)"
   timeout 20 insmod "$K" || { mokutil --sb-state 2>/dev/null | grep -q enabled && echo "Включён Secure Boot: неподписанный модуль не загружается"; return 1; }
   for _ in 1 2 3 4 5 6 7 8 9 10; do [ -c /dev/gxfp ] && { systemctl try-restart fprintd.service 2>/dev/null; return 0; }; sleep 1; done
@@ -110,7 +126,51 @@ case "$1" in
     echo "Драйвер выключен";;
   boot) [ -e "$F" ] && load; exit 0;;
   sign)
-    if [ -n "$2" ]; then sign "$L/gxfp-$2.ko" "$2"; else for K in $L/gxfp-*.ko; do V=${K##*/gxfp-}; sign "$K" "${V%.ko}"; done; fi; exit 0;;
+    if [ -n "$2" ]; then K=$(modpath "$2") && sign "$K" "$2"; else for K in $L/gxfp-*.ko $KM/gxfp-*.ko; do [ -f "$K" ] || continue; V=${K##*/gxfp-}; sign "$K" "${V%.ko}"; done; fi; exit 0;;
+  build-kmod)
+    KV=${2:-$(uname -r)}
+    case "$KV" in *-amd64) ;; *) exit 0;; esac
+    [ -f "$L/gxfp-$KV.ko" ] && [ -z "$3" ] && { echo "Готовый модуль для $KV уже есть"; exit 0; }
+    buildkmod "$KV"; exit $?;;
+  matcher)
+    MD=$DD/65-matryoshka-gxfp-matcher.conf
+    case "$2" in
+      classic) rm -f "$MD";;
+      combined) mkdir -p "$DD"; printf '[Service]\nEnvironment=FP_GXFP_MATCHER=combined\n' > "$MD";;
+      *) [ -f "$MD" ] && echo combined || echo classic; exit 0;;
+    esac
+    systemctl daemon-reload; systemctl try-restart fprintd 2>/dev/null
+    echo "Сравнение отпечатков: $2. classic — как в 0.1.8 (совпадение одного снимка с порогом), combined — как в 0.1.11 (лучший снимок или сумма трёх лучших)";;
+  migrate)
+    S=/var/lib/matryoshka-gxfp/migrated-0.1.12
+    [ -e "$S" ] && exit 0
+    A=/var/lib/matryoshka-gxfp/saved-tuning; moved=""
+    for f in 61-matryoshka-gxfp-threshold.conf 62-matryoshka-gxfp-prep.conf 63-matryoshka-gxfp-tune.conf 64-matryoshka-gxfp-layout.conf; do
+      [ -f "$DD/$f" ] || continue
+      install -d -m 700 "$A"; mv -f "$DD/$f" "$A/$f"; moved="$moved $f"
+    done
+    if [ -n "$moved" ]; then
+      logger -t matryoshka-gxfp "пробные настройки сканера отложены в $A:$moved"
+      case "$moved" in *prep*|*layout*) mkdir -p /var/lib/matryoshka; date +%s > /var/lib/matryoshka/fp-reenroll;; esac
+      [ -d /run/systemd/system ] && systemctl daemon-reload && systemctl try-restart fprintd 2>/dev/null
+    fi
+    install -d -m 755 /var/lib/matryoshka-gxfp; date -Is > "$S"; exit 0;;
+  tuning-restore)
+    A=/var/lib/matryoshka-gxfp/saved-tuning
+    [ -d "$A" ] && ls "$A"/*.conf >/dev/null 2>&1 || { echo "Отложенных настроек нет"; exit 0; }
+    mkdir -p "$DD"; mv -f "$A"/*.conf "$DD/"; systemctl daemon-reload; systemctl try-restart fprintd 2>/dev/null; echo "Пробные настройки возвращены";;
+  doctor)
+    echo "Драйвер: $([ -e "$F" ] && echo включён || echo выключен)"
+    echo "Ядро: $(uname -r)"
+    K=$(modpath "$(uname -r)") && echo "Модуль: $K" || echo "Модуль для этого ядра: НЕТ (matryoshka-gxfp build-kmod)"
+    [ -c /dev/gxfp ] && echo "/dev/gxfp: есть" || echo "/dev/gxfp: нет"
+    [ -s "$PSK" ] && echo "Ключ сканера: есть" || echo "Ключ сканера: нет"
+    echo "Сравнение: $("$0" matcher)"
+    echo "fprintd: $(systemctl is-active fprintd 2>/dev/null)"
+    ls "$DD" 2>/dev/null | sed 's/^/Настройка fprintd: /'
+    n=$(find /var/lib/fprint -mindepth 2 -type f ! -path '*/gxfp-dump/*' 2>/dev/null | wc -l); echo "Сохранённых отпечатков: $n"
+    [ -e /var/lib/matryoshka/fp-reenroll ] && echo "Отпечатки нужно добавить заново"
+    exit 0;;
   auto)
     [ -e "$F" ] && { load; exit 0; }
     [ -e "$OFF" ] && exit 0
@@ -189,7 +249,7 @@ case "$1" in
     mkdir -p "${UD%/*}"; [ -f "$UD" ] || printf '[Service]\n' > "$UD"
     sed -i "/^Environment=$K=/d" "$UD"; echo "Environment=$K=$3" >> "$UD"
     systemctl daemon-reload; systemctl try-restart fprintd 2>/dev/null; echo "$K=$3";;
-  scores) journalctl -u fprintd --no-pager -o short-iso ${2:+--since "$2"} | grep -E "sigfm score|sigfm keypoints|gxfp frame|verify|enroll|Minutiae|retry" | tail -n 80;;
+  scores) journalctl -u fprintd --no-pager -o short-iso ${2:+--since "$2"} | grep -E "sigfm score|sigfm classic|sigfm keypoints|gxfp frame|verify|enroll|Minutiae|retry" | tail -n 80;;
   status) [ -e "$F" ] && echo on || echo off; [ -c /dev/gxfp ] && echo "/dev/gxfp есть";;
-  *) echo "matryoshka-gxfp on|off|auto|reset|watch|sign [ядро]|status|debug [off]|diag|capture|threshold [N|default]|prep [hp|raw]|layout [col|row]|sheet|tune ...|scores [с какого времени]"; exit 1;;
+  *) echo "matryoshka-gxfp on|off|auto|reset|watch|sign [ядро]|status|debug [off]|diag|capture|threshold [N|default]|prep [hp|raw]|layout [col|row]|sheet|tune ...|matcher [classic|combined]|build-kmod [ядро]|doctor|tuning-restore|scores [с какого времени]"; exit 1;;
 esac

@@ -13,7 +13,7 @@
 | matryoshka-upgrade | 1.1.0 | копия и обновление на месте |
 | podsvetka-myshi | 1.2.3 | подсветка курсора, `packaging/podsvetka-myshi/build.sh [исходники] [каталог]`, нужен kwin-dev 6.3.6 |
 | matryoshka-face | 1.0.7 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
-| matryoshka-gxfp | 0.1.11 | драйвер Goodix GXFP5130, по желанию |
+| matryoshka-gxfp | 0.1.12 | драйвер Goodix GXFP5130, по желанию |
 | matryoshka-fixes | 1.1.6 | Wine, Electron, шрифты. libndk_translation не входит |
 
 Ключ выпуска `45A2D53B7751F4A8` не создаётся заново. Если закрытого ключа нет в среде сборки, суммы публикуются без подписи `SHA256SUMS.asc`.
