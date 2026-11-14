@@ -10,7 +10,7 @@
 ## Сборка образа
 - Debian 13 (trixie), live-build. Конфигурация: `config/`. Файлы системы: `config/includes.chroot_after_packages/`.
 - Сборка: `sudo lb config && sudo lb build` в каталоге сборки (конфиг синхронизируется rsync из репозитория). Голосовой ввод: `build.sh` кладёт venv Vosk и модель `vosk-model-small-ru-0.22` в `/opt/matryoshka-voice` (в git не хранится).
-- Подпись: ключ выпуска Ed25519 `45A2D53B7751F4A8`. Ключ НЕ перегенерируется. Публичная часть: `/usr/share/matryoshka/update-keys/matryoshka-release.gpg`.
+- Подпись: ключ выпуска Ed25519 `F2DE4F9355F9383D` (с 18.6.3). Выпуски до 18.6.2 подписаны прежним ключом `45A2D53B7751F4A8`. Открытые части: `/usr/share/matryoshka/update-keys/`.
 
 ## Резервная копия и два варианта загрузки
 - `usr/lib/matryoshka/sysbackup.sh`: `plan`, `create same|КАТАЛОГ`, `verify`, `list`, `last-ok`, `restore` (только из живой системы), `find`.

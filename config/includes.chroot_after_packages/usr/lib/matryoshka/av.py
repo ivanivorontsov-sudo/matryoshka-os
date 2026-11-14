@@ -6,14 +6,16 @@ QUAR = os.path.join(C.HOME, ".local", "share", "matryoshka", "quarantine")
 ACT = re.compile(r"(activat|kms|crack|keygen|patch|loader|kmspico|aact|hwid|активатор|кряк|ключ)", re.I)
 
 OWN = re.compile(r"^matryoshka-(\d+(\.\d+)*-amd64\.iso(\.part\d+)?|update-\d+(\.\d+)*\.tar\.gz|upgrade_[\d.]+_all\.deb)$")
-RKEY = "/usr/share/matryoshka/update-keys/matryoshka-release.gpg"
+RKEYS = "/usr/share/matryoshka/update-keys"
 
 def own_release(path):
     n = os.path.basename(path); d = os.path.dirname(os.path.abspath(path))
     if not OWN.match(n): return False
     s, a = os.path.join(d, "SHA256SUMS"), os.path.join(d, "SHA256SUMS.asc")
-    if not (os.path.exists(s) and os.path.exists(a) and os.path.exists(RKEY)): return False
-    v = ["gpgv", "--keyring", RKEY, a, s] if shutil.which("gpgv") else ["gpg", "--batch", "--no-default-keyring", "--keyring", RKEY, "--verify", a, s]
+    keys = sorted(os.path.join(RKEYS, k) for k in os.listdir(RKEYS) if k.endswith(".gpg")) if os.path.isdir(RKEYS) else []
+    if not (os.path.exists(s) and os.path.exists(a) and keys): return False
+    kr = [x for k in keys for x in ("--keyring", k)]
+    v = ["gpgv", *kr, a, s] if shutil.which("gpgv") else ["gpg", "--batch", "--no-default-keyring", *kr, "--verify", a, s]
     if C.run(v).returncode != 0: return False
     want = {l.split()[1].lstrip("*"): l.split()[0] for l in open(s) if len(l.split()) == 2}
     if n not in want: return False
