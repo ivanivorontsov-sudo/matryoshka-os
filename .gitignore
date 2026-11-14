@@ -11,3 +11,4 @@ out/
 config/includes.chroot_after_packages/opt/matryoshka-voice/
 config/includes.chroot_after_packages/usr/share/waydroid-extra/
 __pycache__/
+out-test/
