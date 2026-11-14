@@ -8,26 +8,41 @@ def read():
     with open(FILE, encoding="utf-8", errors="replace") as f:
         return f.read().splitlines(True)
 
+def parse_group(text, header):
+    start = text.find(header)
+    if start < 0:
+        return start, start, {}
+    rest = text[start + len(header):]
+    nxt = rest.find("\n[")
+    end = start + len(header) + (len(rest) if nxt < 0 else nxt + 1)
+    body = text[start + len(header):end]
+    keys = {}
+    for line in body.splitlines():
+        k, sep, v = line.partition("=")
+        if sep:
+            keys[k] = v
+    return start, end, keys
+
 def write_groups(groups):
-    lines = read()
-    text = "".join(lines)
+    text = "".join(read())
     for group, keys in groups.items():
         header = "[%s]\n" % group
-        body = "".join("%s=%s\n" % (k, v) for k, v in keys.items())
-        block = header + body
-        start = text.find(header)
+        start, end, old = parse_group(text, header)
+        merged = dict(old)
+        merged.update(keys)
+        block = header + "".join("%s=%s\n" % (k, v) for k, v in merged.items())
         if start < 0:
             if text and not text.endswith("\n"):
                 text += "\n"
             text += "\n" + block
             continue
-        rest = text[start + len(header):]
-        nxt = rest.find("\n[")
-        end = start + len(header) + (len(rest) if nxt < 0 else nxt + 1)
-        text = text[:start] + block + text[end:]
+        tail = text[end:]
+        text = text[:start] + block + ("\n" if tail.startswith("[") else "") + tail
     os.makedirs(os.path.dirname(FILE), exist_ok=True)
-    with open(FILE, "w", encoding="utf-8") as f:
+    tmp = FILE + ".matryoshka-tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         f.write(text)
+    os.replace(tmp, FILE)
 
 def scheme_groups(scheme):
     if scheme == "linux":
@@ -62,33 +77,31 @@ def ensure_daemon():
     except (OSError, subprocess.SubprocessError):
         pass
 
-def brightness_fix():
+MEDIA = {"increase_volume": "Volume Up", "decrease_volume": "Volume Down", "mute": "Volume Mute", "mic_mute": "Microphone Mute"}
+
+def restore_empty(group, wanted):
     text = "".join(read())
-    header = "[org_kde_powerdevil]\n"
-    start = text.find(header)
+    start, _end, old = parse_group(text, "[%s]\n" % group)
     if start < 0:
         return False
-    rest = text[start + len(header):]
-    nxt = rest.find("\n[")
-    body = rest if nxt < 0 else rest[:nxt + 1]
     keys = {}
-    changed = False
-    for line in body.splitlines():
-        k, sep, v = line.partition("=")
-        if not sep or k not in BRIGHTNESS:
+    for k, default in wanted.items():
+        if k not in old:
             continue
-        parts = v.split(",")
+        parts = old[k].split(",")
         if parts[0].strip() in ("", "none"):
-            parts[0] = BRIGHTNESS[k]
+            parts[0] = default
             if len(parts) > 1 and parts[1].strip() in ("", "none"):
-                parts[1] = BRIGHTNESS[k]
+                parts[1] = default
             keys[k] = ",".join(parts)
-            changed = True
-    if changed:
-        old = dict(line.partition("=")[::2] for line in body.splitlines() if "=" in line)
-        old.update(keys)
-        write_groups({"org_kde_powerdevil": old})
-    return changed
+    if keys:
+        write_groups({group: keys})
+    return bool(keys)
+
+def brightness_fix():
+    a = restore_empty("org_kde_powerdevil", BRIGHTNESS)
+    b = restore_empty("kmix", MEDIA)
+    return a or b
 
 def apply(scheme):
     write_groups(scheme_groups(scheme))

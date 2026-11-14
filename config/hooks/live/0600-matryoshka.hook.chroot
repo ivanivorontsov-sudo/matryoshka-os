@@ -89,5 +89,5 @@ systemctl enable matryoshka-fix-boot.service matryoshka-admin-groups.service mat
 /usr/lib/matryoshka/apply-look.sh || true
 systemctl enable matryoshka-autotest.service 2>/dev/null || true
 systemctl enable matryoshka-snapper-setup.service matryoshka-dpkg-recover.service matryoshka-flatpak-update.timer 2>/dev/null || true
-systemctl enable matryoshka-auth.service matryoshka-gxfp-watch.service matryoshka-homefix.service 2>/dev/null || true
+systemctl enable matryoshka-auth.service matryoshka-gxfp-watch.service matryoshka-homefix.service matryoshka-mediakeys.service 2>/dev/null || true
 true
