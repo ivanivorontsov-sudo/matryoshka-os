@@ -502,6 +502,45 @@ def icons_fix():
     if C.run(["systemctl", "--user", "is-active", "-q", "plasma-plasmashell.service"], timeout=10).returncode == 0:
         C.run(["systemctl", "--user", "restart", "plasma-plasmashell.service"], timeout=60)
 
+KWIN_RULES = {
+    "matryoshka-print-okular": {"Description": "Матрёшка: окно печати Okular поверх", "wmclass": "okular", "wmclassmatch": "2", "types": "32", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2", "acceptfocus": "true", "acceptfocusrule": "2"},
+    "matryoshka-print-portal": {"Description": "Матрёшка: окно печати поверх", "wmclass": "xdg-desktop-portal-kde", "wmclassmatch": "2", "title": "Печать|Print", "titlematch": "3", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2"},
+}
+
+def kwin_rules():
+    import configparser
+    f = os.path.expanduser("~/.config/kwinrulesrc")
+    cp = configparser.ConfigParser(interpolation=None, strict=False)
+    cp.optionxform = str
+    if os.path.isfile(f):
+        cp.read(f, encoding="utf-8")
+    elif os.path.isfile("/etc/xdg/kwinrulesrc"):
+        cp.read("/etc/xdg/kwinrulesrc", encoding="utf-8")
+    if not cp.has_section("General"):
+        cp.add_section("General")
+    rules = [x for x in cp.get("General", "rules", fallback="").split(",") if x]
+    added = False
+    for name, props in KWIN_RULES.items():
+        if name in rules:
+            continue
+        if not cp.has_section(name):
+            cp.add_section(name)
+            for k, v in props.items():
+                cp.set(name, k, v)
+        rules.append(name)
+        added = True
+    if not added:
+        return
+    if os.path.isfile(f):
+        shutil.copy2(f, f + ".matryoshka.bak")
+    cp.set("General", "rules", ",".join(rules))
+    cp.set("General", "count", str(len(rules)))
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    with open(f + ".tmp", "w", encoding="utf-8") as out:
+        cp.write(out, space_around_delimiters=False)
+    os.replace(f + ".tmp", f)
+    C.run(["busctl", "--user", "call", "org.kde.KWin", "/KWin", "org.kde.KWin", "reconfigure"], timeout=10)
+
 def fp_reenroll():
     try:
         mark = open("/var/lib/matryoshka/fp-reenroll", encoding="utf-8").read().strip()
@@ -535,6 +574,10 @@ def on_login():
     except Exception:
         pass
     threading.Thread(target=icons_fix, daemon=True).start()
+    try:
+        kwin_rules()
+    except Exception:
+        pass
     try:
         import waydroid_desktop
         waydroid_desktop.fix_user_files()
