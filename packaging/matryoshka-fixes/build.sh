@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-V=${1:-1.1.6}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")")
+V=${1:-1.1.7}; O=${2:-.}; D=$(dirname "$(readlink -f "$0")")
 T=$(mktemp -d); cp -a "$D/root/." "$T/"; chmod 755 "$T"/usr/bin/* "$T"/usr/lib/matryoshka-fixes/*
 mkdir -p "$T/DEBIAN"
 cat > "$T/DEBIAN/control" <<C

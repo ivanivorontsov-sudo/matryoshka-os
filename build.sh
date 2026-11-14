@@ -9,6 +9,7 @@ chmod 755 "$DB"
 sudo freshclam --stdout --datadir="$DB" --user=root || true
 curl -sL -o /tmp/yara.zip https://github.com/YARAHQ/yara-forge/releases/download/20261018/yara-forge-rules-core.zip
 unzip -o -j /tmp/yara.zip '*yara-rules-core.yar' -d $I/usr/share/matryoshka/yara
+python3 $I/usr/lib/matryoshka/yarafilter.py $I/usr/share/matryoshka/yara/yara-rules-core.yar
 curl -sL https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts -o $I/usr/share/matryoshka/hosts/stevenblack
 export GIT_TERMINAL_PROMPT=0
 gh release download -R ivanivorontsov-sudo/ponyatny -p ponyatny-linux -O $I/usr/local/bin/ponyatny --clobber && chmod 755 $I/usr/local/bin/ponyatny

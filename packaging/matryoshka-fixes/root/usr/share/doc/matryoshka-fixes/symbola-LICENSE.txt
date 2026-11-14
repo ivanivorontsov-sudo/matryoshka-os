@@ -1,2 +1,2 @@
-seguiemj.ttf: Symbola (C) 2007-2015 George Douros, renamed to "Segoe UI Emoji" for Wine font fallback.
+symbola.ttf: Symbola 9.17 (C) 2007-2017 George Douros.
 License: Fonts are free for any use; they may be opened, edited, modified, regenerated, packaged and redistributed.

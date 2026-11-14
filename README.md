@@ -3,7 +3,7 @@
 > [!WARNING]
 > **Матрёшка ещё развивается:** в системе могут оставаться небольшие недоработки. Перед установкой обязательно сохраните все важные файлы на отдельный носитель, внимательно проверьте разметку и форматирование диска, а также отдельно оцените необходимость шифрования. Подробности: [предупреждение перед установкой](docs/INSTALLATION-WARNING.md) и [дополнение к выпуску 18.5](docs/RELEASE-NOTES-18.5.md).
 
-Преемница «Читалки OS 2». Живая флешка на Debian 13 (trixie), которая грузится в BIOS и UEFI (x86_64). Собирается официальным инструментом Debian `live-build`, а своего кода в ней минимум: только «клей» на Python и PyQt6 в `config/includes.chroot_after_packages/usr/lib/matryoshka`.
+Преемница «Читалки OS 2». Живая флешка на Debian 13 (trixie) для x86_64. Образ 18.6.3 загружается только в режиме BIOS/Legacy (CSM); загрузка в UEFI с этого образа не поддерживается. Собирается официальным инструментом Debian `live-build`, а своего кода в ней минимум: только «клей» на Python и PyQt6 в `config/includes.chroot_after_packages/usr/lib/matryoshka`.
 
 ## Что внутри и откуда взято
 
@@ -30,6 +30,20 @@
 - Проверка подключения в NetworkManager отключена. Нет popularity-contest, avahi, cups-browsed, geoclue, ModemManager, PackageKit и Discover, unattended-upgrades. Таймеры apt-daily замаскированы.
 - Телеметрия KDE отключена. Firefox ESR закрыт политиками: без телеметрии, исследований, Pocket, Safe Browsing и проверки портала.
 - В сеть ходят только две вещи, и только когда сеть включена: обновление баз антивируса и поиск драйверов. Это отключается флажком.
+
+## Windows в виртуальной машине
+Матрёшка умеет создать виртуальную машину из любого своего образа ISO и скачать официальный образ Windows с сайта Microsoft. Внутри машины обычный доступ в интернет.
+
+> [!IMPORTANT]
+> Для установки и использования Windows нужна действительная лицензия Microsoft. Активаторы и другие средства обхода лицензии запрещены и в Матрёшку не входят. Скачивайте Windows только с сайта Microsoft и сверяйте SHA-256 образа с опубликованным Microsoft.
+
+## Лицензии и исходники
+- Код Матрёшки: этот репозиторий, лицензия в [LICENSE](LICENSE), сторонние компоненты в [NOTICE.md](NOTICE.md).
+- Готовые образы и обновления: [выпуски](https://github.com/ivanivorontsov-sudo/matryoshka-os/releases), к каждому приложен архив исходников и подписи.
+- Пакеты Debian: исходники на [sources.debian.org](https://sources.debian.org/) и [snapshot.debian.org](https://snapshot.debian.org/).
+- Драйвер отпечатков: libfprint (LGPL-2.1) с поддержкой Goodix 5130 из [gxfp5130-linux](https://github.com/Metrohan/gxfp5130-linux), тексты лицензий в пакете matryoshka-gxfp.
+- «Тихо для ПК»: оболочка [tiho-browser](https://github.com/ivanivorontsov-sudo/tiho-browser) (GPL-3.0) поверх Mozilla Firefox ESR (MPL-2.0); исходники Firefox ESR на [archive.mozilla.org](https://archive.mozilla.org/pub/firefox/releases/).
+- Шрифт эмодзи для Wine: Symbola, George Douros, свободен для любого использования.
 
 ## Сборка
 `./build.sh` на Debian 13. Готовый образ лежит в разделе Releases.

@@ -128,6 +128,7 @@ if [ -n "$miss" ]; then
 fi
 systemctl daemon-reload
 update-mime-database /usr/share/mime >/dev/null 2>&1 || true
+[ -f /usr/share/matryoshka/yara/yara-rules-core.yar ] && python3 /usr/lib/matryoshka/yarafilter.py /usr/share/matryoshka/yara/yara-rules-core.yar >/dev/null 2>&1 || true
 update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
 [ -s $W/enable.list ] && xargs -a $W/enable.list systemctl enable >/dev/null 2>&1
 systemctl disable lxc.service >/dev/null 2>&1 || true

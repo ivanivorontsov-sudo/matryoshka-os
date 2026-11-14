@@ -1,0 +1,31 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Tiho
+Source: https://github.com/ivanivorontsov-sudo/tiho-browser
+
+Files: *
+Copyright: Ivan Vorontsov
+License: GPL-3.0-only
+ The Tiho-specific desktop packaging, launchers and start-page sources are
+ distributed under the GNU General Public License, version 3 only.
+ .
+ The full license text is available in /usr/share/common-licenses/GPL-3
+ and in the upstream repository LICENSE file.
+
+Files: opt/tiho/firefox/*
+Copyright: Mozilla Corporation and contributors
+License: MPL-2.0
+ This build is based on Mozilla Firefox ESR @V@, the binary distribution
+ published by Mozilla. Tiho adds enterprise policies, a start page and
+ launchers.
+ .
+ Source code of Firefox ESR @V@:
+ https://archive.mozilla.org/pub/firefox/releases/@V@esr/source/
+ https://ftp.mozilla.org/pub/firefox/releases/@V@esr/source/
+ Mercurial: @REPO@ changeset @REV@
+ .
+ The full text of the Mozilla Public License 2.0 is in
+ /usr/share/common-licenses/MPL-2.0 and at https://www.mozilla.org/MPL/2.0/.
+ Third-party notices of the browser are shown at about:license.
+ .
+ Firefox is a trademark of the Mozilla Foundation. Tiho is not affiliated
+ with or endorsed by Mozilla.
