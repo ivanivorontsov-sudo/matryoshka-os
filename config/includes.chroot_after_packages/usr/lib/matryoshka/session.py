@@ -579,6 +579,11 @@ def on_login():
     except Exception:
         pass
     try:
+        import archiveinst
+        archiveinst.repair_zoom(os.path.expanduser("~"))
+    except Exception:
+        pass
+    try:
         import waydroid_desktop
         waydroid_desktop.fix_user_files()
     except Exception:

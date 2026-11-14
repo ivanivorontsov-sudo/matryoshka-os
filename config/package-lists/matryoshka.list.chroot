@@ -233,6 +233,12 @@ wine64
 wireplumber
 wl-clipboard
 xclip
+libxcb-xtest0
+libxcb-keysyms1
+libxcb-cursor0
+libxcb-image0
+libxcb-xinerama0
+libxkbcommon-x11-0
 xdg-user-dirs
 xserver-xorg-core
 xserver-xorg-input-libinput

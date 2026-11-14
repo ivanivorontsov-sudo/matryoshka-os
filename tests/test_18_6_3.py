@@ -59,5 +59,36 @@ class Shot(unittest.TestCase):
         self.assertEqual(w.crop().width(), 200)
         self.assertEqual(w.crop().height(), 100)
 
+class Archive(unittest.TestCase):
+    def make(self, d, files):
+        import tarfile, io
+        p = os.path.join(d, "app-1.2_x86_64.tar.gz")
+        with tarfile.open(p, "w:gz") as t:
+            for name, mode in files:
+                i = tarfile.TarInfo(name); i.mode = mode; data = b"x"; i.size = 1
+                t.addfile(i, io.BytesIO(data))
+        return p
+
+    def test_program_detect(self):
+        import archiveinst, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = self.make(d, [("app/lib/libfoo.so", 0o755), ("app/chrome-sandbox", 0o755), ("app/app", 0o755), ("app/icons/app-256.png", 0o644), ("app/README", 0o644)])
+            r = archiveinst.analyze(p)
+            self.assertEqual(r["kind"], "program")
+            self.assertEqual(r["exe"], "app/app")
+            self.assertEqual(r["icon"], "app/icons/app-256.png")
+            p = self.make(d, [("src/Makefile", 0o644), ("src/main.c", 0o644)])
+            self.assertEqual(archiveinst.analyze(p)["kind"], "source")
+
+    def test_zoom_profile(self):
+        import archiveinst, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = self.make(d, [("zoom/zoom", 0o755), ("zoom/aomhost", 0o755), ("zoom/ZoomLauncher", 0o755), ("zoom/libcml.so", 0o755)])
+            r = archiveinst.analyze(p)
+            self.assertEqual(r["exe"], "zoom/ZoomLauncher")
+            t = archiveinst.desktop_text("Zoom", "/h/Программы/Zoom/zoom/ZoomLauncher", None, r["profile"], "/h/Программы/Zoom/zoom")
+            self.assertIn('Exec="/h/Программы/Zoom/zoom/ZoomLauncher" %U', t)
+            self.assertIn("x-scheme-handler/zoommtg", t)
+
 if __name__ == "__main__":
     unittest.main()

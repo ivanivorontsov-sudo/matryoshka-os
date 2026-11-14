@@ -1,4 +1,4 @@
-import sys, os, shutil, subprocess
+import sys, os, shutil, subprocess, time
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QProgressBar
 import common as C
 
@@ -20,7 +20,7 @@ class Inst(QWidget):
         elif kind == "apt":
             v.addWidget(QLabel("<h3>Установить: %s</h3><p>Пакеты скачиваются из репозитория Debian. Система попросит пароль в отдельном окне.</p>" % ", ".join(self.pkgs), wordWrap=True))
         elif kind == "archive":
-            v.addWidget(QLabel("<h3>%s</h3><p>Архив программы. Первое нажатие открыло это окно, второе — «Установить» — распакует его в ~/Программы и добавит в меню.</p>" % os.path.basename(path), wordWrap=True))
+            v.addWidget(QLabel("<h3>%s</h3><p>В архиве найдена программа. «Установить» распакует её в ~/Программы, добавит значок в меню и откроет. Пароль администратора не нужен. Ставьте только программы из источников, которым доверяете.</p>" % os.path.basename(path), wordWrap=True))
         else:
             v.addWidget(QLabel("<h3>%s</h3><p>AppImage работает без установки и без пароля администратора. «Добавить в меню» скопирует файл в ~/Программы и создаст значок в меню.</p>" % os.path.basename(path), wordWrap=True))
         self.bar = QProgressBar(); self.bar.setRange(0, 1); self.bar.hide(); v.addWidget(self.bar)
@@ -46,31 +46,35 @@ class Inst(QWidget):
         self.go_.setEnabled(code != 0)
     def install_archive(self):
         import archiveinst, tarfile
-        names = archiveinst.members_of(self.path)
-        kind = archiveinst.classify(names)
-        if kind != "program":
-            self.o.setPlainText("Это не похоже на готовую программу (%s). Откройте архив в Ark." % kind)
+        info = archiveinst.analyze(self.path)
+        if info["kind"] != "program":
+            self.o.setPlainText("Это не похоже на готовую программу (%s). Откройте архив в Ark." % info["kind"])
             return
-        d = os.path.join(C.HOME, "Программы", os.path.splitext(os.path.splitext(os.path.basename(self.path))[0])[0])
+        prof = info.get("profile") or {}
+        name = prof.get("name") or info["stem"]
+        d = os.path.join(C.HOME, "Программы", name)
+        if os.path.exists(d) and os.listdir(d):
+            from PyQt6.QtWidgets import QMessageBox
+            if QMessageBox.question(self, "Установка", "Папка %s уже есть. Заменить программу новой версией? Старая папка будет переименована, а не удалена." % d) != QMessageBox.StandardButton.Yes:
+                return
+            os.rename(d, d + ".old-" + time.strftime("%Y%m%d-%H%M%S"))
         os.makedirs(d, exist_ok=True)
         with tarfile.open(self.path, "r:*") as t:
             t.extractall(d, filter="data")
-        exe = ""
-        for root, _, files in os.walk(d):
-            for f in files:
-                p = os.path.join(root, f)
-                if os.access(p, os.X_OK) or f.lower().endswith(".appimage"):
-                    os.chmod(p, os.stat(p).st_mode | 0o111)
-                    if not exe: exe = p
-        if not exe:
+        exe = os.path.join(d, info["exe"])
+        if not os.path.isfile(exe):
             self.o.setPlainText("Распаковано в %s, исполняемый файл не найден." % d)
             return
+        os.chmod(exe, os.stat(exe).st_mode | 0o111)
+        icon = os.path.join(d, info["icon"]) if info.get("icon") else None
         ad = os.path.join(C.HOME, ".local/share/applications"); os.makedirs(ad, exist_ok=True)
-        n = os.path.basename(d)
-        open(os.path.join(ad, "archive-%s.desktop" % n.replace(" ", "_")), "w").write("[Desktop Entry]\nType=Application\nName=%s\nExec=\"%s\"\nIcon=application-x-executable\nCategories=Utility;\n" % (n, exe))
-        subprocess.Popen([exe], start_new_session=True)
-        self.o.setPlainText("Установлено: %s" % exe)
-        self.close()
+        dp = os.path.join(ad, "archive-%s.desktop" % name.replace(" ", "_"))
+        open(dp, "w", encoding="utf-8").write(archiveinst.desktop_text(name, exe, icon, prof, os.path.dirname(exe)))
+        archiveinst.register(dp, prof)
+        subprocess.Popen([exe], cwd=os.path.dirname(exe), start_new_session=True)
+        extra = ("\nСсылки %s открываются в этой программе." % ", ".join(m.split("/")[-1] for m in prof["mime"] if m.startswith("x-scheme-handler/"))) if prof.get("mime") else ""
+        self.o.setPlainText("Установлено: %s\nЗначок добавлен в меню.%s" % (exe, extra))
+        self.go_.setEnabled(False)
     def run_ai(self):
         os.chmod(self.path, os.stat(self.path).st_mode | 0o111)
         subprocess.Popen([self.path], start_new_session=True); self.close()
@@ -96,7 +100,11 @@ def main(argv):
         p = os.path.abspath(argv[0])
         low = p.lower()
         if low.endswith(".deb"): kind = "deb"
-        elif low.endswith((".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".tar")): kind = "archive"
+        elif low.endswith((".tar.gz", ".tgz", ".tar.bz2", ".tar.xz", ".txz", ".tbz2", ".tar.zst", ".tar")):
+            import archiveinst
+            if archiveinst.analyze(p)["kind"] != "program":
+                os.execvp("ark", ["ark", p])
+            kind = "archive"
         else: kind = "appimage"
         w = Inst(kind, p)
     w.show(); return app.exec()
