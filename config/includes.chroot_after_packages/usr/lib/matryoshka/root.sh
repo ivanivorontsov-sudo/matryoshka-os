@@ -216,10 +216,18 @@ case "$cmd" in
     systemctl restart waydroid-container && echo "$1 установлен" ;;
   deb-install)
     f="$1"; case "$f" in *.deb) ;; *) exit 2 ;; esac; [ -f "$f" ] || exit 2
-    t=$(mktemp -d); cp -- "$f" $t/p.deb; chmod 644 $t/p.deb
+    t=$(mktemp -d); chmod 755 $t; cp -- "$f" $t/p.deb; chmod 644 $t/p.deb
     dpkg-deb -I $t/p.deb >/dev/null || { echo "файл повреждён или это не пакет .deb"; rm -rf $t; exit 3; }
     echo "== Установка $(dpkg-deb -f $t/p.deb Package) $(dpkg-deb -f $t/p.deb Version)"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Lock::Timeout=120 $t/p.deb; rc=$?; rm -rf $t; exit $rc ;;
+    pkg=$(dpkg-deb -f $t/p.deb Package)
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Lock::Timeout=120 $t/p.deb; then rc=0; else rc=$?; fi
+    rm -rf $t
+    if [ "$rc" = 0 ] && [ "$pkg" = zoom ] && [ -d /etc/opensnitchd/rules ] && [ -x /opt/zoom/ZoomLauncher ]; then
+      python3 /usr/lib/matryoshka/zoomsnitch.py write /opt/zoom >/dev/null || true
+      systemctl reload-or-restart opensnitch >/dev/null 2>&1 || true
+      echo "OpenSnitch: Zoom разрешён только к доменам Zoom и портам 443, 8801-8810, 3478-3479"
+    fi
+    exit $rc ;;
   apt-install)
     for p in "$@"; do [[ "$p" =~ ^[a-z0-9][a-z0-9+.-]+$ ]] || exit 2; done
     DEBIAN_FRONTEND=noninteractive apt-get install -y -o DPkg::Lock::Timeout=120 "$@" ;;
@@ -230,7 +238,8 @@ case "$cmd" in
     [ -f "$1" ] || exit 2
     [[ "$2" =~ ^[0-9a-f]{64}$ ]] || exit 2
     [[ "$3" =~ ^[A-Za-z0-9._\ -]{1,64}$ ]] || exit 2
-    exec python3 /usr/lib/matryoshka/archiveinst.py root-install "$1" "$2" "$3" ;;
+    case "${4:-}" in ""|noscan) ;; *) exit 2 ;; esac
+    exec python3 /usr/lib/matryoshka/archiveinst.py root-install "$1" "$2" "$3" ${4:+"$4"} ;;
   zoom-fix)
     for a in "$@"; do
       case "$a" in

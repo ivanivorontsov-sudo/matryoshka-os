@@ -69,9 +69,16 @@ def dos(path):
     import dosbox
     return dosbox.launch(path, C.HOME)
 
+INSTALLERS = ("msi", "apk", "xapk", "apks", "apkm")
+OWN_SCAN = ("deb", "appimage", "gz", "tgz", "bz2", "xz", "tar", "zst")
+
 def main(path):
     import scangate
-    res = scangate.check(path)
+    kind = path.lower().rsplit(".", 1)[-1]
+    if kind in OWN_SCAN or (kind in INSTALLERS and not C.install_scan()):
+        res = {"malicious": False, "activator": False}
+    else:
+        res = scangate.check(path)
     if res["malicious"] or res["activator"]:
         av.dialog(res)
         if not os.path.exists(path): return 4

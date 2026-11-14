@@ -2,6 +2,8 @@ import sys, os, shutil, subprocess, time
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QProgressBar
 import common as C
 
+SCAN_LIMIT = 240
+
 def deb_info(path):
     f = lambda k: C.run(["dpkg-deb", "-f", path, k]).stdout.strip()
     return dict(name=f("Package"), ver=f("Version"), desc=f("Description").split("\n")[0], arch=f("Architecture"), size=os.path.getsize(path))
@@ -46,9 +48,15 @@ class Inst(QWidget):
             self.start_scan()
     def start_scan(self):
         self.scan_res = None
+        if not C.install_scan():
+            import archiveinst
+            self.scan_res = {"ok": True, "found": [], "skipped": True, "sha256": archiveinst.sha256(self.path)}
+            self.o.setPlainText("Проверка антивирусом при установке выключена (Центр Матрёшки → Защита). Архив не проверялся.")
+            self.go_.setEnabled(True); self.me_.setEnabled(True); self.upd_.hide()
+            return
         for b in (self.go_, self.me_, self.upd_): b.setEnabled(False)
         self.bar.setRange(0, 0); self.bar.show(); self.o.setPlainText("Проверяю архив антивирусом…")
-        self.t = C.Task(self, ["python3", "/usr/lib/matryoshka/archiveinst.py", "scan", self.path], self.scanned, timeout=7200, out=lambda t: self.o.setPlainText(t))
+        self.t = C.Task(self, ["python3", "/usr/lib/matryoshka/archiveinst.py", "scan", self.path], self.scanned, timeout=1800, out=lambda t: self.o.setPlainText(t))
     def scanned(self, code, text):
         import json
         self.bar.setRange(0, 1); self.bar.setValue(1)
@@ -62,13 +70,15 @@ class Inst(QWidget):
             self.o.setHtml("<p style='color:#d33'><b>ОБНАРУЖЕНА УГРОЗА. Установка заблокирована.</b></p><pre>%s</pre><p>Удалите архив или отправьте его на проверку. Ставить его нельзя.</p>" % "\n".join(r["found"]))
             self.go_.setEnabled(False); self.me_.setEnabled(False)
             return
-        if r.get("error"):
+        if r.get("error") and not str(r.get("error", "")).startswith("проверка не завершилась"):
             self.o.setHtml("<p style='color:#d33'><b>Не удалось проверить: %s</b></p>" % r["error"])
             self.go_.setEnabled(False); self.me_.setEnabled(False)
             return
         if not r.get("ok"):
-            self.o.setHtml("<p style='color:#d80'><b>Антивирус ClamAV сейчас недоступен, архив не проверен.</b></p><p>Включите антивирус в Центре Матрёшки или обновите базы и проверьте снова. Установить без проверки можно только вручную через «Открыть в архиваторе».</p>")
-            self.go_.setEnabled(False); self.me_.setEnabled(False)
+            import archiveinst
+            r["sha256"] = r.get("sha256") or archiveinst.sha256(self.path); r["unchecked"] = True
+            self.o.setHtml("<p style='color:#d80'><b>Антивирус ClamAV не ответил, архив не проверен.</b></p><p>Можно установить без проверки или нажать «Обновить базы и проверить снова».</p>")
+            self.go_.setEnabled(True); self.me_.setEnabled(True)
             return
         note = ("<p style='color:#d80'>Базы ClamAV старые (%s). Лучше обновить их и проверить снова.</p>" % ("неизвестно" if age is None else "%d дн." % age)) if old else "<p>Базы ClamAV свежие (%d дн.).</p>" % age
         self.o.setHtml("<p style='color:#2a2'><b>Угроз не найдено.</b></p>%s<p>Проверено %d МБ. SHA-256: %s</p><p>Нажмите «Установить», чтобы поставить программу.</p>" % (note, r.get("size", 0) // 1048576, r.get("sha256", "")))
@@ -81,10 +91,10 @@ class Inst(QWidget):
     def install_system(self):
         if self.t and self.t.running(): return
         r = self.scan_res or {}
-        if not r.get("ok") or r.get("found") or not r.get("sha256"): return
+        if r.get("found") or not r.get("sha256"): return
         for b in (self.go_, self.me_, self.upd_): b.setEnabled(False)
         self.bar.setRange(0, 0); self.o.setPlainText("Устанавливаю в /opt…")
-        self.t = C.Task(self, C.root_argv("archive-install", self.path, r["sha256"], self.pname), self.sys_done, timeout=7200, out=lambda t: self.o.setPlainText(t))
+        self.t = C.Task(self, C.root_argv("archive-install", self.path, r["sha256"], self.pname, *(["noscan"] if r.get("skipped") or r.get("unchecked") else [])), self.sys_done, timeout=7200, out=lambda t: self.o.setPlainText(t))
     def sys_done(self, code, text):
         import archiveinst
         self.bar.setRange(0, 1); self.bar.setValue(1)
@@ -98,32 +108,61 @@ class Inst(QWidget):
         if os.path.isfile(dp): archiveinst.register(dp, prof)
         subprocess.Popen(["/usr/local/bin/" + s], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.o.setPlainText(text.strip() + "\n\nГОТОВО: значок в меню, команда в терминале: %s" % s)
-    def gate(self, path):
-        import scangate, av
-        self.o.setPlainText("Проверяю антивирусом…"); QApplication.processEvents()
-        res = scangate.check(path)
+    def lock(self, on):
+        for b in self.findChildren(QPushButton):
+            if b is not self.cl: b.setEnabled(not on)
+    def gate(self, path, then):
+        if self.t and self.t.running(): return
+        if not C.install_scan():
+            self.o.setPlainText("Проверка антивирусом при установке выключена (Центр Матрёшки → Защита)."); then(); return
+        self.lock(True); self.bar.setRange(0, 0); self.bar.show()
+        self.o.setPlainText("Проверяю антивирусом… Окно не зависнет. Если антивирус не ответит за %d с, установка продолжится с предупреждением." % SCAN_LIMIT)
+        self.t = C.Task(self, ["python3", "/usr/lib/matryoshka/scangate.py", "check-full", path, "install"], lambda c, t: self.gated(path, then, c, t), timeout=SCAN_LIMIT)
+    def gated(self, path, then, code, text):
+        import json
+        self.bar.setRange(0, 1); self.bar.setValue(1); self.lock(False)
+        res = None
+        for l in reversed(text.splitlines()):
+            if l.startswith("{"):
+                try: res = json.loads(l); break
+                except ValueError: pass
+        if res is None:
+            self.o.setHtml("<p style='color:#d80'><b>Антивирус не ответил (%s), файл не проверен.</b></p><p>Установка продолжается. Проверить файл позже можно в Центре Матрёшки → Защита.</p>" % ("время ожидания истекло" if code == -1 else "код %d" % code))
+            then(); return
         if res.get("malicious") or res.get("activator"):
+            import av
             av.dialog(res)
             if res.get("malicious") or not os.path.exists(path):
-                self.o.setPlainText("Установка и запуск заблокированы: антивирус нашёл угрозу.")
-                return False
-        self.o.setPlainText("Антивирус: угроз не найдено." if res.get("clam_ok", True) else "Антивирус недоступен, файл не проверен.")
-        return True
+                self.o.setPlainText("Установка и запуск заблокированы: антивирус нашёл угрозу."); return
+        if res.get("clam_ok", True):
+            self.o.setPlainText("Антивирус: угроз не найдено.")
+        else:
+            self.o.setHtml("<p style='color:#d80'><b>Антивирус ClamAV не ответил, файл не проверен.</b></p><p>Установка продолжается.</p>")
+        then()
     def go(self):
         if self.t and self.t.running(): return
-        if self.kind == "deb" and not self.gate(self.path): return
-        self.go_.setEnabled(False); self.bar.setRange(0, 0); self.bar.show(); self.o.setPlainText("Устанавливаю…")
+        if self.kind == "deb": self.gate(self.path, self.go2); return
+        self.go2()
+    def go2(self):
+        self.note = self.o.toPlainText().strip() + "\n\n" if self.o.toPlainText().strip() else ""
+        self.go_.setEnabled(False); self.bar.setRange(0, 0); self.bar.show(); self.o.setPlainText(self.note + "Устанавливаю…")
         argv = C.root_argv("deb-install", self.path) if self.kind == "deb" else C.root_argv("apt-install", *self.pkgs)
-        self.t = C.Task(self, argv, self.done, timeout=3600, out=lambda t: (self.o.setPlainText(t), self.o.verticalScrollBar().setValue(self.o.verticalScrollBar().maximum())))
+        self.t = C.Task(self, argv, self.done, timeout=3600, out=lambda t: (self.o.setPlainText(self.note + t), self.o.verticalScrollBar().setValue(self.o.verticalScrollBar().maximum())))
     def done(self, code, text):
         self.bar.setRange(0, 1); self.bar.setValue(1)
-        self.o.setPlainText(text[-8000:] + ("\n\nГОТОВО: программа установлена, она появилась в меню." if code == 0 else "\n\nНЕ УСТАНОВЛЕНО (код %d). Текст ошибки выше." % code))
+        if code == 0:
+            try:
+                import archiveinst
+                archiveinst.repair_zoom(C.HOME)
+            except Exception:
+                pass
+        self.o.setPlainText(getattr(self, "note", "") + text[-8000:] + ("\n\nГОТОВО: программа установлена, она появилась в меню." if code == 0 else "\n\nНЕ УСТАНОВЛЕНО (код %d). Текст ошибки выше." % code))
         self.go_.setEnabled(code != 0)
     def install_archive(self):
         import archiveinst, tarfile
         r = self.scan_res or {}
-        if not r.get("ok") or r.get("found") or not r.get("sha256") or archiveinst.sha256(self.path) != r["sha256"]:
-            self.o.setPlainText("Архив не проверен антивирусом или изменился после проверки. Установка остановлена.")
+        if r.get("found") or not r.get("sha256") or archiveinst.sha256(self.path) != r["sha256"]:
+            self.o.setPlainText("Архив изменился после проверки или в нём найдена угроза. Установка остановлена.")
             return
         info = archiveinst.analyze(self.path)
         if info["kind"] != "program":
@@ -155,11 +194,13 @@ class Inst(QWidget):
         self.o.setPlainText("Установлено: %s\nЗначок добавлен в меню.%s" % (exe, extra))
         self.go_.setEnabled(False); self.me_.setEnabled(False)
     def run_ai(self):
-        if not self.gate(self.path): return
+        self.gate(self.path, self.run_ai2)
+    def run_ai2(self):
         os.chmod(self.path, os.stat(self.path).st_mode | 0o111)
         subprocess.Popen([self.path], start_new_session=True); self.close()
     def add_ai(self):
-        if not self.gate(self.path): return
+        self.gate(self.path, self.add_ai2)
+    def add_ai2(self):
         d = os.path.join(C.HOME, "Программы"); os.makedirs(d, exist_ok=True)
         dst = os.path.join(d, os.path.basename(self.path))
         if os.path.abspath(self.path) != dst: shutil.copy2(self.path, dst)

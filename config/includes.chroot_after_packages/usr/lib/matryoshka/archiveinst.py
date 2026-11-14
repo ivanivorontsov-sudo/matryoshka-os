@@ -144,8 +144,35 @@ def zoom_dirs(home):
                 seen.add(os.path.join(root, "ZoomLauncher"))
     return seen
 
+def ours(path):
+    try:
+        return "X-Matryoshka-Archive=true" in open(path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return False
+
+def repair_zoom_deb(home):
+    ad = os.path.join(home, ".local/share/applications")
+    dp = os.path.join(ad, "Zoom.desktop")
+    exe = "/opt/zoom/ZoomLauncher"
+    if not os.path.isfile(exe):
+        if os.path.isfile(dp) and ours(dp):
+            os.remove(dp)
+            return [dp]
+        return []
+    if not os.path.isfile("/usr/share/applications/Zoom.desktop") or (os.path.exists(dp) and not ours(dp)):
+        return []
+    os.makedirs(ad, exist_ok=True)
+    prof = PROFILES["zoomlauncher"]
+    text = desktop_text("Zoom", exe, "Zoom", prof, "/opt/zoom")
+    if os.path.isfile(dp) and open(dp, encoding="utf-8", errors="replace").read() == text:
+        return []
+    with open(dp, "w", encoding="utf-8") as f:
+        f.write(text)
+    register(dp, prof)
+    return [dp]
+
 def repair_zoom(home):
-    fixed = []
+    fixed = repair_zoom_deb(home)
     seen = zoom_dirs(home)
     if os.path.isfile("/opt/zoom/ZoomLauncher"):
         return fixed
@@ -186,19 +213,25 @@ def clam_scan(target):
     ready = False
     try:
         import av
-        ready = av.engine_ready(180)
+        ready = av.engine_ready(90)
     except Exception:
         ready = True
     if ready and shutil.which("clamdscan"):
-        r = subprocess.run(["clamdscan", "--fdpass", "--multiscan", "--no-summary", "--infected", target], capture_output=True, text=True, timeout=3600)
-        if r.returncode in (0, 1) and "ERROR" not in r.stdout:
-            ok = True
-            found = [l for l in r.stdout.splitlines() if l.endswith(" FOUND")]
+        try:
+            r = subprocess.run(["clamdscan", "--fdpass", "--multiscan", "--no-summary", "--infected", target], capture_output=True, text=True, timeout=900)
+            if r.returncode in (0, 1) and "ERROR" not in r.stdout:
+                ok = True
+                found = [l for l in r.stdout.splitlines() if l.endswith(" FOUND")]
+        except (OSError, subprocess.SubprocessError):
+            ok = False
     if not ok and shutil.which("clamscan"):
-        r = subprocess.run(["clamscan", "-r", "--no-summary", "--infected", "--max-filesize=400M", "--max-scansize=2000M", target], capture_output=True, text=True, timeout=7200)
-        if r.returncode in (0, 1):
-            ok = True
-            found = [l for l in r.stdout.splitlines() if l.endswith(" FOUND")]
+        try:
+            r = subprocess.run(["clamscan", "-r", "--no-summary", "--infected", "--max-filesize=400M", "--max-scansize=2000M", target], capture_output=True, text=True, timeout=1200)
+            if r.returncode in (0, 1):
+                ok = True
+                found = [l for l in r.stdout.splitlines() if l.endswith(" FOUND")]
+        except (OSError, subprocess.SubprocessError):
+            ok = False
     return ok, found
 
 def extract(path, dest):
@@ -230,7 +263,7 @@ def scan_archive(path):
         shutil.rmtree(tmp, ignore_errors=True)
     return {"ok": ok, "found": found, "sha256": sha256(path), "age": sig_age_days(), "size": need}
 
-def root_install(path, digest, name):
+def root_install(path, digest, name, noscan=False):
     import pwd, subprocess, time
     info = analyze(path)
     if info.get("kind") != "program":
@@ -250,7 +283,7 @@ def root_install(path, digest, name):
     shutil.rmtree(stage, ignore_errors=True)
     os.makedirs(stage, mode=0o755)
     extract(path, stage)
-    ok, found = clam_scan(stage)
+    ok, found = (True, []) if noscan else clam_scan(stage)
     if found:
         shutil.rmtree(stage, ignore_errors=True)
         print("ОБНАРУЖЕНА УГРОЗА, установка запрещена:\n" + "\n".join(found))
@@ -288,5 +321,5 @@ if __name__ == "__main__":
         print("RESULT " + json.dumps(r, ensure_ascii=False), flush=True)
         sys.exit(0)
     if len(sys.argv) >= 5 and sys.argv[1] == "root-install" and os.geteuid() == 0:
-        sys.exit(root_install(sys.argv[2], sys.argv[3], sys.argv[4]))
+        sys.exit(root_install(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5:6] == ["noscan"]))
     sys.exit(2)

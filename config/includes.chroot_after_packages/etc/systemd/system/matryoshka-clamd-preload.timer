@@ -1,0 +1,9 @@
+[Unit]
+Description=Матрёшка: запуск ClamAV через 2 минуты после загрузки
+
+[Timer]
+OnBootSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

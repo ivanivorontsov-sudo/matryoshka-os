@@ -165,6 +165,8 @@ class Center(QWidget):
         def ok():
             self.s.update(country=co.currentData(), ai=ai.currentData(), **{k: e.text() for k, e in fields.items()}); self.save()
         v.addWidget(btn("Сохранить", ok)); o = self.out(v)
+        isc = QCheckBox("Проверять программы антивирусом при установке"); isc.setChecked(C.install_scan()); isc.setToolTip("Если выключить, файлы .deb, AppImage, архивы и пакеты Android ставятся без проверки ClamAV. Остальная защита не меняется.")
+        isc.toggled.connect(lambda x: (self.s.update(install_scan=bool(x)), self.save())); v.addWidget(isc)
         off = QCheckBox("Выключить ИИ полностью (антивирус без объяснений, ИИ-управляющий недоступен)"); off.setChecked(bool(self.s.get("ai_off"))); off.toggled.connect(lambda x: (self.s.update(ai_off=x), self.save())); v.addWidget(off)
         def scan():
             d = QFileDialog.getExistingDirectory(self, "Папка для проверки", os.path.expanduser("~"))

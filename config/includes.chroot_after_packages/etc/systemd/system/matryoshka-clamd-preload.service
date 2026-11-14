@@ -1,0 +1,8 @@
+[Unit]
+Description=Матрёшка: заранее запустить антивирус ClamAV после загрузки
+After=matryoshka-clamd-lazy.service
+ConditionKernelCommandLine=!matryoshka.sandbox
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/matryoshka/clamd-lazy.sh preload

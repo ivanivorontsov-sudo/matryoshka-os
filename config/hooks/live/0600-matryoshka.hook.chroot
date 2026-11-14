@@ -14,7 +14,7 @@ for t in e2scrub_all.timer man-db.timer dpkg-db-backup.timer fwupd-refresh.timer
 systemctl disable clamav-freshclam.service || true
 systemctl disable clamav-daemon.service || true
 systemctl enable clamav-daemon.socket || true
-systemctl enable matryoshka-clamd-lazy.service matryoshka-clamd-idle.timer || true
+systemctl enable matryoshka-clamd-lazy.service matryoshka-clamd-idle.timer matryoshka-clamd-preload.timer || true
 systemctl disable waydroid-container.service || true
 systemctl enable matryoshka-bootcheck.service matryoshka-bootok.service matryoshka-sandbox-mode.service || true
 systemctl disable opensnitch.service 2>/dev/null || true

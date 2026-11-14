@@ -74,7 +74,7 @@ def clamd_up():
     r = subprocess.run(["systemctl", "is-active", "clamav-daemon.service"], capture_output=True, text=True)
     return r.stdout.strip() == "active"
 
-def check(path, quiet=False):
+def check(path, quiet=False, wait=180, clamd_timeout=300):
     import av
     if os.path.exists("/run/matryoshka-sandbox") or trusted(path) or not os.path.isfile(path):
         return {"malicious": False, "activator": False, "clam_ok": True, "cached": True}
@@ -84,7 +84,7 @@ def check(path, quiet=False):
     touch_stamp()
     if not quiet and not clamd_up():
         notify("Проверка антивирусом", "Запускаю ClamAV для проверки «%s»… Первый раз после включения это занимает до минуты." % os.path.basename(path))
-    res = av.scan(path, fallback=True, clamd_timeout=300, wait=180)
+    res = av.scan(path, fallback=True, clamd_timeout=clamd_timeout, wait=wait)
     res.setdefault("clam_ok", True)
     if res.get("engine") == "clamscan" and not quiet:
         notify("Проверка антивирусом", "Служба ClamAV не запустилась, «%s» проверен напрямую." % os.path.basename(path))
@@ -98,5 +98,11 @@ if __name__ == "__main__":
     if len(a) == 2 and a[0] == "check":
         r = check(os.path.abspath(a[1]))
         print(json.dumps({k: r.get(k) for k in ("malicious", "activator", "clam_ok", "cached", "clam", "yara")}, ensure_ascii=False))
+        sys.exit(4 if r.get("malicious") else 0)
+    if len(a) in (2, 3) and a[0] == "check-full":
+        p = os.path.abspath(a[1])
+        r = check(p, quiet=True, wait=90, clamd_timeout=120) if a[2:] == ["install"] else check(p)
+        r.setdefault("file", p)
+        print(json.dumps(r, ensure_ascii=False), flush=True)
         sys.exit(4 if r.get("malicious") else 0)
     sys.exit(2)

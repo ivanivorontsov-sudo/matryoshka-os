@@ -9,5 +9,7 @@ export QT_QPA_PLATFORM=xcb
 L="$HOME/.zoom/logs"
 mkdir -p "$L"
 printf '%s %s %s\n' "$(date -Is)" "$EXE" "$(printf '%s' "$*" | sed -E 's/(pwd|tk|zak|uname)=[^&]*/\1=…/g')" >> "$L/matryoshka-run.log"
+E="$L/matryoshka-stderr.log"
+[ -f "$E" ] && [ "$(stat -c %s "$E" 2>/dev/null || echo 0)" -gt 1048576 ] && mv -f "$E" "$E.1"
 cd "$(dirname "$EXE")" || exit 1
-exec "$EXE" "$@"
+exec "$EXE" "$@" 2>>"$E"

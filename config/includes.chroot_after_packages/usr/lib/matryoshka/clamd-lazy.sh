@@ -1,5 +1,7 @@
 #!/bin/sh
 IDLE=1800
+KEEP_KB=7000000
+big() { [ -f /var/lib/matryoshka/clamd-always ] || [ "$(awk '/^MemTotal:/{print $2}' /proc/meminfo)" -ge "$KEEP_KB" ]; }
 case "$1" in
   boot)
     systemctl list-unit-files clamav-daemon.socket >/dev/null 2>&1 || exit 0
@@ -7,7 +9,16 @@ case "$1" in
     systemctl enable clamav-daemon.socket >/dev/null 2>&1
     systemctl start clamav-daemon.socket >/dev/null 2>&1
     exit 0 ;;
+  preload)
+    grep -q "boot=live" /proc/cmdline && [ ! -f /var/lib/matryoshka/clamd-always ] && exit 0
+    big || exit 0
+    systemctl is-active -q clamav-daemon.service && exit 0
+    systemctl start clamav-daemon.socket >/dev/null 2>&1
+    systemctl reset-failed clamav-daemon.service >/dev/null 2>&1
+    systemctl --no-block start clamav-daemon.service
+    exit 0 ;;
   idle)
+    big && exit 0
     systemctl is-active -q clamav-daemon.service || exit 0
     now=$(date +%s)
     up=$(systemctl show -p ActiveEnterTimestampMonotonic --value clamav-daemon.service)

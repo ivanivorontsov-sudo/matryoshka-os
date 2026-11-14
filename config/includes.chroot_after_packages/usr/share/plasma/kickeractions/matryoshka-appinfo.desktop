@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+NoDisplay=true
+Exec=python3 /usr/lib/matryoshka/appinfo.py --info %f
+Icon=help-about
+Name=Matryoshka app actions
+Name[ru]=Действия Матрёшки с программой
+Actions=matryoshkaRemove;matryoshkaInfo;
+
+[Desktop Action matryoshkaRemove]
+Name=Remove this app…
+Name[ru]=Удалить программу…
+Icon=edit-delete
+Exec=python3 /usr/lib/matryoshka/appinfo.py --remove %f
+
+[Desktop Action matryoshkaInfo]
+Name=About the app and version
+Name[ru]=О программе и версия
+Icon=help-about
+Exec=python3 /usr/lib/matryoshka/appinfo.py --info %f
