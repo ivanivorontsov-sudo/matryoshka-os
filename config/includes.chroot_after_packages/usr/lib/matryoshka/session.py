@@ -431,20 +431,10 @@ def firefox_icon():
     open(p, "w", encoding="utf-8").write("[Desktop Entry]\nType=Application\nNoDisplay=true\nName=Firefox\nExec=firefox-esr %u\nIcon=firefox-esr\nStartupWMClass=firefox\n")
 
 def kwallet_text(on):
-    # Выключенный переключатель должен останавливать окно пароля.
-    # Раньше галочка игнорировалась: бумажник оставался включён, вход пальцем
-    # его не открывал, и пароль спрашивался снова на Zoom, браузер и сеть.
-    if not on:
-        return (
-            ("Enabled", "false"),
-            ("First Use", "false"),
-            ("Use One Wallet", "true"),
-            ("SecretServiceEnabled", "false"),
-            ("Prompt on Open", "false"),
-            ("Close When Idle", "false"),
-            ("Launch", "false"),
-            ("Leave Open", "false"),
-        )
+    # Службу нельзя выключать. NetworkManager хранит пароль Wi-Fi в ней:
+    # после Enabled=false сеть не подключается совсем, без вопроса пароля.
+    # on остаётся в настройках меню. Окно просят не браузеры (у них свой
+    # файл паролей) и не уже сохранённая сеть (пароль лежит в файле соединения).
     return (
         ("Enabled", "true"),
         ("First Use", "false"),
@@ -498,12 +488,6 @@ def browser_flags():
             out.write("--password-store=basic\n")
 
 
-def kwallet_quit():
-    # Уже запущенный бумажник продолжает спрашивать пароль, пока процесс жив.
-    for name in ("kwalletd6", "kwalletd5"):
-        C.run(["pkill", "-u", str(os.getuid()), "-x", name], timeout=5)
-
-
 def wifi_save():
     # Пароль уже подключённой сети пишется в файл NetworkManager до остановки бумажника.
     try:
@@ -513,31 +497,26 @@ def wifi_save():
 
 
 def kwallet(on):
-    on = bool(on)
+    # on не гасит службу: иначе пропадает пароль сети и она не подключается.
     if not on:
         wifi_save()
     browser_flags()
-    kwallet_write(os.path.expanduser("~/.config/kwalletrc"), on)
-    for key, value in kwallet_text(on):
+    kwallet_write(os.path.expanduser("~/.config/kwalletrc"), True)
+    for key, value in kwallet_text(True):
         C.kwrite("kwalletrc", "Wallet", key, value)
-    flag = "true" if on else "false"
     for rc in ("kded5rc", "kded6rc"):
-        C.kwrite(rc, "Module-kwallet", "autoload", flag)
-        C.kwrite(rc, "Module-kwalletd", "autoload", flag)
-    if on:
-        d = os.path.expanduser("~/.config/autostart")
-        for name in ("org.kde.kwalletd5.desktop", "org.kde.kwalletd6.desktop"):
-            p = os.path.join(d, name)
-            try:
-                if os.path.isfile(p) and "X-Matryoshka-KWallet=off" in open(p, encoding="utf-8", errors="replace").read():
-                    os.remove(p)
-            except OSError:
-                pass
-        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
-        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "loadModule", "s", "kwallet"], timeout=8)
-        return
-    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "false"], timeout=8)
-    kwallet_quit()
+        C.kwrite(rc, "Module-kwallet", "autoload", "true")
+        C.kwrite(rc, "Module-kwalletd", "autoload", "true")
+    d = os.path.expanduser("~/.config/autostart")
+    for name in ("org.kde.kwalletd5.desktop", "org.kde.kwalletd6.desktop"):
+        p = os.path.join(d, name)
+        try:
+            if os.path.isfile(p) and "X-Matryoshka-KWallet=off" in open(p, encoding="utf-8", errors="replace").read():
+                os.remove(p)
+        except OSError:
+            pass
+    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
+    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "loadModule", "s", "kwallet"], timeout=8)
 
 def chooser():
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox

@@ -473,10 +473,14 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
             # Зонд внутри контейнера, не вместо настройки компьютера.
             # Крупные пакеты на раздаче тогда уменьшаются у самого Android.
             guest_sysctl(pid, "net/ipv4/tcp_mtu_probing", "1")
-            # У моста нет маршрута IPv6. Яндекс Браузер пробует его первым
-            # и не открывает сайты, хотя RuStore по IPv4 работает.
-            guest_sysctl(pid, "net/ipv6/conf/all/disable_ipv6", "1")
-            guest_sysctl(pid, "net/ipv6/conf/default/disable_ipv6", "1")
+            # Выключение IPv6 у всего контейнера гасит ::1. Без него Android
+            # не поднимает сеть вообще, не только Яндекс Браузер.
+            # Объявления маршрутизатора на eth0 не принимаем: чужой IPv6 без
+            # маршрута заставляет браузер ждать, пока IPv4 уже работает.
+            guest_sysctl(pid, "net/ipv6/conf/all/disable_ipv6", "0")
+            guest_sysctl(pid, "net/ipv6/conf/default/disable_ipv6", "0")
+            guest_sysctl(pid, "net/ipv6/conf/eth0/accept_ra", "0")
+            guest_sysctl(pid, "net/ipv6/conf/eth0/autoconf", "0")
         current, dns_pid = dnsmasq_state()
         upstream = upstream_dns()
         if needs_dns(read_text("/etc/resolv.conf"), upstream, current):
