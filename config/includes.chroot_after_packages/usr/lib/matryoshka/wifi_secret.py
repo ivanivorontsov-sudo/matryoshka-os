@@ -239,6 +239,59 @@ def store_pairs(pairs):
     return done
 
 
+def system_owned(text):
+    """Бумажник выключен: пароль сети отдаётся системе (psk-flags=0), соединение общее.
+
+    Если пароля в файле ещё нет, NetworkManager спрашивает его у агента
+    (окно меню сетей или окно Матрёшки) и сам записывает ответ в файл
+    соединения сразу, с первого ввода. С psk-flags=1 ответ оставался у агента
+    без бумажника и в файл попадал только при следующем входе.
+    """
+    lines = text.splitlines(keepends=True)
+    changed = False
+    is_psk = False
+    for name, start, end in section_ranges(lines):
+        if name != "wifi-security":
+            continue
+        found = fields(lines, start, end)
+        if found.get("key-mgmt", (None, ""))[1] not in PSK_MGMT:
+            return text, False
+        is_psk = True
+        item = found.get("psk-flags")
+        if item:
+            if item[1] != "0":
+                changed = set_flag(lines, found, "psk-flags", "0") or changed
+        break
+    if not is_psk:
+        return text, False
+    out = []
+    in_conn = False
+    for line in lines:
+        t = line.strip()
+        if t.startswith("[") and t.endswith("]"):
+            in_conn = t == "[connection]"
+        elif in_conn and t.startswith("permissions="):
+            changed = True
+            continue
+        out.append(line)
+    return "".join(out), changed
+
+
+def make_system(paths):
+    for path in paths:
+        old = read_text(path)
+        if not old:
+            continue
+        text, changed = system_owned(old)
+        if not changed:
+            continue
+        try:
+            write_text(path, text)
+            run(["nmcli", "connection", "load", path], timeout=15)
+        except Exception:
+            pass
+
+
 def needs_agent(text):
     lines = text.splitlines(keepends=True)
     sections = {}
@@ -460,6 +513,9 @@ def main(argv):
     if os.geteuid() != 0:
         return 1
     pin_only = "--pin" in argv
+    if "--system" in argv:
+        make_system(list_files())
+        argv = [item for item in argv if item != "--system"]
     if "--stdin" in argv:
         # Пароли сетей, которые сеанс пользователя достал из бумажника или
         # спросил своим окном. Записываются в файлы соединений (psk-flags=0).

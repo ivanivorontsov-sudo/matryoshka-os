@@ -157,6 +157,9 @@ def stop_running():
     # логинов Вивальди и пароль Wi-Fi.
     if os.geteuid() != 0:
         return
+    # Старые скрипты обновления (18.6.9–18.6.17) вызывают только «stop».
+    # Пароли Wi-Fi из открытого бумажника переносятся в файлы здесь же.
+    harvest_all()
     for user in pwd.getpwall():
         if user.pw_uid < 1000 or user.pw_uid >= 60000:
             continue
@@ -179,6 +182,35 @@ def stop_running():
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=50,
+            )
+        except Exception:
+            pass
+
+
+def harvest_all():
+    """Во время обновления: пароли Wi-Fi из открытого бумажника в файлы.
+
+    Для каждого пользователя с запущенным сеансом session.wifi_save() идёт
+    от его имени: только агент его сеанса отдаёт пароль с psk-flags=1.
+    Закрытый бумажник не открывается и окон не показывает.
+    """
+    if os.geteuid() != 0:
+        return
+    for user in pwd.getpwall():
+        if user.pw_uid < 1000 or user.pw_uid >= 60000:
+            continue
+        runtime = "/run/user/%d" % user.pw_uid
+        bus = os.path.join(runtime, "bus")
+        if not os.path.exists(bus):
+            continue
+        env = dict(os.environ)
+        env.update({"HOME": user.pw_dir, "USER": user.pw_name, "LOGNAME": user.pw_name,
+                    "XDG_RUNTIME_DIR": runtime, "DBUS_SESSION_BUS_ADDRESS": "unix:path=" + bus})
+        try:
+            subprocess.run(
+                ["runuser", "-u", user.pw_name, "--", "python3", "-c", "import session; session.wifi_system_default(); session.wifi_save()"],
+                cwd="/usr/lib/matryoshka", env=env, stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120,
             )
         except Exception:
             pass
@@ -223,6 +255,9 @@ def pam_status():
 def main(argv):
     if len(argv) > 1 and argv[1] == "apply":
         apply_files()
+        return 0
+    if len(argv) > 1 and argv[1] == "harvest":
+        harvest_all()
         return 0
     if len(argv) > 1 and argv[1] == "stop":
         stop_running()

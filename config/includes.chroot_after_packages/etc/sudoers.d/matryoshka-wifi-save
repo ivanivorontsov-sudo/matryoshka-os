@@ -1,2 +1,2 @@
 # Пароль уже включённой сети записывается в файл соединения без окна пароля.
-%sudo ALL=(root) NOPASSWD: /usr/lib/matryoshka/root.sh wifi-save, /usr/lib/matryoshka/root.sh wifi-save --stdin
+%sudo ALL=(root) NOPASSWD: /usr/lib/matryoshka/root.sh wifi-save, /usr/lib/matryoshka/root.sh wifi-save --stdin, /usr/lib/matryoshka/root.sh wifi-save --system

@@ -595,6 +595,16 @@ def psk_in_file(flags):
     return (flags or "0").split(" ", 1)[0] in ("0", "")
 
 
+def psk_known(uuid, flags):
+    # Флаг 0 ещё не значит, что пароль есть: после перевода сети на
+    # системное хранение файл может быть без psk. Окно не вызывается.
+    if not psk_in_file(flags):
+        return False
+    out = C.run(["nmcli", "-s", "-t", "-e", "no", "-g", "802-11-wireless-security.psk", "connection", "show", uuid], timeout=12, env=_nm_env())
+    psk = (out.stdout or "").strip()
+    return out.returncode == 0 and bool(psk) and psk not in ("--", "<hidden>")
+
+
 def wifi_need_psk():
     """Сохранённые сети WPA, пароль которых не лежит в файле соединения."""
     found = []
@@ -645,9 +655,18 @@ def wifi_save():
         pass
     try:
         result = subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
-        return result.returncode == 0
+        ok = result.returncode == 0
     except Exception:
-        return False
+        ok = False
+    # После обычного прохода: он возвращает psk-flags=1 сети без пароля.
+    if C.settings().get("kwallet", True) is False:
+        # Бумажник выключен: пароли сетей хранит система. Тогда пароль,
+        # введённый в любом окне, NetworkManager пишет в файл сразу.
+        try:
+            subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save", "--system"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+        except Exception:
+            pass
+    return ok
 
 
 def ask_wifi_password(uuid, ssid):
@@ -698,8 +717,19 @@ def apply_wallet(on):
     C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
 
 
+def wifi_system_default():
+    # Новые сети меню сетей сохраняет как системные: пароль ложится в файл
+    # соединения (psk-flags=0), а не в бумажник. Тогда вход по лицу или
+    # отпечатку, без пароля учётной записи, поднимает Wi-Fi без вопросов.
+    try:
+        C.kwrite("plasma-nm", "General", "SystemConnectionsByDefault", "true")
+    except Exception:
+        pass
+
+
 def kwallet(on):
     on = bool(on)
+    wifi_system_default()
     # Пароль точки пишется в файл до того, как служба секретов исчезнет.
     # USB и кабель эта команда не отключает.
     wifi_save()
@@ -797,7 +827,7 @@ def connect_saved_wifi():
         return
     if C.settings().get("kwallet", True) is False:
         mgmt, flags, ssid = wifi_profile(best)
-        if mgmt in WIFI_PSK_MGMT and not psk_in_file(flags):
+        if mgmt in WIFI_PSK_MGMT and not psk_known(best, flags):
             # Агента с паролем нет: подключение повисло бы на авторизации.
             ask_wifi_password(best, ssid)
             return
