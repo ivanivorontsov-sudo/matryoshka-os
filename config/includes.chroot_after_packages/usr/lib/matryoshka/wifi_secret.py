@@ -112,7 +112,7 @@ def repair_text(text):
             mgmt = found.get("key-mgmt", (None, ""))[1]
             if useful(psk):
                 changed = set_flag(lines, found, "psk-flags", "0") or changed
-            elif mgmt in PSK_MGMT and found.get("psk-flags", (None, ""))[1] == "0":
+            elif mgmt in PSK_MGMT and found.get("psk-flags", (None, ""))[1] == "0" and not SYSTEM_MODE[0]:
                 changed = set_flag(lines, found, "psk-flags", "1") or changed
         elif name == "802-1x":
             for key, flag in (("password", "password-flags"), ("private-key-password", "private-key-password-flags")):
@@ -237,6 +237,27 @@ def store_pairs(pairs):
             pass
         done.append(uuid)
     return done
+
+
+SYSTEM_MODE = [False]
+
+
+def wallet_off_any():
+    """Хоть у одного пользователя переключатель «Отключить бумажник» включён."""
+    import json
+    import pwd
+    for user in pwd.getpwall():
+        if user.pw_uid < 1000 or user.pw_uid >= 60000:
+            continue
+        path = os.path.join(user.pw_dir, ".config", "matryoshka", "settings.json")
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except Exception:
+            continue
+        if isinstance(data, dict) and data.get("kwallet", True) is False:
+            return True
+    return False
 
 
 def system_owned(text):
@@ -513,7 +534,14 @@ def main(argv):
     if os.geteuid() != 0:
         return 1
     pin_only = "--pin" in argv
-    if "--system" in argv:
+    try:
+        SYSTEM_MODE[0] = wallet_off_any()
+    except Exception:
+        SYSTEM_MODE[0] = False
+    if "--system" in argv or SYSTEM_MODE[0]:
+        # Бумажник выключен: пароль сети хранит система (psk-flags=0), ответ
+        # из окна пароля NetworkManager записывает в файл с первого ввода.
+        SYSTEM_MODE[0] = True
         make_system(list_files())
         argv = [item for item in argv if item != "--system"]
     if "--stdin" in argv:

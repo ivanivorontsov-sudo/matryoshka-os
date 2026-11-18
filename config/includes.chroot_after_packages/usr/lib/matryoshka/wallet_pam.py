@@ -53,6 +53,13 @@ def should_skip(data, password_present, pam_type="auth"):
     # спросить «Password:», поэтому без пароля auth пропускается.
     if not isinstance(data, dict):
         data = {}
+    if data.get("kwallet", True) is False and data.get("kwallet_pending") is True:
+        # Бумажник выключен, но ключ Вивальди ещё не перенесён: при входе
+        # по паролю бумажник открывается тем же паролем, без окна, и ключ
+        # переносится. Вход по лицу/отпечатку модуль пропускает.
+        if (pam_type or "auth").strip() in ("open_session", "close_session", "session"):
+            return False
+        return not password_present
     if data.get("kwallet", True) is False or data.get("wallet_auto", True) is False:
         return True
     if (pam_type or "auth").strip() in ("open_session", "close_session", "session"):

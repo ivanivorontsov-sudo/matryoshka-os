@@ -740,13 +740,23 @@ def kwallet(on):
             ready = browser_key.migrate_to_basic()
         except Exception:
             ready = False
-        if ready:
-            browser_flags(False)
+        if not ready:
+            # Логины/куки Вивальди ещё на ключе бумажника, а ключа нет.
+            # Хранилище не глушится: иначе Вивальди пишет «Дешифровка
+            # прервана». Бумажник остаётся доступен только по запросу
+            # Вивальди; как только он открыт, ключ переносится и бумажник
+            # выключается окончательно. Данные не трогаются.
+            wallet_pending(True)
+            connect_saved_wifi()
+            return
+        wallet_pending_flag(False)
+        browser_flags(False)
         apply_wallet(False)
         block_wallet_bus()
         stop_kwalletd()
         connect_saved_wifi()
         return
+    wallet_pending_flag(False)
     wallet_cleanup()
     browser_flags(True)
     apply_wallet(on)
@@ -756,6 +766,79 @@ def kwallet(on):
     except Exception:
         pass
     connect_saved_wifi()
+
+
+def wallet_pending_flag(on):
+    path = os.path.expanduser("~/.config/matryoshka/settings.json")
+    try:
+        import json
+        cur = json.load(open(path, encoding="utf-8")) if os.path.isfile(path) else {}
+        if not isinstance(cur, dict):
+            cur = {}
+        if bool(cur.get("kwallet_pending")) == bool(on):
+            return
+        if on:
+            cur["kwallet_pending"] = True
+        else:
+            cur.pop("kwallet_pending", None)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as out:
+            json.dump(cur, out, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
+_PENDING_WATCH = []
+
+
+def wallet_pending(start_watch=True):
+    wallet_pending_flag(True)
+    try:
+        import browser_key
+        browser_key.backup_pending()
+    except Exception:
+        pass
+    wallet_cleanup()
+    browser_flags(True)
+    for key, value in kwallet_text(True):
+        C.kwrite("kwalletrc", "Wallet", key, value)
+    if not start_watch or _PENDING_WATCH:
+        return
+    _PENDING_WATCH.append(True)
+
+    def watch():
+        told = False
+        while True:
+            time.sleep(15)
+            try:
+                if C.load("settings", {}).get("kwallet", True) is not False:
+                    return
+            except Exception:
+                pass
+            try:
+                import browser_key
+                if wallet_unlocked():
+                    # current_key кладёт ключ в кеш 0600; перешифровка —
+                    # когда Вивальди закрыт.
+                    browser_key.current_key()
+                if browser_key.migrate_to_basic():
+                    kwallet(False)
+                    subprocess.run(["notify-send", "-a", "Матрёшка", "-i", "kwalletmanager", "Бумажник выключен", "Логины и куки Вивальди перенесены, бумажник больше не нужен."], timeout=10)
+                    return
+            except Exception:
+                pass
+            if not told:
+                told = True
+                try:
+                    subprocess.run(["notify-send", "-a", "Матрёшка", "-i", "kwalletmanager", "Перенос логинов Вивальди",
+                                    "Чтобы бумажник выключился без потери логинов, один раз введите пароль бумажника, "
+                                    "когда Вивальди его спросит (или войдите в систему по паролю), затем закройте Вивальди. "
+                                    "Кнопку «Продолжить с потерей данных» не нажимайте."], timeout=10)
+                except Exception:
+                    pass
+    threading.Thread(target=watch, daemon=True).start()
 
 
 def wallet_unlocked():

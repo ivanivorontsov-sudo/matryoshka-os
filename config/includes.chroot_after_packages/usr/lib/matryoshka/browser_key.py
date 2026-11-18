@@ -17,6 +17,10 @@ BASIC = "peanuts"
 SALT = b"saltysalt"
 IV = b" " * 16
 PREFIX = b"v10"
+# Chromium на Linux: v10 — всегда ключ peanuts, v11 — ключ из бумажника
+# (KWallet/Secret Service). Записи v10 читаются при любом хранилище,
+# поэтому перевод v11 -> v10 ничего не теряет.
+PREFIX_WALLET = b"v11"
 MARK = "oskey-basic"
 FOLDERS = (
     ("Chrome Keys", "Chrome Safe Storage"),
@@ -65,8 +69,10 @@ def aes_cbc(data, key, decrypt):
 
 
 def decrypt_blob(blob, password):
-    if not isinstance(blob, (bytes, bytearray)) or not blob.startswith(PREFIX):
+    if not isinstance(blob, (bytes, bytearray)) or not (blob.startswith(PREFIX) or blob.startswith(PREFIX_WALLET)):
         return None
+    if blob.startswith(PREFIX):
+        password = BASIC
     raw = aes_cbc(bytes(blob[3:]), derive(password), True)
     if raw is None:
         return None
@@ -83,14 +89,20 @@ def encrypt_blob(plain, password):
 
 
 def reencrypt_blob(blob, old, new):
-    if not isinstance(blob, (bytes, bytearray)) or not blob.startswith(PREFIX):
+    """v11 (ключ бумажника old) -> v10 (peanuts). Остальное не трогается."""
+    if not isinstance(blob, (bytes, bytearray)) or not blob.startswith(PREFIX_WALLET):
         return blob, False
-    if old == new:
+    if new != BASIC or not old:
         return bytes(blob), False
-    plain = decrypt_blob(blob, old)
+    keys = list(old) if isinstance(old, (list, tuple)) else [k for k in str(old).split("\n") if k]
+    plain = None
+    for key in keys:
+        plain = decrypt_blob(blob, key)
+        if plain is not None:
+            break
     if plain is None:
         return bytes(blob), False
-    done = encrypt_blob(plain, new)
+    done = encrypt_blob(plain, BASIC)
     if not done:
         return bytes(blob), False
     return done, True
@@ -176,9 +188,8 @@ def file_needs_key(path, password):
     except sqlite3.Error:
         return False
     for (blob,) in rows:
-        if isinstance(blob, (bytes, bytearray)) and blob.startswith(PREFIX):
-            if decrypt_blob(blob, password) is None:
-                return True
+        if isinstance(blob, (bytes, bytearray)) and blob.startswith(PREFIX_WALLET):
+            return True
     return False
 
 
@@ -213,10 +224,12 @@ def _handle():
     return None
 
 
-def read_wallet_key():
+def read_wallet_keys():
+    """Все ключи браузеров из бумажника (у Chrome и Вивальди они разные)."""
     handle = _handle()
     if not handle:
-        return ""
+        return []
+    found = []
     for folder, key in FOLDERS:
         code, out = _bus(
             "call", "org.kde.kwalletd6", "/modules/kwalletd6", "org.kde.KWallet",
@@ -225,9 +238,14 @@ def read_wallet_key():
         if code != 0 or not out.startswith("s "):
             continue
         value = _unquote(out[2:].strip())
-        if value:
-            return value
-    return ""
+        if value and value not in found and "\n" not in value:
+            found.append(value)
+    return found
+
+
+def read_wallet_key():
+    keys = read_wallet_keys()
+    return keys[0] if keys else ""
 
 
 def write_wallet_key(password):
@@ -274,11 +292,53 @@ def write_cache(password, home=None):
 
 
 def current_key(home=None):
-    live = read_wallet_key()
-    if live:
-        write_cache(live, home)
-        return live
-    return read_cache(home)
+    """Ключи через перевод строки. Живые ключи дописываются к кешу, не заменяют его."""
+    live = read_wallet_keys()
+    cached = [k for k in read_cache(home).split("\n") if k]
+    keys = cached + [k for k in live if k not in cached]
+    if live and keys != cached:
+        write_cache("\n".join(keys), home)
+    return "\n".join(keys)
+
+
+def browser_running():
+    try:
+        out = subprocess.run(["pgrep", "-u", str(os.getuid()), "-f", "(vivaldi|chromium|chrome|yandex_browser|brave)(-bin)?( |$)"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return bool((out.stdout or "").strip())
+
+
+def pending(home=None):
+    """True — в профилях есть записи на ключе бумажника, а ключа нет."""
+    home = home or os.path.expanduser("~")
+    return any(file_needs_key(path, BASIC) for path in profile_files(home))
+
+
+def backup_pending(home=None):
+    """Копия баз с записями на ключе бумажника, пока их никто не тронул."""
+    home = home or os.path.expanduser("~")
+    done = 0
+    for path in profile_files(home):
+        if not file_needs_key(path, BASIC):
+            continue
+        bak = path + ".matryoshka-v11-backup"
+        if os.path.exists(bak):
+            continue
+        try:
+            src = sqlite3.connect("file:%s?mode=ro" % path.replace("?", "%3F"), uri=True, timeout=5)
+            dst = sqlite3.connect(bak)
+            src.backup(dst)
+            dst.close()
+            src.close()
+            os.chmod(bak, 0o600)
+            done += 1
+        except (sqlite3.Error, OSError):
+            try:
+                os.remove(bak)
+            except OSError:
+                pass
+    return done
 
 
 def migrate_to_basic(home=None):
@@ -288,6 +348,10 @@ def migrate_to_basic(home=None):
     key = current_key(home)
     if any(file_needs_key(path, BASIC) for path in files):
         if not key:
+            return False
+        if browser_running():
+            # Ключ уже в кеше (0600). Перешифровка — когда браузер закрыт,
+            # иначе он может записать куки обратно старым ключом.
             return False
         for path in files:
             try:
@@ -310,5 +374,13 @@ def migrate_to_basic(home=None):
 def restore_to_wallet(home=None):
     home = home or os.path.expanduser("~")
     if not os.path.isfile(mark_path(home)):
+        return False
+    if pending(home):
+        # В профиле ещё есть записи на старом ключе бумажника (18.6.17
+        # ставил метку, не перешифровав v11). Старый ключ не затирается.
+        try:
+            os.remove(mark_path(home))
+        except OSError:
+            pass
         return False
     return write_wallet_key(BASIC)

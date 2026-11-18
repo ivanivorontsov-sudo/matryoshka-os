@@ -389,16 +389,52 @@ def desktop_leftovers():
     return removed
 
 
-def apply_all():
+MARK = "/var/lib/matryoshka/vpn-cleaned"
+# Запрет apt из 18.6.17. Поставить VPN или прокси самому можно, поэтому
+# файл удаляется; его наличие значит, что очистка 18.6.17 уже прошла.
+PIN = "/etc/apt/preferences.d/matryoshka-no-vpn"
+
+
+def already_cleaned(mark=MARK, pin=PIN):
+    return os.path.exists(mark) or os.path.exists(pin)
+
+
+def write_mark(mark=MARK):
+    try:
+        os.makedirs(os.path.dirname(mark), exist_ok=True)
+        with open(mark, "w", encoding="utf-8") as handle:
+            handle.write("1\n")
+    except OSError:
+        pass
+
+
+def drop_pin(pin=PIN):
+    try:
+        os.remove(pin)
+        return True
+    except OSError:
+        return False
+
+
+def apply_all(force=False):
     if os.geteuid() != 0:
         print("нужны права администратора", file=sys.stderr)
         return 1
+    done_before = already_cleaned()
+    drop_pin()
+    if done_before and not force:
+        # Очистка один раз. VPN, прокси и профили, которые пользователь
+        # поставил или создал после неё, остаются.
+        write_mark()
+        print("VPN и прокси: очистка уже выполнена, установленное после неё не трогаю")
+        return 0
     stop_units()
     purged = purge_packages()
     files = delete_profiles()
     live = delete_live_profiles()
     proxy = strip_proxy_files()
     menus = desktop_leftovers()
+    write_mark()
     print("VPN и прокси: пакетов %d, профилей %d, живых %d, файлов прокси %d, ярлыков %d" % (
         len(purged), len(files), len(live), len(proxy), len(menus)))
     return 0
@@ -407,7 +443,7 @@ def apply_all():
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else "apply"
     if cmd == "apply":
-        return apply_all()
+        return apply_all(force="--force" in argv)
     return 2
 
 

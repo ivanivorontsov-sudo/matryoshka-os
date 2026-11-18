@@ -895,12 +895,19 @@ class Clone(unittest.TestCase):
             same, changed = wifi_secret.share_saved(shared)
             self.assertFalse(changed)
             import browser_key
-            blob = browser_key.encrypt_blob(b"login-secret", "old-key")
+            # v11 — ключ из бумажника, v10 — всегда peanuts (как в Chromium).
+            raw = browser_key.aes_cbc(browser_key.pkcs7_pad(b"login-secret"), browser_key.derive("old-key"), False)
+            blob = browser_key.PREFIX_WALLET + raw
             self.assertEqual(browser_key.decrypt_blob(blob, "old-key"), b"login-secret")
-            moved, did = browser_key.reencrypt_blob(blob, "old-key", browser_key.BASIC)
+            moved, did = browser_key.reencrypt_blob(blob, "other\nold-key", browser_key.BASIC)
             self.assertTrue(did)
-            self.assertEqual(browser_key.decrypt_blob(moved, browser_key.BASIC), b"login-secret")
-            self.assertIsNone(browser_key.decrypt_blob(moved, "old-key"))
+            self.assertTrue(moved.startswith(b"v10"))
+            self.assertEqual(browser_key.decrypt_blob(moved, "anything"), b"login-secret")
+            same, did = browser_key.reencrypt_blob(blob, "wrong-key", browser_key.BASIC)
+            self.assertFalse(did)
+            self.assertEqual(same, blob)
+            same, did = browser_key.reencrypt_blob(moved, "old-key", browser_key.BASIC)
+            self.assertFalse(did)
             dispatcher = read(INC, "etc", "NetworkManager", "dispatcher.d", "30-matryoshka-wifi-key")
             self.assertIn("phy80211", dispatcher)
             self.assertIn("--pin", dispatcher)
@@ -957,8 +964,8 @@ class Clone(unittest.TestCase):
             self.assertIn("modemmanager", read(ROOT, "config", "package-lists", "matryoshka.list.chroot"))
             self.assertIn("drop-vpn.sh", read(LIB, "upgrade.sh"))
             self.assertIn("drop-vpn.sh", read(LIB, "netmenu.py"))
-            self.assertIn("Pin-Priority: -1", read(INC, "etc", "apt", "preferences.d", "matryoshka-no-vpn"))
-            self.assertIn("pkg network-manager-openvpn", read(ROOT, "packaging", "matryoshka-upgrade", "remove.list"))
+            self.assertFalse(os.path.exists(os.path.join(INC, "etc", "apt", "preferences.d", "matryoshka-no-vpn")))
+            self.assertNotIn("pkg network-manager-openvpn", read(ROOT, "packaging", "matryoshka-upgrade", "remove.list"))
             self.assertNotIn("systemctl", read(LIB, "waydroid_ctl.py"))
             session.kwallet_write(path, True)
             enabled = open(path, encoding="utf-8").read()
@@ -972,3 +979,30 @@ class Clone(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Release18618(unittest.TestCase):
+    def test_vivaldi_wallet_vpn_zoom(self):
+        import sys, tempfile
+        sys.path.insert(0, LIB)
+        import wallet_pam, drop_vpn, browser_key
+        self.assertFalse(wallet_pam.should_skip({"kwallet": False, "kwallet_pending": True}, True, "auth"))
+        self.assertTrue(wallet_pam.should_skip({"kwallet": False, "kwallet_pending": True}, False, "auth"))
+        self.assertFalse(wallet_pam.should_skip({"kwallet": False, "kwallet_pending": True}, False, "open_session"))
+        with tempfile.TemporaryDirectory() as d:
+            mark, pin = os.path.join(d, "m"), os.path.join(d, "p")
+            self.assertFalse(drop_vpn.already_cleaned(mark, pin))
+            open(pin, "w").write("x")
+            self.assertTrue(drop_vpn.already_cleaned(mark, pin))
+            self.assertTrue(drop_vpn.drop_pin(pin))
+            drop_vpn.write_mark(mark)
+            self.assertTrue(drop_vpn.already_cleaned(mark, pin))
+        self.assertFalse(os.path.exists(os.path.join(INC, "etc", "apt", "preferences.d", "matryoshka-no-vpn")))
+        rl = open(os.path.join(os.path.dirname(os.path.dirname(INC)), "packaging", "matryoshka-upgrade", "remove.list")).read()
+        self.assertIn("file /etc/apt/preferences.d/matryoshka-no-vpn", rl)
+        self.assertNotIn("\npkg ", "\n" + rl)
+        zoom = read(LIB, "zoom-run")
+        self.assertIn("RETRY_OK", zoom)
+        self.assertIn("enableWaylandShare=true", zoom)
+        self.assertIn("zoomus-reset-18.6.18", zoom)
+        self.assertEqual(browser_key.decrypt_blob(browser_key.encrypt_blob(b"x", browser_key.BASIC), "other"), b"x")
