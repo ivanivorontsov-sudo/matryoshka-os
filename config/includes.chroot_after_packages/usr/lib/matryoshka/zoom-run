@@ -39,16 +39,19 @@ BIN="$DIR/zoom"
 cd "$DIR" || exit 1
 GPU=""
 [ -f "$HOME/.config/matryoshka/zoom-no-gpu" ] && GPU="--disable-gpu --disable-gpu-sandbox"
-# Страница «Запустить Zoom» открывает zoomprc:// или zoommtg://.
-# Второй процесс zoom эту ссылку уже открытому Workplace не отдаёт, и окно крутится.
-# ZoomLauncher как раз передаёт ссылку работающему клиенту.
+# ZoomLauncher из пакета Zoom 7.2.5 знает только zoommtg:// и zoomus://.
+# Ссылку входа zoomprc:// (её отдаёт страница Google «Запустить Zoom») он
+# не содержит: отвечает успехом и не передаёт токен, окно Workplace крутится.
+# Такую ссылку принимает сам клиент zoom. Встречу по-прежнему отдаёт ZoomLauncher.
 URL=""
+LAUNCH=""
 for a in "$@"; do
   case "$a" in
-    zoommtg:*|zoomus:*|zoomphonecall:*|zoomprc:*) URL=$a ;;
+    zoommtg:*|zoomus:*) URL=$a; LAUNCH=1 ;;
+    zoomphonecall:*|zoomprc:*|zoomphonesms:*|zoomcontactcentercall:*) URL=$a ;;
   esac
 done
-if [ -n "$URL" ] && [ -x "$DIR/ZoomLauncher" ]; then
+if [ -n "$LAUNCH" ] && [ -x "$DIR/ZoomLauncher" ]; then
   "$DIR/ZoomLauncher" "$URL" 2>>"$E"
   status=$?
   [ "$status" -eq 0 ] && exit 0

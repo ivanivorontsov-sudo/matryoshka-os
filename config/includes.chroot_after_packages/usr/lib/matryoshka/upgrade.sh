@@ -222,5 +222,6 @@ cat $W/VERSION > /etc/matryoshka-version
 python3 /usr/lib/matryoshka/kickoff_memory.py || true
 python3 /usr/lib/matryoshka/netmenu.py || true
 python3 /usr/lib/matryoshka/wallet_pam.py stop || true
+if [ -x /usr/lib/matryoshka/drop-vpn.sh ]; then /usr/lib/matryoshka/drop-vpn.sh || true; fi
 rm -rf $W
 echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО. Перезагрузите компьютер."

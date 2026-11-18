@@ -44,15 +44,59 @@ def wallet_disabled(path):
     return load_settings(path).get("kwallet", True) is False
 
 
-def should_skip(data, password_present):
-    # Выключенная настройка и выключенный переключатель — прежний пропуск.
-    # Иначе уже введённый пароль отдаётся pam_kwallet5, пустой токен — нет:
-    # пустой токен заставляет модуль спросить «Password:» на экране входа.
+def should_skip(data, password_present, pam_type="auth"):
+    # pam_kwallet5 6.3.4 (Debian 13) в фазе auth только запоминает уже
+    # введённый пароль. Если токена нет, модуль сам пишет «Password:».
+    # Демон /usr/bin/kwalletd6 запускает фаза open_session и пароль с
+    # клавиатуры больше не спрашивает: нет сохранённого токена — она
+    # просто выходит. Пропуск open_session оставлял бумажник закрытым,
+    # и окно пароля появлялось уже на рабочем столе.
     if not isinstance(data, dict):
         data = {}
     if data.get("wallet_auto", True) is False and data.get("kwallet", True) is False:
         return True
+    if (pam_type or "auth").strip() in ("open_session", "close_session", "session"):
+        return False
     return not password_present
+
+
+def ensure_force_run(text):
+    # Без force_run open_session ничего не делает, если SDDM ещё не
+    # выставил тип сеанса. auto_start этот модуль не читает.
+    out = []
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if "pam_kwallet5.so" in stripped and not stripped.startswith("#") and "force_run" not in stripped:
+            nl = "\n" if line.endswith("\n") else ""
+            body = line[:-1] if line.endswith("\n") else line
+            line = body.rstrip() + " force_run" + nl
+        out.append(line)
+    return "".join(out)
+
+
+def ensure_kwallet_lines(text):
+    # В штатном sddm и kde строки уже есть. Если их нет, пароль входа
+    # некому передать, и бумажник спрашивает сам.
+    has_auth = False
+    has_session = False
+    for line in text.splitlines():
+        if "pam_kwallet5.so" not in line or line.lstrip().startswith("#"):
+            continue
+        kind = stack_kind(line)
+        if kind == "auth":
+            has_auth = True
+        elif kind == "session":
+            has_session = True
+    extra = ""
+    if not has_auth:
+        extra += "-auth\toptional\tpam_kwallet5.so force_run\n"
+    if not has_session:
+        extra += "-session\toptional\tpam_kwallet5.so force_run\n"
+    if not extra:
+        return text
+    if text and not text.endswith("\n"):
+        text += "\n"
+    return text + extra
 
 
 def stack_kind(line):
@@ -95,7 +139,7 @@ def apply_files(paths=None):
             old = open(path, encoding="utf-8").read()
         except OSError:
             continue
-        new = insert_skips(old)
+        new = insert_skips(ensure_force_run(ensure_kwallet_lines(old)))
         if new == old:
             continue
         tmp = path + ".matryoshka-new"
@@ -172,7 +216,8 @@ def pam_status():
     if not home.startswith("/") or home.startswith("//"):
         return 1
     path = os.path.join(home, ".config", "matryoshka", "settings.json")
-    return 0 if should_skip(load_settings(path), present) else 1
+    pam_type = os.environ.get("PAM_TYPE", "auth")
+    return 0 if should_skip(load_settings(path), present, pam_type) else 1
 
 
 def main(argv):
