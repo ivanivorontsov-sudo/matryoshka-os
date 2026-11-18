@@ -6,8 +6,10 @@
 
 ## Как обновиться
 
-1. Скачайте `matryoshka-update-18.6.7.tar.gz` и `matryoshka-update-18.6.7.tar.gz.sha256` в одну папку.
-2. Проверьте: `sha256sum -c matryoshka-update-18.6.7.tar.gz.sha256`. Подпись: `gpg --import matryoshka-release-2026-11.asc && gpg --verify matryoshka-update-18.6.7.tar.gz.sig matryoshka-update-18.6.7.tar.gz`.
+1. Скачайте в одну папку пакет и контрольную сумму:
+   - https://github.com/ivanivorontsov-sudo/matryoshka-os/raw/refs/heads/cursor/desktop-av-boot-18-6-7-c1b8/dist/matryoshka-update-18.6.7.tar.gz
+   - https://github.com/ivanivorontsov-sudo/matryoshka-os/raw/refs/heads/cursor/desktop-av-boot-18-6-7-c1b8/dist/matryoshka-update-18.6.7.tar.gz.sha256
+2. Проверьте: `sha256sum -c matryoshka-update-18.6.7.tar.gz.sha256` (должно быть «OK»). Ожидаемая сумма: `eccc9ec2a00fa78c8ba15d02ba115d1105c8d005f4678c09bf7e0c4dfe4fa937`. Файла подписи `.sig` нет: закрытый ключ выпуска на этой машине отсутствует, новая подпись не создавалась. Автопроверка обновлений смотрит выпуск GitHub `v18.6.6`, пока пакет не выложен туда отдельно.
 3. «Копия и обновление Матрёшки»: шаг 1 — копия, шаг 2 — архив.
 4. Перезагрузите компьютер. Окно входа и рабочий стол подхватят новые правила после входа.
 
