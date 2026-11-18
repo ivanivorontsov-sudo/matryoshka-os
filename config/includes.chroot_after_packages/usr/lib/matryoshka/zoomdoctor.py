@@ -19,11 +19,11 @@ import archiveinst
 HOME = os.path.expanduser("~")
 LIBS = {"libEGL.so.1": "libegl1", "libGL.so.1": "libgl1", "libGLX.so.0": "libglx0", "libICE.so.6": "libice6", "libOpenGL.so.0": "libopengl0", "libSM.so.6": "libsm6", "libX11-xcb.so.1": "libx11-xcb1", "libX11.so.6": "libx11-6", "libXcomposite.so.1": "libxcomposite1", "libXdamage.so.1": "libxdamage1", "libXext.so.6": "libxext6", "libXfixes.so.3": "libxfixes3", "libXrandr.so.2": "libxrandr2", "libXtst.so.6": "libxtst6", "libasound.so.2": "libasound2t64", "libatk-1.0.so.0": "libatk1.0-0t64", "libatk-bridge-2.0.so.0": "libatk-bridge2.0-0t64", "libatomic.so.1": "libatomic1", "libatspi.so.0": "libatspi2.0-0t64", "libcairo-gobject.so.2": "libcairo-gobject2", "libcairo.so.2": "libcairo2", "libcups.so.2": "libcups2t64", "libdbus-1.so.3": "libdbus-1-3", "libdrm.so.2": "libdrm2", "libexpat.so.1": "libexpat1", "libfontconfig.so.1": "libfontconfig1", "libfreetype.so.6": "libfreetype6", "libgbm.so.1": "libgbm1", "libgcc_s.so.1": "libgcc-s1", "libgdk-3.so.0": "libgtk-3-0t64", "libgdk_pixbuf-2.0.so.0": "libgdk-pixbuf-2.0-0", "libgio-2.0.so.0": "libglib2.0-0t64", "libglib-2.0.so.0": "libglib2.0-0t64", "libgmodule-2.0.so.0": "libglib2.0-0t64", "libgobject-2.0.so.0": "libglib2.0-0t64", "libgomp.so.1": "libgomp1", "libgssapi_krb5.so.2": "libgssapi-krb5-2", "libgthread-2.0.so.0": "libglib2.0-0t64", "libgtk-3.so.0": "libgtk-3-0t64", "libnspr4.so": "libnspr4", "libnss3.so": "libnss3", "libnssutil3.so": "libnss3", "libpango-1.0.so.0": "libpango-1.0-0", "libpangocairo-1.0.so.0": "libpangocairo-1.0-0", "libsmime3.so": "libnss3", "libstdc++.so.6": "libstdc++6", "libudev.so.1": "libudev1", "libuuid.so.1": "libuuid1", "libwayland-client.so.0": "libwayland-client0", "libwayland-cursor.so.0": "libwayland-cursor0", "libwayland-egl.so.1": "libwayland-egl1", "libxcb-cursor.so.0": "libxcb-cursor0", "libxcb-glx.so.0": "libxcb-glx0", "libxcb-icccm.so.4": "libxcb-icccm4", "libxcb-image.so.0": "libxcb-image0", "libxcb-keysyms.so.1": "libxcb-keysyms1", "libxcb-randr.so.0": "libxcb-randr0", "libxcb-render-util.so.0": "libxcb-render-util0", "libxcb-render.so.0": "libxcb-render0", "libxcb-shape.so.0": "libxcb-shape0", "libxcb-shm.so.0": "libxcb-shm0", "libxcb-sync.so.1": "libxcb-sync1", "libxcb-util.so.1": "libxcb-util1", "libxcb-xfixes.so.0": "libxcb-xfixes0", "libxcb-xkb.so.1": "libxcb-xkb1", "libxcb-xtest.so.0": "libxcb-xtest0", "libxcb.so.1": "libxcb1", "libxkbcommon-x11.so.0": "libxkbcommon-x11-0", "libxkbcommon.so.0": "libxkbcommon0", "libz.so.1": "zlib1g", "libzstd.so.1": "libzstd1"}
 HOSTS = ["zoom.us", "us04web.zoom.us", "us05web.zoom.us", "us06web.zoom.us", "zoom.com", "st1.zoom.us"]
-SCHEMES = ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-handler/zoomphonecall", "x-scheme-handler/tel", "x-scheme-handler/callto"]
+SCHEMES = ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-handler/zoomphonecall", "x-scheme-handler/zoomprc", "x-scheme-handler/tel", "x-scheme-handler/callto"]
 PROXY_VARS = ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "no_proxy", "NO_PROXY"]
 
 CODES = {
-    "100000400": "Клиент Zoom не смог войти в конференцию (у клиента Windows этот код называется Meeting join failed). Официальная очистка Linux: кэш ~/.cache/zoom и каталог ~/.zoom. Здесь это два разных шага: --cache стирает кэш и GPUCache и оставляет вход, --reset-cache переносит весь профиль в копию. Ещё: --gpu выключает видеоускорение, --download скачивает другой установщик, --web открывает ту же встречу в браузере. Сеть и смена MAC-адреса этот код сами по себе не объясняют.",
+    "100000400": "Клиент не дошёл до сервера Zoom. У Windows этот же код называется Meeting join failed, на Linux им кончается и обычный вход в аккаунт. Цепочка такая: кнопка «Войти» открывает окно Chromium внутри Zoom; в Debian 13 ядро запрещает этой песочнице запуститься (apparmor_restrict_unprivileged_userns=1), окно пустое, токен входа не появляется, клиент пишет 100000400. Второй обрыв — бумажник: вход пальцем его не открывает, окно пароля встаёт поверх входа и Zoom повторяет запрос. Третий — браузер после «Разрешить» возвращает zoomprc://, а эта ссылка никуда не была привязана. Исправление: разрешить песочницу, привязать zoomprc:// и не держать бумажник, если он выключен в меню сети. Кэш и профиль тут ни при чём, пока в журнале нет отдельной ошибки профиля.",
     "100000403": "Нет доступа к службе Zoom: сеть, фильтр провайдера, брандмауэр или устаревший клиент.",
     "5003": "Нет соединения с серверами Zoom: сеть, DNS или брандмауэр.",
     "5004": "Нет соединения с серверами Zoom: сеть, DNS или брандмауэр.",
@@ -53,7 +53,7 @@ class Report:
     def __init__(self):
         self.items = []
         self.fixes = set()
-        self.root = {"pkgs": set(), "hosts": False, "ufw": False, "snitch": [], "ntp": False, "chown": False}
+        self.root = {"pkgs": set(), "hosts": False, "ufw": False, "snitch": [], "ntp": False, "chown": False, "userns": False}
 
     def add(self, level, text, fix=None):
         self.items.append((level, text))
@@ -340,6 +340,28 @@ def check_conf(r):
         if empty:
             r.add("warn", f"В ~/.zoom/data есть пустые базы ({len(empty)} шт.): возможен сбой профиля. Поможет --reset-cache (данные сохраняются в копию).", "cache")
 
+def check_login(r):
+    # 100000400 на Linux — это не «плохой код встречи». Клиент так пишет, когда
+    # окно входа не смогло дойти до zoom.us.
+    try:
+        restricted = open("/proc/sys/kernel/apparmor_restrict_unprivileged_userns", encoding="ascii").read().strip()
+    except OSError:
+        restricted = ""
+    if restricted == "1":
+        r.add("bad", "Ядро не пускает песочницу окна входа Zoom. Клиент из-за этого пишет 100000400, хотя сеть при этом живая.", "root")
+        r.root["userns"] = True
+    elif restricted == "0":
+        r.add("ok", "Песочница окна входа Zoom разрешена")
+    try:
+        import common
+        if common.settings().get("kwallet", True) is False:
+            r.add("ok", "Бумажник выключен и не перекрывает окно входа Zoom")
+        else:
+            r.add("warn", "Бумажник включён. Вход пальцем его не открывает: при входе в Zoom окно пароля бумажника может встать поверх и оборвать вход. Переключатель «Отключить бумажник» в меню сети теперь его действительно останавливает, пароль Wi-Fi при этом пишется в файл сети.")
+    except Exception:
+        pass
+
+
 def check_display(r):
     sess = os.environ.get("XDG_SESSION_TYPE", "")
     qpa = os.environ.get("QT_QPA_PLATFORM", "")
@@ -392,7 +414,7 @@ def check_audio(r):
     if run(["pactl", "info"]).returncode != 0:
         r.add("warn", "Звуковой сервер не отвечает: Zoom может зависать при подключении к звуку")
 
-SCHEME_NAMES = ("zoommtg", "zoomus", "zoomphonecall")
+SCHEME_NAMES = ("zoommtg", "zoomus", "zoomphonecall", "zoomprc")
 BROWSER_DIRS = ("vivaldi", "chromium", "google-chrome", "yandex-browser")
 
 def unblock_protocols(home=None, running=False):
@@ -471,8 +493,12 @@ def browser_running():
             return True
     return False
 
+def zoom_schemes():
+    return [s for s in SCHEMES if "/zoom" in s]
+
+
 def bind_handler():
-    for scheme in SCHEMES[:3]:
+    for scheme in zoom_schemes():
         run(["xdg-mime", "default", "matryoshka-zoom.desktop", scheme])
     return unblock_protocols(running=browser_running())
 
@@ -482,7 +508,7 @@ def fix_handler():
         if d.startswith(("/opt/", "/usr/")):
             for desk in ["Zoom.desktop", "zoom.desktop"] + [os.path.basename(x) for x in glob.glob("/usr/share/applications/matryoshka-archive-zoom*.desktop")]:
                 if os.path.isfile("/usr/share/applications/" + desk):
-                    for s in SCHEMES[:3]:
+                    for s in zoom_schemes():
                         run(["xdg-mime", "default", desk, s])
                     fixed.append(desk)
                     break
@@ -641,6 +667,8 @@ def root_args(r):
         a.append("ntp")
     if r.root["chown"]:
         a.append("chown")
+    if r.root.get("userns"):
+        a.append("userns")
     for d in r.root["snitch"]:
         a.append("snitch=" + d)
     return a
@@ -656,6 +684,7 @@ def diagnose():
     check_profile(r)
     check_conf(r)
     check_display(r)
+    check_login(r)
     check_audio(r)
     check_logs(r)
     return r

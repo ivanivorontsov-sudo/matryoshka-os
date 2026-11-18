@@ -7,6 +7,8 @@ case "$1" in
     ( sleep 3
       sudo -n /usr/lib/matryoshka/root.sh waydroid-net
       /usr/bin/waydroid shell settings put global private_dns_mode off
+      /usr/bin/waydroid shell settings put global captive_portal_mode 0
+      /usr/bin/waydroid shell settings put global captive_portal_detection_enabled 0
       /usr/bin/waydroid shell settings put secure navigation_mode 0
       /usr/bin/waydroid shell setprop qemu.hw.mainkeys 0
     ) >/dev/null 2>&1 &

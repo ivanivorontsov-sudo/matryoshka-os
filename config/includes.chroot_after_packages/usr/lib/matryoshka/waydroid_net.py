@@ -345,8 +345,11 @@ def dnsmasq_user(current):
 
 
 def dnsmasq_argv(servers, user="nobody"):
+    # --no-hosts: список блокировки в /etc/hosts закрывает mc.yandex.ru.
+    # Яндекс Браузер в Android без этого имени не открывает страницы.
+    # Без strict-order мёртвый первый DNS не держит все остальные запросы.
     cmd = [
-        "dnsmasq", "--conf-file=/dev/null", "--strict-order", "--bind-interfaces",
+        "dnsmasq", "--conf-file=/dev/null", "--no-hosts", "--bind-interfaces",
         "--pid-file=/run/waydroid-lxc/dnsmasq.pid",
         "--listen-address", "192.168.240.1",
         "--dhcp-range", "192.168.240.2,192.168.240.254",
@@ -380,6 +383,8 @@ def needs_dns(host_resolv, upstream, current):
     # имя ждёт тайм-аут. Пока dnsmasq не запущен, свой не поднимаем.
     if not current or not upstream or usable_nameservers(host_resolv):
         return False
+    if "--no-hosts" not in current:
+        return True
     return "--no-resolv" not in current or any(server not in current for server in upstream)
 
 
@@ -408,7 +413,9 @@ def upstream_dns():
     found = prefer_v4(resolvectl_servers())
     # Иначе dnsmasq спрашивает 127.0.0.53, до которого с моста хода нет,
     # и Android показывает отсутствие сети.
-    return found or ["1.1.1.1", "8.8.8.8"]
+    # 1.1.1.1 на части российских раздач не отвечает и подвешивает имена.
+    # 77.88.8.8 — DNS Яндекса, им же пользуется Яндекс Браузер.
+    return found or ["77.88.8.8", "8.8.8.8"]
 
 
 def container_pid(run):
@@ -466,6 +473,10 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
             # Зонд внутри контейнера, не вместо настройки компьютера.
             # Крупные пакеты на раздаче тогда уменьшаются у самого Android.
             guest_sysctl(pid, "net/ipv4/tcp_mtu_probing", "1")
+            # У моста нет маршрута IPv6. Яндекс Браузер пробует его первым
+            # и не открывает сайты, хотя RuStore по IPv4 работает.
+            guest_sysctl(pid, "net/ipv6/conf/all/disable_ipv6", "1")
+            guest_sysctl(pid, "net/ipv6/conf/default/disable_ipv6", "1")
         current, dns_pid = dnsmasq_state()
         upstream = upstream_dns()
         if needs_dns(read_text("/etc/resolv.conf"), upstream, current):

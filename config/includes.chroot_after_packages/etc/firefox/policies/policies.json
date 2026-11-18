@@ -89,6 +89,18 @@
    "network.protocol-handler.warn-external.zoomus": {
     "Value": false,
     "Status": "default"
+   },
+   "network.protocol-handler.external.zoomprc": {
+    "Value": true,
+    "Status": "default"
+   },
+   "network.protocol-handler.expose.zoomprc": {
+    "Value": true,
+    "Status": "default"
+   },
+   "network.protocol-handler.warn-external.zoomprc": {
+    "Value": false,
+    "Status": "default"
    }
   },
   "HttpsOnlyMode": "enabled",

@@ -3,6 +3,7 @@ x-scheme-handler/appstream=matryoshka-uninstall.desktop
 x-scheme-handler/zoommtg=matryoshka-zoom.desktop
 x-scheme-handler/zoomus=matryoshka-zoom.desktop
 x-scheme-handler/zoomphonecall=matryoshka-zoom.desktop
+x-scheme-handler/zoomprc=matryoshka-zoom.desktop
 application/x-matryoshka-game-image=matryoshka-rom.desktop
 application/x-nes-rom=matryoshka-rom.desktop
 application/x-snes-rom=matryoshka-rom.desktop

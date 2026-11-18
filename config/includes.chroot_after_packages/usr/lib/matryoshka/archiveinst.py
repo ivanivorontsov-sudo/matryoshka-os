@@ -28,7 +28,7 @@ def members_of(path):
 
 SKIP = ("crashpad", "chrome-sandbox", "chrome_crashpad", "helper", "host", "update", "uninstall", "install-", "xdg-", "sandbox", "gpu", "ffmpeg", "qtwebengine", "bsdtar", "7z", "curl", "wget", "python", "perl", "java", "node")
 PROFILES = {
-    "zoomlauncher": {"name": "Zoom", "args": "%U", "mime": ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-handler/zoomphonecall", "x-scheme-handler/tel", "x-scheme-handler/callto", "application/x-zoom"], "wm": "zoom", "icon": "camera-web", "env": "QT_QPA_PLATFORM=xcb", "wrap": "/usr/lib/matryoshka/zoom-run"},
+    "zoomlauncher": {"name": "Zoom", "args": "%U", "mime": ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-handler/zoomphonecall", "x-scheme-handler/zoomprc", "x-scheme-handler/tel", "x-scheme-handler/callto", "application/x-zoom"], "wm": "zoom", "icon": "camera-web", "env": "QT_QPA_PLATFORM=xcb", "wrap": "/usr/lib/matryoshka/zoom-run"},
 }
 
 def exec_members(path):

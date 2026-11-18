@@ -7,5 +7,5 @@ Exec=/usr/lib/matryoshka/zoom-open %U
 Icon=camera-web
 Terminal=false
 NoDisplay=true
-MimeType=x-scheme-handler/zoommtg;x-scheme-handler/zoomus;x-scheme-handler/zoomphonecall;
+MimeType=x-scheme-handler/zoommtg;x-scheme-handler/zoomus;x-scheme-handler/zoomphonecall;x-scheme-handler/zoomprc;
 StartupNotify=false

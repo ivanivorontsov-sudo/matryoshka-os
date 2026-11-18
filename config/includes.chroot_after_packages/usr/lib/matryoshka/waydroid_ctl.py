@@ -100,6 +100,10 @@ def guest_fix():
     run(["waydroid", "shell", "settings", "put", "secure", "show_ime_with_hard_keyboard", "0"], timeout=20)
     # Частный DNS Android (часто dns.google) на раздаче ждёт и повторяет запрос.
     run(["waydroid", "shell", "settings", "put", "global", "private_dns_mode", "off"], timeout=20)
+    # Проверка «есть ли интернет» стучится в чужой адрес и на раздаче отвечает «нет».
+    # Яндекс Браузер этому верит и не открывает страницы.
+    run(["waydroid", "shell", "settings", "put", "global", "captive_portal_mode", "0"], timeout=20)
+    run(["waydroid", "shell", "settings", "put", "global", "captive_portal_detection_enabled", "0"], timeout=20)
     run(["waydroid", "shell", "settings", "put", "secure", "navigation_mode", "0"], timeout=20)
     run(["waydroid", "shell", "cmd", "overlay", "enable", "com.android.internal.systemui.navbar.threebutton"], timeout=20)
     run(["waydroid", "shell", "cmd", "overlay", "disable", "com.android.internal.systemui.navbar.gestural"], timeout=20)

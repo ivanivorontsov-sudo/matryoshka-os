@@ -3,7 +3,7 @@
 URL=""
 for a in "$@"; do
   case "$a" in
-    zoommtg:*|zoomus:*|zoomphonecall:*) URL=$a ;;
+    zoommtg:*|zoomus:*|zoomphonecall:*|zoomprc:*) URL=$a ;;
   esac
 done
 EXE=""

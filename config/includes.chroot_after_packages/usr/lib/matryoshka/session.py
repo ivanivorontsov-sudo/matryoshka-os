@@ -431,9 +431,20 @@ def firefox_icon():
     open(p, "w", encoding="utf-8").write("[Desktop Entry]\nType=Application\nNoDisplay=true\nName=Firefox\nExec=firefox-esr %u\nIcon=firefox-esr\nStartupWMClass=firefox\n")
 
 def kwallet_text(on):
-    # Галочка больше не выключает хранилище. Иначе пропадают пароли Wi-Fi и VPN:
-    # точка доступа и расширение VPN начинают спрашивать пользователя и пароль сами.
-    # Окно пароля бумажника при этом не показывается.
+    # Выключенный переключатель должен останавливать окно пароля.
+    # Раньше галочка игнорировалась: бумажник оставался включён, вход пальцем
+    # его не открывал, и пароль спрашивался снова на Zoom, браузер и сеть.
+    if not on:
+        return (
+            ("Enabled", "false"),
+            ("First Use", "false"),
+            ("Use One Wallet", "true"),
+            ("SecretServiceEnabled", "false"),
+            ("Prompt on Open", "false"),
+            ("Close When Idle", "false"),
+            ("Launch", "false"),
+            ("Leave Open", "false"),
+        )
     return (
         ("Enabled", "true"),
         ("First Use", "false"),
@@ -441,6 +452,8 @@ def kwallet_text(on):
         ("SecretServiceEnabled", "true"),
         ("Prompt on Open", "false"),
         ("Close When Idle", "false"),
+        ("Close on Screensaver", "false"),
+        ("Leave Open", "true"),
         ("Launch", "true"),
     )
 
@@ -460,24 +473,71 @@ def kwallet_write(path, on):
         cp.write(out, space_around_delimiters=False)
     os.replace(tmp, path)
 
-def kwallet(on):
-    # on не выключает службу: сохранённые пароли сетей и VPN остаются на месте.
-    kwallet_write(os.path.expanduser("~/.config/kwalletrc"), True)
-    for key, value in kwallet_text(True):
-        C.kwrite("kwalletrc", "Wallet", key, value)
-    for rc in ("kded5rc", "kded6rc"):
-        C.kwrite(rc, "Module-kwallet", "autoload", "true")
-        C.kwrite(rc, "Module-kwalletd", "autoload", "true")
-    d = os.path.expanduser("~/.config/autostart")
-    for name in ("org.kde.kwalletd5.desktop", "org.kde.kwalletd6.desktop"):
-        p = os.path.join(d, name)
+BROWSER_FLAG_FILES = (
+    "vivaldi-flags.conf", "chromium-flags.conf", "chrome-flags.conf",
+    "yandex-browser-flags.conf", "brave-flags.conf",
+)
+
+
+def browser_flags():
+    # Браузеры на Chromium иначе зовут бумажник на каждый пароль.
+    # Свой файл паролей браузера бумажник не открывает.
+    d = os.path.expanduser("~/.config")
+    os.makedirs(d, exist_ok=True)
+    for name in BROWSER_FLAG_FILES:
+        path = os.path.join(d, name)
         try:
-            if os.path.isfile(p) and "X-Matryoshka-KWallet=off" in open(p, encoding="utf-8", errors="replace").read():
-                os.remove(p)
+            old = open(path, encoding="utf-8").read() if os.path.isfile(path) else ""
         except OSError:
-            pass
-    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
-    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "loadModule", "s", "kwallet"], timeout=8)
+            old = ""
+        if "--password-store=basic" in old:
+            continue
+        with open(path, "a", encoding="utf-8") as out:
+            if old and not old.endswith("\n"):
+                out.write("\n")
+            out.write("--password-store=basic\n")
+
+
+def kwallet_quit():
+    # Уже запущенный бумажник продолжает спрашивать пароль, пока процесс жив.
+    for name in ("kwalletd6", "kwalletd5"):
+        C.run(["pkill", "-u", str(os.getuid()), "-x", name], timeout=5)
+
+
+def wifi_save():
+    # Пароль уже подключённой сети пишется в файл NetworkManager до остановки бумажника.
+    try:
+        subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+    except Exception:
+        pass
+
+
+def kwallet(on):
+    on = bool(on)
+    if not on:
+        wifi_save()
+    browser_flags()
+    kwallet_write(os.path.expanduser("~/.config/kwalletrc"), on)
+    for key, value in kwallet_text(on):
+        C.kwrite("kwalletrc", "Wallet", key, value)
+    flag = "true" if on else "false"
+    for rc in ("kded5rc", "kded6rc"):
+        C.kwrite(rc, "Module-kwallet", "autoload", flag)
+        C.kwrite(rc, "Module-kwalletd", "autoload", flag)
+    if on:
+        d = os.path.expanduser("~/.config/autostart")
+        for name in ("org.kde.kwalletd5.desktop", "org.kde.kwalletd6.desktop"):
+            p = os.path.join(d, name)
+            try:
+                if os.path.isfile(p) and "X-Matryoshka-KWallet=off" in open(p, encoding="utf-8", errors="replace").read():
+                    os.remove(p)
+            except OSError:
+                pass
+        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
+        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "loadModule", "s", "kwallet"], timeout=8)
+        return
+    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "false"], timeout=8)
+    kwallet_quit()
 
 def chooser():
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox
