@@ -13,9 +13,9 @@ CONF=/etc/NetworkManager/conf.d/60-matryoshka-powersave.conf
 if [ -f "$CONF" ] && grep -q 'wifi.powersave=3' "$CONF"; then
   exit 0
 fi
-if command -v tc >/dev/null 2>&1; then
-  tc qdisc replace dev "$IFACE" root fq || true
-fi
+# Очередь на уже поднятом Wi-Fi не подменяем. Замена корня на fq в прошлом
+# архиве обрывала пересланные пакеты Android, хотя страницы самого компьютера открывались.
+# Новым интерфейсам очередь fq задаёт sysctl net.core.default_qdisc.
 if command -v iw >/dev/null 2>&1; then
   iw dev "$IFACE" set power_save off || true
 fi

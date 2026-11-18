@@ -40,21 +40,59 @@ class _Ifreq(ctypes.Structure):
     _fields_ = [("ifr_name", ctypes.c_char * 16), ("ifr_data", ctypes.c_void_p), ("_pad", ctypes.c_char * 16)]
 
 
-def rules(subnet=SUBNET, iface=IFACE):
+def primary_iptables():
+    # Waydroid пишет свои правила в iptables-legacy. Если то же NAT добавить ещё
+    # и в iptables-nft, пакет обрабатывается дважды и у Android пропадает интернет.
+    if shutil.which("iptables-legacy"):
+        return "iptables-legacy"
+    return "iptables"
+
+
+def rules(subnet=SUBNET, iface=IFACE, binary=None):
+    binary = binary or primary_iptables()
+    # Обратный трафик принимаем целиком, как официальный скрипт Waydroid.
+    # Условие RELATED,ESTABLISHED отбрасывало ответы, которые conntrack
+    # помечал INVALID из-за сумм на veth, и страницы в Android не открывались.
     return (
         (
-            ["iptables", "-C", "FORWARD", "-i", iface, "-j", "ACCEPT"],
-            ["iptables", "-I", "FORWARD", "1", "-i", iface, "-j", "ACCEPT"],
+            [binary, "-C", "FORWARD", "-i", iface, "-j", "ACCEPT"],
+            [binary, "-I", "FORWARD", "1", "-i", iface, "-j", "ACCEPT"],
         ),
         (
-            ["iptables", "-C", "FORWARD", "-o", iface, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"],
-            ["iptables", "-I", "FORWARD", "1", "-o", iface, "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"],
+            [binary, "-C", "FORWARD", "-o", iface, "-j", "ACCEPT"],
+            [binary, "-I", "FORWARD", "1", "-o", iface, "-j", "ACCEPT"],
         ),
         (
-            ["iptables", "-t", "nat", "-C", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"],
-            ["iptables", "-t", "nat", "-A", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"],
+            [binary, "-t", "nat", "-C", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"],
+            [binary, "-t", "nat", "-A", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"],
         ),
     )
+
+
+def input_rules(iface=IFACE, binary=None):
+    # DHCP и DNS Android идут на сам компьютер. Без этих разрешений
+    # строгая политика INPUT оставляет контейнер без адреса и без имён.
+    binary = binary or primary_iptables()
+    found = []
+    for proto, port in (("udp", "67"), ("tcp", "67"), ("udp", "53"), ("tcp", "53")):
+        args = ["-i", iface, "-p", proto, "--dport", port, "-j", "ACCEPT"]
+        found.append(([binary, "-C", "INPUT", *args], [binary, "-I", "INPUT", "1", *args]))
+    return tuple(found)
+
+
+def mss_clamp_rules(iface=IFACE, binary=None):
+    # Не фиксированные 1200 байт: на обычной линии это только замедляло.
+    # Размер подстраивается под маршрут. Когда зонд компьютера уменьшает путь,
+    # крупные пакеты Android больше не пропадают молча.
+    binary = binary or primary_iptables()
+    found = []
+    for flag in (("-i", iface), ("-o", iface)):
+        args = ["-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", flag[0], flag[1], "-j", "TCPMSS", "--clamp-mss-to-pmtu"]
+        found.append((
+            [binary, "-t", "mangle", "-C", "FORWARD", *args],
+            [binary, "-t", "mangle", "-A", "FORWARD", *args],
+        ))
+    return tuple(found)
 
 
 def mss_deletes(iface=IFACE):
@@ -73,10 +111,12 @@ def checksum_deletes(subnet=SUBNET):
 
 
 def drop_mss(run, iface=IFACE):
-    for rule in mss_deletes(iface):
-        for _ in range(8):
-            if run(rule).returncode != 0:
-                break
+    for binary in iptables_bins():
+        for rule in mss_deletes(iface):
+            cmd = [binary, *rule[1:]]
+            for _ in range(8):
+                if run(cmd).returncode != 0:
+                    break
 
 
 def iptables_bins():
@@ -107,12 +147,12 @@ def apply_mark(run, check, add):
 
 
 def apply_ttl(run):
-    ok = False
-    for binary in iptables_bins():
-        ok = apply_mark(run, *ttl_commands(binary)) or ok
-    for name in ("ip6tables", "ip6tables-legacy"):
+    # Одна цель TTL, в том же наборе, куда Waydroid пишет NAT.
+    ok = apply_mark(run, *ttl_commands(primary_iptables()))
+    for name in ("ip6tables-legacy", "ip6tables"):
         if shutil.which(name):
             apply_mark(run, *hop_commands(name))
+            break
     return ok
 
 
@@ -240,7 +280,9 @@ def tune(run, iface=IFACE, mtu=MTU):
         run(["ip", "link", "set", "dev", name, "mtu", mtu])
         offload_off(name)
     if os.path.isdir("/sys/class/net/" + iface):
-        run(["sysctl", "-w", "net.ipv4.conf.%s.rp_filter=0" % iface])
+        # Ядро берёт максимум из all и интерфейса. Ноль здесь не выключает
+        # строгую проверку, пока all равен 1, и ответы Android отбрасываются.
+        run(["sysctl", "-w", "net.ipv4.conf.%s.rp_filter=2" % iface])
         run(["sysctl", "-w", "net.ipv6.conf.%s.disable_ipv6=0" % iface])
 
 
@@ -348,9 +390,25 @@ def restart_dns(run, pid, servers, user):
     return True
 
 
+def prefer_v4(servers):
+    v4 = [item for item in servers if ":" not in item]
+    return v4 or list(servers)
+
+
 def upstream_dns():
-    found = usable_nameservers(read_text("/run/systemd/resolve/resolv.conf"))
-    return found or resolvectl_servers()
+    for path in (
+        "/run/systemd/resolve/resolv.conf",
+        "/run/NetworkManager/no-stub-resolv.conf",
+        "/run/NetworkManager/resolv.conf",
+        "/etc/resolv.conf",
+    ):
+        found = prefer_v4(usable_nameservers(read_text(path)))
+        if found:
+            return found
+    found = prefer_v4(resolvectl_servers())
+    # Иначе dnsmasq спрашивает 127.0.0.53, до которого с моста хода нет,
+    # и Android показывает отсутствие сети.
+    return found or ["1.1.1.1", "8.8.8.8"]
 
 
 def container_pid(run):
@@ -389,6 +447,10 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
         have_iptables = bool(shutil.which("iptables"))
     if have_sysctl:
         run(["sysctl", "-w", "net.ipv4.ip_forward=1"])
+        # Строгий фильтр обратного пути (1) вместе с all=1 не даёт интерфейсу
+        # стать мягче. На раздаче ответ приходит не тем интерфейсом, и Android глухой.
+        run(["sysctl", "-w", "net.ipv4.conf.all.rp_filter=2"])
+        run(["sysctl", "-w", "net.ipv4.conf.default.rp_filter=2"])
         # 1 — настройка всего компьютера из 90-matryoshka-net.conf.
         # Прошлый архив ставил здесь 0: зонд размера пакета выключался у системы,
         # и на раздаче с телефона интернет самого компьютера становился крайне медленным.
@@ -401,6 +463,9 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
         if pid:
             guest_offload(pid)
             guest_ttl(pid)
+            # Зонд внутри контейнера, не вместо настройки компьютера.
+            # Крупные пакеты на раздаче тогда уменьшаются у самого Android.
+            guest_sysctl(pid, "net/ipv4/tcp_mtu_probing", "1")
         current, dns_pid = dnsmasq_state()
         upstream = upstream_dns()
         if needs_dns(read_text("/etc/resolv.conf"), upstream, current):
@@ -413,6 +478,10 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
     for check, add in rules():
         if run(check).returncode != 0:
             run(add)
+    for check, add in input_rules():
+        apply_mark(run, check, add)
+    for check, add in mss_clamp_rules():
+        apply_mark(run, check, add)
     ttl_ok = apply_ttl(run)
     ttl_note = "ТТЛ %s как у системы" % HOST_TTL if ttl_ok else "ТТЛ не записался"
     print("сеть Android: пересылка только для %s, NAT %s, MTU %s, %s, без пересчёта сумм" % (IFACE, SUBNET, MTU, ttl_note))
