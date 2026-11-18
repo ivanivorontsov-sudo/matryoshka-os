@@ -480,67 +480,66 @@ BROWSER_FLAG_FILES = (
 
 
 def browser_flags():
-    # Браузеры на Chromium иначе зовут бумажник на каждый пароль.
-    # Свой файл паролей браузера бумажник не открывает.
+    # Строка --password-store=basic отрывает Вивальди от уже записанного
+    # хранилища ключей. Браузер тогда предлагает стереть логины и cookie.
+    # Раньше эта строка дописывалась сюда сама. Теперь она убирается.
     d = os.path.expanduser("~/.config")
-    os.makedirs(d, exist_ok=True)
     for name in BROWSER_FLAG_FILES:
         path = os.path.join(d, name)
         try:
             old = open(path, encoding="utf-8").read() if os.path.isfile(path) else ""
         except OSError:
-            old = ""
-        if "--password-store=basic" in old:
             continue
-        with open(path, "a", encoding="utf-8") as out:
-            if old and not old.endswith("\n"):
-                out.write("\n")
-            out.write("--password-store=basic\n")
+        if "--password-store=basic" not in old:
+            continue
+        kept = [line for line in old.splitlines() if line.strip() != "--password-store=basic"]
+        try:
+            if not any(line.strip() for line in kept):
+                os.remove(path)
+                continue
+            body = "\n".join(kept)
+            if old.endswith("\n"):
+                body += "\n"
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as out:
+                out.write(body)
+            os.replace(tmp, path)
+        except OSError:
+            pass
 
 
 def wifi_save():
     # Пароль уже подключённой сети пишется в файл NetworkManager.
     # sudo здесь без пароля: отдельное правило, не окно бумажника.
+    # Код 0 — пароль сети уже в файле, Wi-Fi не ждёт хранилище ключей.
     try:
-        subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+        result = subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+        return result.returncode == 0
     except Exception:
-        pass
+        return False
 
 
-WALLET_BUS_NAMES = (
-    "org.kde.kwalletd6",
-    "org.kde.kwalletd5",
-    "org.freedesktop.secrets",
-    "org.gnome.keyring",
-    "org.freedesktop.impl.portal.Secret",
-)
-
-
-def wallet_bus(on):
-    # Пока файл на месте, программа не может заново поднять бумажник
-    # или связку ключей и показать пароль. Включение переключателя файл убирает.
+def wallet_cleanup():
+    # Пустая подмена службы секретов оставляла авторизацию Wi-Fi без ответа
+    # и без окна пароля. Файлы, поставленные раньше, убираются.
     d = os.path.expanduser("~/.local/share/dbus-1/services")
-    os.makedirs(d, exist_ok=True)
-    for name in WALLET_BUS_NAMES:
-        path = os.path.join(d, name + ".service")
-        if on:
-            try:
-                if os.path.isfile(path) and "X-Matryoshka-KWallet=off" in open(path, encoding="utf-8", errors="replace").read():
-                    os.remove(path)
-            except OSError:
-                pass
+    if not os.path.isdir(d):
+        return
+    for name in os.listdir(d):
+        path = os.path.join(d, name)
+        try:
+            body = open(path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        if "X-Matryoshka-KWallet=off" not in body:
             continue
         try:
-            open(path, "w", encoding="utf-8").write("[D-BUS Service]\nName=%s\nExec=/bin/true\nX-Matryoshka-KWallet=off\n" % name)
+            os.remove(path)
         except OSError:
             pass
 
 
-def kwallet(on):
-    on = bool(on)
-    browser_flags()
-    if not on:
-        wifi_save()
+def apply_wallet(on):
     kwallet_write(os.path.expanduser("~/.config/kwalletrc"), on)
     for key, value in kwallet_text(on):
         C.kwrite("kwalletrc", "Wallet", key, value)
@@ -548,26 +547,31 @@ def kwallet(on):
     for rc in ("kded5rc", "kded6rc"):
         C.kwrite(rc, "Module-kwallet", "autoload", flag)
         C.kwrite(rc, "Module-kwalletd", "autoload", flag)
-    wallet_bus(on)
-    if on:
-        d = os.path.expanduser("~/.config/autostart")
-        for name in ("org.kde.kwalletd5.desktop", "org.kde.kwalletd6.desktop"):
-            p = os.path.join(d, name)
-            try:
-                if os.path.isfile(p) and "X-Matryoshka-KWallet=off" in open(p, encoding="utf-8", errors="replace").read():
-                    os.remove(p)
-            except OSError:
-                pass
-        for bus, mod in (("org.kde.kded6", "kwallet"), ("org.kde.kded5", "kwallet")):
-            C.run(["busctl", "--user", "call", bus, "/kded", bus, "setModuleAutoloading", "sb", mod, "true"], timeout=8)
+    if not on:
+        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "false"], timeout=8)
         return
-    for bus, mod in (("org.kde.kded6", "kwallet"), ("org.kde.kded6", "kwalletd"), ("org.kde.kded5", "kwallet")):
-        C.run(["busctl", "--user", "call", bus, "/kded", bus, "setModuleAutoloading", "sb", mod, "false"], timeout=8)
-        C.run(["busctl", "--user", "call", bus, "/kded", bus, "unloadModule", "s", mod], timeout=8)
-    uid = str(os.getuid())
-    for name in ("kwalletd6", "kwalletd5", "kwalletd"):
-        C.run(["pkill", "-u", uid, "-x", name], timeout=5)
-    C.run(["pkill", "-u", uid, "-f", "/usr/bin/gnome-keyring-daemon"], timeout=5)
+    d = os.path.expanduser("~/.config/autostart")
+    for name in ("org.kde.kwalletd5.desktop", "org.kde.kwalletd6.desktop"):
+        path = os.path.join(d, name)
+        try:
+            if os.path.isfile(path) and "X-Matryoshka-KWallet=off" in open(path, encoding="utf-8", errors="replace").read():
+                os.remove(path)
+        except OSError:
+            pass
+    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
+
+
+def kwallet(on):
+    on = bool(on)
+    browser_flags()
+    wallet_cleanup()
+    # Службу нельзя гасить. В ней ключ уже сохранённых логинов Вивальди:
+    # без неё браузер предлагает стереть логины и cookie. Там же пароль Wi-Fi,
+    # и без службы авторизация сети крутится без окна. Галочка в меню только
+    # убирает лишний пароль после отпечатка.
+    apply_wallet(True)
+    if not on:
+        wifi_save()
 
 def chooser():
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox
