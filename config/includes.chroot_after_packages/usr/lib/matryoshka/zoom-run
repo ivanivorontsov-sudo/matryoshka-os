@@ -39,4 +39,16 @@ BIN="$DIR/zoom"
 cd "$DIR" || exit 1
 GPU=""
 [ -f "$HOME/.config/matryoshka/zoom-no-gpu" ] && GPU="--disable-gpu --disable-gpu-sandbox"
+# Страница «Запустить Zoom» открывает zoomprc:// или zoommtg://.
+# Второй процесс zoom эту ссылку уже открытому Workplace не отдаёт, и окно крутится.
+# ZoomLauncher как раз передаёт ссылку работающему клиенту.
+URL=""
+for a in "$@"; do
+  case "$a" in
+    zoommtg:*|zoomus:*|zoomphonecall:*|zoomprc:*) URL=$a ;;
+  esac
+done
+if [ -n "$URL" ] && [ -x "$DIR/ZoomLauncher" ]; then
+  exec "$DIR/ZoomLauncher" "$URL" 2>>"$E"
+fi
 exec "$BIN" $GPU "$@" 2>>"$E"

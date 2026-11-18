@@ -18,30 +18,59 @@ def once(text, marker, old, new):
     return text.replace(old, new, 1)
 
 
+MAIN_KEEP = (
+    "    property Item footer: null\n"
+    "\n"
+    "    // Матрёшка: поиск и вкладка живут минуту после закрытия, затем сбрасываются сами.\n"
+    "    property double matryoshkaMenuClosedAt: 0\n"
+    "    property string matryoshkaSearch: \"\"\n"
+    "    property int matryoshkaTab: 0\n"
+    "    Timer {\n"
+    "        id: matryoshkaForget\n"
+    "        interval: 60000\n"
+    "        repeat: false\n"
+    "        onTriggered: {\n"
+    "            matryoshkaSearch = \"\"\n"
+    "            matryoshkaTab = 0\n"
+    "            matryoshkaMenuClosedAt = 0\n"
+    "            if (searchField) {\n"
+    "                searchField.clear()\n"
+    "            }\n"
+    "        }\n"
+    "    }\n"
+    "    onExpandedChanged: {\n"
+    "        if (expanded) {\n"
+    "            matryoshkaForget.stop()\n"
+    "        } else if (!matryoshkaForget.running) {\n"
+    "            matryoshkaMenuClosedAt = Date.now()\n"
+    "            if (searchField) {\n"
+    "                matryoshkaSearch = searchField.text\n"
+    "            }\n"
+    "            matryoshkaForget.start()\n"
+    "        }\n"
+    "    }\n"
+)
+
+MAIN_OLD_KEEP = (
+    "    property Item footer: null\n"
+    "\n"
+    "    // Матрёшка: поиск и вкладка меню «Пуск» живут минуту после случайного закрытия.\n"
+    "    property double matryoshkaMenuClosedAt: 0\n"
+    "    property string matryoshkaSearch: \"\"\n"
+    "    property int matryoshkaTab: 0\n"
+)
+
+
 def patch_kickoff_main(text):
+    if "id: matryoshkaForget" in text:
+        return text
+    if MAIN_OLD_KEEP in text:
+        return text.replace(MAIN_OLD_KEEP, MAIN_KEEP, 1)
     old = "    property Item footer: null\n"
-    new = (
-        "    property Item footer: null\n"
-        "\n"
-        "    // Матрёшка: поиск и вкладка меню «Пуск» живут минуту после случайного закрытия.\n"
-        "    property double matryoshkaMenuClosedAt: 0\n"
-        "    property string matryoshkaSearch: \"\"\n"
-        "    property int matryoshkaTab: 0\n"
-    )
-    return once(text, "property double matryoshkaMenuClosedAt", old, new)
+    return once(text, "id: matryoshkaForget", old, MAIN_KEEP)
 
 
-def patch_kickoff_header(text):
-    old = """                    Connections {
-                        target: kickoff
-                        function onExpandedChanged() {
-                            if (kickoff.expanded) {
-                                searchField.clear()
-                            }
-                        }
-                    }
-"""
-    new = """                    Connections {
+HEADER_OLD = """                    Connections {
                         target: kickoff
                         function onExpandedChanged() {
                             if (!kickoff.expanded) {
@@ -60,20 +89,46 @@ def patch_kickoff_header(text):
                         }
                     }
 """
-    return once(text, "kickoff.matryoshkaSearch = searchField.text", old, new)
-
-
-def patch_kickoff_footer(text):
-    old = """        Connections {
-            target: kickoff
-            function onExpandedChanged() {
-                if (kickoff.expanded) {
-                    tabBar.currentIndex = 0
-                }
-            }
-        }
+HEADER_NEW = """                    Connections {
+                        target: kickoff
+                        function onExpandedChanged() {
+                            if (!kickoff.expanded) {
+                                if (searchField.text.length > 0) {
+                                    kickoff.matryoshkaSearch = searchField.text
+                                }
+                                return
+                            }
+                            if (kickoff.matryoshkaMenuClosedAt === 0 || Date.now() - kickoff.matryoshkaMenuClosedAt > 60000) {
+                                searchField.clear()
+                                kickoff.matryoshkaSearch = ""
+                                return
+                            }
+                            if (searchField.text.length === 0 && kickoff.matryoshkaSearch.length > 0) {
+                                searchField.text = kickoff.matryoshkaSearch
+                            }
+                        }
+                    }
 """
-    new = """        Connections {
+HEADER_UPSTREAM = """                    Connections {
+                        target: kickoff
+                        function onExpandedChanged() {
+                            if (kickoff.expanded) {
+                                searchField.clear()
+                            }
+                        }
+                    }
+"""
+
+
+def patch_kickoff_header(text):
+    if "matryoshkaMenuClosedAt === 0" in text:
+        return text
+    if HEADER_OLD in text:
+        return text.replace(HEADER_OLD, HEADER_NEW, 1)
+    return once(text, "matryoshkaMenuClosedAt === 0", HEADER_UPSTREAM, HEADER_NEW)
+
+
+FOOTER_OLD = """        Connections {
             target: kickoff
             function onExpandedChanged() {
                 if (!kickoff.expanded) {
@@ -91,21 +146,44 @@ def patch_kickoff_footer(text):
             }
         }
 """
-    return once(text, "kickoff.matryoshkaTab = tabBar.currentIndex", old, new)
-
-
-def patch_kickoff_view(text):
-    old = """        Connections {
+FOOTER_NEW = """        Connections {
             target: kickoff
             function onExpandedChanged() {
-                if (kickoff.expanded) {
-                    view.currentIndex = 0
-                    view.positionViewAtBeginning()
+                if (!kickoff.expanded) {
+                    kickoff.matryoshkaTab = tabBar.currentIndex
+                    return
+                }
+                if (kickoff.matryoshkaMenuClosedAt === 0 || Date.now() - kickoff.matryoshkaMenuClosedAt > 60000) {
+                    tabBar.currentIndex = 0
+                    kickoff.matryoshkaTab = 0
+                    return
+                }
+                if (tabBar.currentIndex !== kickoff.matryoshkaTab) {
+                    tabBar.currentIndex = kickoff.matryoshkaTab
                 }
             }
         }
 """
-    new = """        Connections {
+FOOTER_UPSTREAM = """        Connections {
+            target: kickoff
+            function onExpandedChanged() {
+                if (kickoff.expanded) {
+                    tabBar.currentIndex = 0
+                }
+            }
+        }
+"""
+
+
+def patch_kickoff_footer(text):
+    if "matryoshkaMenuClosedAt === 0" in text:
+        return text
+    if FOOTER_OLD in text:
+        return text.replace(FOOTER_OLD, FOOTER_NEW, 1)
+    return once(text, "matryoshkaMenuClosedAt === 0", FOOTER_UPSTREAM, FOOTER_NEW)
+
+
+VIEW_OLD = """        Connections {
             target: kickoff
             function onExpandedChanged() {
                 if (kickoff.expanded && Date.now() - kickoff.matryoshkaMenuClosedAt > 60000) {
@@ -115,10 +193,49 @@ def patch_kickoff_view(text):
             }
         }
 """
-    return once(text, "kickoff.matryoshkaMenuClosedAt > 60000", old, new)
+VIEW_NEW = """        Connections {
+            target: kickoff
+            function onExpandedChanged() {
+                if (kickoff.expanded && (kickoff.matryoshkaMenuClosedAt === 0 || Date.now() - kickoff.matryoshkaMenuClosedAt > 60000)) {
+                    view.currentIndex = 0
+                    view.positionViewAtBeginning()
+                }
+            }
+        }
+"""
+VIEW_UPSTREAM = """        Connections {
+            target: kickoff
+            function onExpandedChanged() {
+                if (kickoff.expanded) {
+                    view.currentIndex = 0
+                    view.positionViewAtBeginning()
+                }
+            }
+        }
+"""
+
+
+def patch_kickoff_view(text):
+    if "matryoshkaMenuClosedAt === 0" in text:
+        return text
+    if VIEW_OLD in text:
+        return text.replace(VIEW_OLD, VIEW_NEW, 1)
+    return once(text, "matryoshkaMenuClosedAt === 0", VIEW_UPSTREAM, VIEW_NEW)
 
 
 def patch_kicker_main(text):
+    old_fire = "        onTriggered: kicker.reset()\n"
+    new_fire = (
+        "        onTriggered: {\n"
+        "            kicker.matryoshkaSearch = \"\"\n"
+        "            kicker.matryoshkaMenuClosedAt = 0\n"
+        "            kicker.reset()\n"
+        "        }\n"
+    )
+    if "kicker.matryoshkaMenuClosedAt = 0" in text:
+        return text
+    if "id: matryoshkaForget" in text and text.count(old_fire) == 1:
+        return text.replace(old_fire, new_fire, 1)
     old = """    Connections {
         target: kicker
 
@@ -156,7 +273,11 @@ def patch_kicker_main(text):
         id: matryoshkaForget
         interval: 60000
         repeat: false
-        onTriggered: kicker.reset()
+        onTriggered: {
+            kicker.matryoshkaSearch = ""
+            kicker.matryoshkaMenuClosedAt = 0
+            kicker.reset()
+        }
     }
 """
     return once(text, "id: matryoshkaForget", old, new)

@@ -399,6 +399,10 @@ def copyq():
     subprocess.Popen(["copyq", "--start-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     C.run(["copyq", "config", "activate_pastes", "true"], timeout=10)
     C.run(["copyq", "config", "close_on_unfocus", "true"], timeout=10)
+    # В пакете редактор по умолчанию — gedit. Его нет, поэтому «Ошибка команды редактора».
+    # kate --block ждёт закрытия файла и возвращает текст в буфер.
+    if shutil.which("kate"):
+        C.run(["copyq", "config", "editor", "kate --block %1"], timeout=10)
 
 def network_refresh():
     script = r"""
@@ -539,6 +543,27 @@ def wallet_cleanup():
             pass
 
 
+def hold_wallet_quiet():
+    # Служба секретов остаётся: в ней ключ логинов Вивальди и пароль Wi-Fi.
+    # Само окно при входе не открываем. Вивальди по-прежнему может спросить
+    # этот ключ, когда он ей нужен. Жёлтую кнопку потери данных нажимать нельзя.
+    path = os.path.expanduser("~/.config/kwalletrc")
+    kwallet_write(path, True)
+    try:
+        body = open(path, encoding="utf-8").read().replace("Launch=true", "Launch=false", 1)
+        open(path, "w", encoding="utf-8").write(body)
+    except OSError:
+        pass
+    C.kwrite("kwalletrc", "Wallet", "Enabled", "true")
+    C.kwrite("kwalletrc", "Wallet", "SecretServiceEnabled", "true")
+    C.kwrite("kwalletrc", "Wallet", "Leave Open", "true")
+    C.kwrite("kwalletrc", "Wallet", "Launch", "false")
+    for rc in ("kded5rc", "kded6rc"):
+        C.kwrite(rc, "Module-kwallet", "autoload", "false")
+        C.kwrite(rc, "Module-kwalletd", "autoload", "false")
+    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "false"], timeout=8)
+
+
 def apply_wallet(on):
     kwallet_write(os.path.expanduser("~/.config/kwalletrc"), on)
     for key, value in kwallet_text(on):
@@ -567,10 +592,12 @@ def kwallet(on):
     wallet_cleanup()
     # Службу нельзя гасить. В ней ключ уже сохранённых логинов Вивальди:
     # без неё браузер предлагает стереть логины и cookie. Там же пароль Wi-Fi,
-    # и без службы авторизация сети крутится без окна. Галочка в меню только
-    # убирает лишний пароль после отпечатка.
-    apply_wallet(True)
-    if not on:
+    # и без службы авторизация сети крутится без окна. Выключенная галочка
+    # убирает лишний пароль после отпечатка и не открывает окно сама при входе.
+    if on:
+        apply_wallet(True)
+    else:
+        hold_wallet_quiet()
         wifi_save()
 
 def chooser():

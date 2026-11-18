@@ -336,6 +336,7 @@ class Boot(unittest.TestCase):
         self.assertIn("unset", z)
         self.assertIn("LD_PRELOAD", z)
         self.assertIn('BIN="$DIR/zoom"', z)
+        self.assertIn('"$DIR/ZoomLauncher"', z)
         self.assertIn('CLEAN="$HOME/.cache/matryoshka/zoom-bin"', z)
         self.assertIn("xdg-open", z)
         self.assertEqual(subprocess.run(["bash", "-n", os.path.join(LIB, "zoom-run")]).returncode, 0)
@@ -459,6 +460,9 @@ class Boot(unittest.TestCase):
         self.assertTrue(waydroid_net.needs_dns(stub, ["192.168.43.1"], current))
         self.assertFalse(waydroid_net.needs_dns(real, ["192.168.43.1"], current))
         self.assertFalse(waydroid_net.needs_dns(stub, ["192.168.43.1"], ""))
+        self.assertTrue(waydroid_net.needs_dns(stub, ["192.168.43.1"], "", True))
+        self.assertTrue(waydroid_net.needs_dns(real, ["192.168.43.1"], "", True))
+        self.assertFalse(waydroid_net.needs_dns("", ["192.168.43.1"], "", False))
         fixed = current + " --no-resolv --no-hosts --server 192.168.43.1"
         self.assertFalse(waydroid_net.needs_dns(stub, ["192.168.43.1"], fixed))
         argv = waydroid_net.dnsmasq_argv(["192.168.43.1"], "nobody")
@@ -573,6 +577,7 @@ class Boot(unittest.TestCase):
         desk = read(INC, "usr", "share", "applications", "matryoshka-zoom.desktop")
         self.assertIn("zoom-open %U", desk)
         self.assertIn("x-scheme-handler/zoommtg", desk)
+        self.assertIn("X-KDE-Protocols=zoommtg;zoomus;zoomphonecall;zoomprc;", desk)
         self.assertIn("x-scheme-handler/zoommtg=matryoshka-zoom.desktop", read(INC, "etc", "xdg", "mimeapps.list"))
         doctor = read(INC, "usr", "share", "applications", "matryoshka-zoom-doctor.desktop")
         self.assertIn("Name=Доктор Zoom", doctor)
@@ -588,6 +593,7 @@ class Boot(unittest.TestCase):
         policy = read(INC, "etc", "vivaldi", "policies", "managed", "matryoshka-zoom.json")
         self.assertIn("zoommtg", policy)
         self.assertIn("google.zoom.us", policy)
+        self.assertIn("google.zoom.us", read(INC, "etc", "opt", "yandex", "yandex-browser", "policies", "managed", "matryoshka-zoom.json"))
         self.assertIn("network.protocol-handler.external.zoommtg", read(INC, "etc", "firefox", "policies", "policies.json"))
 
 
@@ -694,13 +700,33 @@ class Clone(unittest.TestCase):
             header = open(os.path.join(tmp, "org.kde.plasma.kickoff/contents/ui/Header.qml"), encoding="utf-8").read()
             footer = open(os.path.join(tmp, "org.kde.plasma.kickoff/contents/ui/Footer.qml"), encoding="utf-8").read()
             self.assertIn("matryoshkaSearch", header)
-            self.assertNotIn("searchField.clear()\n", header.split("if (Date.now() - kickoff.matryoshkaMenuClosedAt > 60000)")[0].split("function onExpandedChanged")[-1])
+            self.assertNotIn("searchField.clear()\n", header.split("Date.now() - kickoff.matryoshkaMenuClosedAt > 60000")[0].split("function onExpandedChanged")[-1])
             self.assertIn("60000", header)
             self.assertIn("matryoshkaTab", footer)
             self.assertNotIn("tabBar.currentIndex = 0\n", footer.split("60000")[0])
             again, missed2 = kickoff_memory.patch_tree(tmp)
             self.assertEqual(again, [])
             self.assertFalse(missed2, missed2)
+            main = open(os.path.join(tmp, "org.kde.plasma.kickoff/contents/ui/main.qml"), encoding="utf-8").read()
+            self.assertIn("id: matryoshkaForget", main)
+            upgraded = kickoff_memory.patch_kickoff_main(kickoff_memory.MAIN_OLD_KEEP + "\n")
+            self.assertIn("id: matryoshkaForget", upgraded)
+            self.assertEqual(kickoff_memory.patch_kickoff_main(upgraded), upgraded)
+            kicker_path = os.path.join(tmp, "org.kde.plasma.kicker/contents/ui/main.qml")
+            kicker = open(kicker_path, encoding="utf-8").read()
+            old_fire = "        onTriggered: kicker.reset()\n"
+            new_fire = (
+                "        onTriggered: {\n"
+                "            kicker.matryoshkaSearch = \"\"\n"
+                "            kicker.matryoshkaMenuClosedAt = 0\n"
+                "            kicker.reset()\n"
+                "        }\n"
+            )
+            self.assertIn(new_fire, kicker)
+            stale = kicker.replace(new_fire, old_fire, 1)
+            fixed = kickoff_memory.patch_kicker_main(stale)
+            self.assertIn("kicker.matryoshkaMenuClosedAt = 0", fixed)
+            self.assertEqual(kickoff_memory.patch_kicker_main(fixed), fixed)
         hook = read(ROOT, "config", "hooks", "live", "0600-matryoshka.hook.chroot")
         self.assertIn("matryoshka-kickoff-memory.service", hook)
         unit = read(INC, "etc", "systemd", "system", "matryoshka-kickoff-memory.service")
@@ -733,6 +759,10 @@ class Clone(unittest.TestCase):
             self.assertNotIn("Exec=/bin/true", session_src)
             self.assertNotIn("unloadModule", session_src)
             self.assertNotIn("apply_wallet(False)", session_src)
+            self.assertIn("def hold_wallet_quiet", session_src)
+            self.assertIn('C.kwrite("kwalletrc", "Wallet", "SecretServiceEnabled", "true")', session_src)
+            self.assertIn('C.kwrite("kwalletrc", "Wallet", "Launch", "false")', session_src)
+            self.assertIn("kate --block %1", session_src)
             bundle = read(ROOT, "packaging", "matryoshka-upgrade", "make-bundle.sh")
             self.assertIn("opt/ivankod/", bundle)
             self.assertIn("ponyatny", bundle)

@@ -144,6 +144,13 @@ sysctl --system >/dev/null 2>&1 || true
 if [ -x /usr/lib/matryoshka/android-gl.sh ] && [ -d /var/lib/waydroid ]; then
   /usr/lib/matryoshka/android-gl.sh || true
   systemctl try-restart waydroid-container >/dev/null 2>&1 || true
+  i=0
+  while [ "$i" -lt 15 ]; do
+    [ -d /sys/class/net/waydroid0 ] && break
+    i=$((i + 1))
+    sleep 1
+  done
+  [ -d /sys/class/net/waydroid0 ] && python3 /usr/lib/matryoshka/waydroid_net.py apply || true
 fi
 FB=/usr/lib/matryoshka/fix-boot.sh; [ -x "$FB" ] || FB="$(dirname "$(readlink -f "$0")")/fix-boot.sh"; "$FB" || rollback
 findmnt --verify >/dev/null 2>&1 || { echo "проверка fstab не прошла"; rollback; }

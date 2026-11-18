@@ -377,11 +377,17 @@ def dnsmasq_state():
     return text, pid
 
 
-def needs_dns(host_resolv, upstream, current):
+def needs_dns(host_resolv, upstream, current, iface_ready=False):
     # dnsmasq читает /etc/resolv.conf. Если там 127.0.0.53, запросы Android
     # уходят в заглушку systemd-resolved, до которой с моста нет хода, и каждое
-    # имя ждёт тайм-аут. Пока dnsmasq не запущен, свой не поднимаем.
-    if not current or not upstream or usable_nameservers(host_resolv):
+    # имя ждёт тайм-аут. Пока моста нет, свой dnsmasq не поднимаем: его
+    # старт раньше интерфейса проигрывает гонку со скриптом Waydroid.
+    # Если мост уже есть, а DHCP/DNS никто не слушает, Android остаётся без сети.
+    if not upstream:
+        return False
+    if not current:
+        return bool(iface_ready)
+    if usable_nameservers(host_resolv):
         return False
     if "--no-hosts" not in current:
         return True
@@ -483,7 +489,8 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
             guest_sysctl(pid, "net/ipv6/conf/eth0/autoconf", "0")
         current, dns_pid = dnsmasq_state()
         upstream = upstream_dns()
-        if needs_dns(read_text("/etc/resolv.conf"), upstream, current):
+        ready = os.path.isdir("/sys/class/net/" + IFACE)
+        if needs_dns(read_text("/etc/resolv.conf"), upstream, current, ready):
             restart_dns(run, dns_pid, upstream, dnsmasq_user(current))
     if not have_iptables:
         print("iptables нет, сеть Android не настроена")
