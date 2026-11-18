@@ -392,6 +392,90 @@ def check_audio(r):
     if run(["pactl", "info"]).returncode != 0:
         r.add("warn", "Звуковой сервер не отвечает: Zoom может зависать при подключении к звуку")
 
+SCHEME_NAMES = ("zoommtg", "zoomus", "zoomphonecall")
+BROWSER_DIRS = ("vivaldi", "chromium", "google-chrome", "yandex-browser")
+
+def unblock_protocols(home=None, running=False):
+    home = home or HOME
+    if running:
+        return []
+    changed = []
+    for name in BROWSER_DIRS:
+        root = os.path.join(home, ".config", name)
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _dirs, files in os.walk(root):
+            if "Preferences" not in files:
+                continue
+            base = os.path.basename(dirpath)
+            if base != "Default" and not base.startswith("Profile"):
+                continue
+            path = os.path.join(dirpath, "Preferences")
+            try:
+                data = json.load(open(path, encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            ph = data.get("protocol_handler")
+            if not isinstance(ph, dict):
+                ph = {}
+                data["protocol_handler"] = ph
+            ex = ph.get("excluded_schemes")
+            if not isinstance(ex, dict):
+                ex = {}
+                ph["excluded_schemes"] = ex
+            dirty = False
+            for scheme in SCHEME_NAMES:
+                if ex.get(scheme) is not False:
+                    ex[scheme] = False
+                    dirty = True
+            if not dirty:
+                continue
+            tmp = path + ".matryoshka-new"
+            with open(tmp, "w", encoding="utf-8") as out:
+                json.dump(data, out, ensure_ascii=False)
+            os.replace(tmp, path)
+            changed.append(path)
+    for path in glob.glob(os.path.join(home, ".mozilla", "firefox", "*", "handlers.json")):
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        schemes = data.get("schemes")
+        if not isinstance(schemes, dict):
+            schemes = {}
+            data["schemes"] = schemes
+        dirty = False
+        for scheme in SCHEME_NAMES:
+            cur = schemes.get(scheme)
+            if not isinstance(cur, dict) or cur.get("action") != 4:
+                schemes[scheme] = {"action": 4, "ask": False}
+                dirty = True
+        if not dirty:
+            continue
+        tmp = path + ".matryoshka-new"
+        with open(tmp, "w", encoding="utf-8") as out:
+            json.dump(data, out, ensure_ascii=False)
+        os.replace(tmp, path)
+        changed.append(path)
+    return changed
+
+def browser_running():
+    if not shutil.which("pgrep"):
+        return False
+    for name in ("vivaldi-bin", "chrome", "chromium", "firefox", "firefox-esr"):
+        if run(["pgrep", "-u", str(os.getuid()), "-x", name]).returncode == 0:
+            return True
+    return False
+
+def bind_handler():
+    for scheme in SCHEMES[:3]:
+        run(["xdg-mime", "default", "matryoshka-zoom.desktop", scheme])
+    return unblock_protocols(running=browser_running())
+
 def fix_handler():
     fixed = archiveinst.repair_zoom(HOME)
     for d in installs():
@@ -624,6 +708,8 @@ def main():
         print("Если Zoom всё равно пишет ошибку с кодом, пришлите код.")
         print_repairs()
         return 1 if any(l == "bad" for l, _ in r.items) else 0
+    bound = bind_handler()
+    print("Кнопка «Запустить Zoom» в браузере открывает клиент.", ("Снята блокировка протокола: " + ", ".join(bound)) if bound else "Если браузер был открыт, закройте его полностью и нажмите кнопку ещё раз.")
     if "handler" in r.fixes:
         print("Ярлык и ссылки zoommtg:// перепривязаны:", ", ".join(fix_handler()) or "без изменений")
     if "exec" in r.fixes:

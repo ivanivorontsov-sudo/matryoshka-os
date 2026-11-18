@@ -597,7 +597,7 @@ def icons_fix():
 KWIN_RULES = {
     "matryoshka-print-okular": {"Description": "Матрёшка: окно печати Okular поверх", "wmclass": "okular", "wmclassmatch": "2", "types": "32", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2", "acceptfocus": "true", "acceptfocusrule": "2"},
     "matryoshka-print-portal": {"Description": "Матрёшка: окно печати поверх", "wmclass": "xdg-desktop-portal-kde", "wmclassmatch": "2", "title": "Печать|Print", "titlematch": "3", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2"},
-    "matryoshka-waydroid": {"Description": "Матрёшка: окно Android с рамкой", "wmclass": "(?i).*waydroid.*", "wmclassmatch": "3", "noborder": "false", "noborderrule": "2", "fullscreen": "false", "fullscreenrule": "2", "maximizevert": "false", "maximizevertrule": "2", "maximizehoriz": "false", "maximizehorizrule": "2", "closeable": "true", "closeablerule": "2"},
+    "matryoshka-waydroid": {"Description": "Матрёшка: окно Android с рамкой", "wmclass": "(?i).*waydroid.*", "wmclassmatch": "3", "noborder": "false", "noborderrule": "2", "fullscreen": "false", "fullscreenrule": "2", "maximizevertrule": "1", "maximizehorizrule": "1", "closeable": "true", "closeablerule": "2"},
 }
 
 def kwin_rules():
@@ -715,6 +715,11 @@ def on_login():
     except Exception:
         pass
     threading.Thread(target=icons_fix, daemon=True).start()
+    try:
+        import zoomdoctor
+        zoomdoctor.bind_handler()
+    except Exception:
+        pass
     try:
         kwin_rules()
     except Exception:

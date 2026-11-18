@@ -45,6 +45,14 @@ def rules(subnet=SUBNET, iface=IFACE):
             ["iptables", "-t", "nat", "-C", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"],
             ["iptables", "-t", "nat", "-A", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"],
         ),
+        (
+            ["iptables", "-t", "mangle", "-C", "POSTROUTING", "-s", subnet, "-p", "tcp", "-j", "CHECKSUM", "--checksum-fill"],
+            ["iptables", "-t", "mangle", "-A", "POSTROUTING", "-s", subnet, "-p", "tcp", "-j", "CHECKSUM", "--checksum-fill"],
+        ),
+        (
+            ["iptables", "-t", "mangle", "-C", "POSTROUTING", "-s", subnet, "-p", "udp", "-j", "CHECKSUM", "--checksum-fill"],
+            ["iptables", "-t", "mangle", "-A", "POSTROUTING", "-s", subnet, "-p", "udp", "-j", "CHECKSUM", "--checksum-fill"],
+        ),
     )
 
 
@@ -263,6 +271,9 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
         have_iptables = bool(shutil.which("iptables"))
     if have_sysctl:
         run(["sysctl", "-w", "net.ipv4.ip_forward=1"])
+        # Телефон часто не отдаёт ICMP «пакет слишком большой». Проба MTU сама
+        # уменьшает сегмент, без прежнего жёсткого MSS 1200.
+        run(["sysctl", "-w", "net.ipv4.tcp_mtu_probing=1"])
     tune(run)
     # Прошлая правка выключала суммы из сеанса пользователя. Войти в сеть
     # контейнера без прав администратора нельзя, поэтому eth0 Android не менялся.
@@ -281,7 +292,7 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
     for check, add in rules():
         if run(check).returncode != 0:
             run(add)
-    print("сеть Android: пересылка только для %s, NAT %s, MTU %s, без ложных контрольных сумм veth" % (IFACE, SUBNET, MTU))
+    print("сеть Android: пересылка только для %s, NAT %s, MTU %s, контрольные суммы пакетов Android пересчитываются перед отправкой" % (IFACE, SUBNET, MTU))
     return 0
 
 

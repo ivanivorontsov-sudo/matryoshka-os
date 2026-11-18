@@ -1,0 +1,29 @@
+#!/bin/sh
+# Кнопка «Запустить Zoom» в браузере открывает zoommtg://. Этот ярлык передаёт ссылку клиенту.
+URL=""
+for a in "$@"; do
+  case "$a" in
+    zoommtg:*|zoomus:*|zoomphonecall:*) URL=$a ;;
+  esac
+done
+EXE=""
+for c in /opt/zoom/ZoomLauncher /usr/bin/zoom "$HOME/zoom/ZoomLauncher" "$HOME/.local/opt/zoom/ZoomLauncher"; do
+  if [ -x "$c" ]; then EXE=$c; break; fi
+done
+if [ -z "$EXE" ]; then
+  for d in "$HOME/Программы" "$HOME/Загрузки" "$HOME/Downloads" "$HOME/Programs" "$HOME/.local/opt"; do
+    [ -d "$d" ] || continue
+    hit=$(find "$d" -maxdepth 3 -type f -name ZoomLauncher -perm -111 2>/dev/null | head -n 1)
+    if [ -n "$hit" ]; then EXE=$hit; break; fi
+  done
+fi
+mkdir -p "$HOME/.zoom/logs"
+printf '%s exe=%s url=%s\n' "$(date -Is)" "${EXE:-нет}" "$URL" >> "$HOME/.zoom/logs/matryoshka-url.log"
+if [ -z "$EXE" ]; then
+  notify-send -a Матрёшка -i camera-web "Zoom" "Клиент Zoom не найден. Команда: matryoshka zoom-doctor --download latest-deb" 2>/dev/null
+  exit 1
+fi
+if [ -n "$URL" ]; then
+  exec /usr/lib/matryoshka/zoom-run "$EXE" "$URL"
+fi
+exec /usr/lib/matryoshka/zoom-run "$EXE"

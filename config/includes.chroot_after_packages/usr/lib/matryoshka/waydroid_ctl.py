@@ -69,6 +69,7 @@ def guest_fix():
     run(["waydroid", "shell", "settings", "put", "secure", "navigation_mode", "0"], timeout=20)
     run(["waydroid", "shell", "cmd", "overlay", "enable", "com.android.internal.systemui.navbar.threebutton"], timeout=20)
     run(["waydroid", "shell", "cmd", "overlay", "disable", "com.android.internal.systemui.navbar.gestural"], timeout=20)
+    run(["waydroid", "shell", "setprop", "qemu.hw.mainkeys", "0"], timeout=20)
     run(["waydroid", "shell", "ip", "link", "set", "eth0", "mtu", "1500"], timeout=20)
     # Суммы eth0 снимает root внутри waydroid_net.apply. Из сеанса пользователя в сеть контейнера хода нет.
 
