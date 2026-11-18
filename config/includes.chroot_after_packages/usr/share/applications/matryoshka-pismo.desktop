@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Письмо
+Comment=Документы: стили, таблицы, разделы, ссылки
+Exec=matryoshka-pismo %U
+Icon=matryoshka-pismo
+Categories=Office;WordProcessor;
+StartupWMClass=matryoshka-pismo
+MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/msword;application/vnd.oasis.opendocument.text;application/rtf;
