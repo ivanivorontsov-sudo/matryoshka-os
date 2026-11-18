@@ -45,15 +45,15 @@ def wallet_disabled(path):
 
 
 def should_skip(data, password_present, pam_type="auth"):
-    # pam_kwallet5 6.3.4 (Debian 13) в фазе auth только запоминает уже
-    # введённый пароль. Если токена нет, модуль сам пишет «Password:».
-    # Демон /usr/bin/kwalletd6 запускает фаза open_session и пароль с
-    # клавиатуры больше не спрашивает: нет сохранённого токена — она
-    # просто выходит. Пропуск open_session оставлял бумажник закрытым,
-    # и окно пароля появлялось уже на рабочем столе.
+    # Переключатель «Отключить бумажник» (kwallet=false) глушит модуль
+    # и в auth, и в open_session. Иначе pam_kwallet5 снова запускает
+    # kwalletd6 после перезагрузки, и окно пароля возвращается.
+    # Когда бумажник включён, auth запоминает пароль входа, а open_session
+    # запускает /usr/bin/kwalletd6. Пустой токен в auth заставляет модуль
+    # спросить «Password:», поэтому без пароля auth пропускается.
     if not isinstance(data, dict):
         data = {}
-    if data.get("wallet_auto", True) is False and data.get("kwallet", True) is False:
+    if data.get("kwallet", True) is False or data.get("wallet_auto", True) is False:
         return True
     if (pam_type or "auth").strip() in ("open_session", "close_session", "session"):
         return False

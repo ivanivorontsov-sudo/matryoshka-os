@@ -236,6 +236,23 @@ def profile_uuid(text):
     return ""
 
 
+def share_saved(text):
+    """Пароль уже в файле — соединение для всех пользователей, без агента секретов."""
+    if not wifi_with_password(text):
+        return text, False
+    lines = text.splitlines(keepends=True)
+    for name, start, end in section_ranges(lines):
+        if name != "connection":
+            continue
+        found = fields(lines, start, end)
+        item = found.get("permissions")
+        if not item:
+            return text, False
+        del lines[item[0]]
+        return "".join(lines), True
+    return text, False
+
+
 def wifi_with_password(text):
     lines = text.splitlines(keepends=True)
     for name, start, end in section_ranges(lines):
@@ -258,6 +275,7 @@ def repair_file(path, psk=""):
     text, _ = repair_text(text)
     if wifi_with_password(text):
         text, _ = ensure_autoconnect(text)
+        text, _ = share_saved(text)
     if text == old:
         return False
     write_text(path, text)

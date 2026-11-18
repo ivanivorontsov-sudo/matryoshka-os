@@ -38,11 +38,96 @@ BIN="$DIR/zoom"
 [ -x "$BIN" ] || BIN="$EXE"
 cd "$DIR" || exit 1
 GPU=""
-[ -f "$HOME/.config/matryoshka/zoom-no-gpu" ] && GPU="--disable-gpu --disable-gpu-sandbox"
+# Виртуальная видеокарта (Virtio, QXL, Bochs, VMware, VirtualBox, Hyper-V)
+# не тянет GL/Vulkan в ZoomWebviewHost: CEF падает, Xorg сбрасывает клиентов,
+# а встреча отвечает «неизвестная ошибка 100000400» вместо окна с номером.
+# Тот же запасной путь включается файлом zoom-no-gpu, переменной
+# MATRYOSHKA_ZOOM_GPU=0 и повторным запуском после падения webview.
+software_gpu() {
+  [ "$MATRYOSHKA_ZOOM_GPU" = "0" ] && return 0
+  [ -n "$MATRYOSHKA_ZOOM_GPU_RETRY" ] && return 0
+  [ -f "$HOME/.config/matryoshka/zoom-no-gpu" ] && return 0
+  for ue in /sys/class/drm/card*/device/uevent; do
+    [ -r "$ue" ] || continue
+    grep -qiE 'DRIVER=(virtio_gpu|virtio-pci|virtio|qxl|bochs-drm|bochs|vmwgfx|vboxvideo|hyperv_fb|hyperv)' "$ue" && return 0
+  done
+  for v in /sys/bus/pci/devices/*/vendor; do
+    [ -r "$v" ] || continue
+    vendor=$(cat "$v" 2>/dev/null || true)
+    class=$(cat "$(dirname "$v")/class" 2>/dev/null || true)
+    case "$class" in
+      0x03*) ;;
+      *) continue ;;
+    esac
+    # 1af4 virtio, 1b36 qxl, 1234 bochs/stdvga, 15ad vmware, 80ee virtualbox, 1414 hyper-v
+    case "$vendor" in
+      0x1af4|0x1b36|0x1234|0x15ad|0x80ee|0x1414) return 0 ;;
+    esac
+  done
+  return 1
+}
+apply_software() {
+  # Qt с QT_XCB_GL_INTEGRATION=none вообще не создаёт контекст (ни GLX, ни EGL),
+  # а пустой VK_ICD_FILENAMES ломает ANGLE: нет VK_KHR_xcb_surface, webview падает.
+  # Поэтому запасной путь — программный GL (llvmpipe) и ANGLE на GL, не на Vulkan.
+  export LIBGL_ALWAYS_SOFTWARE=1
+  export GALLIUM_DRIVER=llvmpipe
+  export ANGLE_DEFAULT_PLATFORM=gl
+  GPU="--disable-gpu --disable-gpu-sandbox"
+  mkdir -p "$HOME/.config" "$HOME/.config/matryoshka"
+  : > "$HOME/.config/matryoshka/zoom-no-gpu"
+  python3 - "$HOME/.config/zoomus.conf" << 'PY'
+import os, sys
+p = sys.argv[1]
+os.makedirs(os.path.dirname(p), exist_ok=True)
+raw = open(p, "rb").read() if os.path.isfile(p) else b""
+if b"\0" in raw:
+    sys.exit(0)
+text = raw.decode("utf-8", "replace")
+if text.strip() and "[General]" not in text:
+    sys.exit(0)
+if not text.strip():
+    text = "[General]\n"
+lines = text.splitlines()
+have = set()
+out = []
+for line in lines:
+    key = line.split("=", 1)[0] if "=" in line else ""
+    if key == "enableHardwareAcc":
+        out.append("enableHardwareAcc=false")
+        have.add(key)
+    elif key == "enableHardwareAcceleration":
+        out.append("enableHardwareAcceleration=false")
+        have.add(key)
+    else:
+        out.append(line)
+insert = []
+if "enableHardwareAcc" not in have:
+    insert.append("enableHardwareAcc=false")
+if "enableHardwareAcceleration" not in have:
+    insert.append("enableHardwareAcceleration=false")
+if insert:
+    placed = []
+    for line in out:
+        placed.append(line)
+        if line.strip() == "[General]":
+            placed.extend(insert)
+            insert = []
+    out = placed
+open(p, "w", encoding="utf-8").write("\n".join(out) + "\n")
+PY
+}
+SOFT=0
+software_gpu && SOFT=1
+[ "$SOFT" = 1 ] && apply_software
+printf '%s software-gpu=%s\n' "$(date -Is)" "$SOFT" >> "$L/matryoshka-run.log"
 # ZoomLauncher из пакета Zoom 7.2.5 знает только zoommtg:// и zoomus://.
 # Ссылку входа zoomprc:// (её отдаёт страница Google «Запустить Zoom») он
 # не содержит: отвечает успехом и не передаёт токен, окно Workplace крутится.
-# Такую ссылку принимает сам клиент zoom. Встречу по-прежнему отдаёт ZoomLauncher.
+# Такую ссылку принимает сам клиент zoom. Встречу по-прежнему отдаёт ZoomLauncher:
+# он передаёт zoommtg:// уже запущенному клиенту. Флаги --disable-gpu ZoomLauncher
+# не пробрасывает, поэтому на слабой графике хватает переменных окружения выше —
+# их наследует и сам клиент, и ZoomWebviewHost (CEF уходит на swiftshader).
 URL=""
 LAUNCH=""
 for a in "$@"; do
@@ -51,9 +136,21 @@ for a in "$@"; do
     zoomphonecall:*|zoomprc:*|zoomphonesms:*|zoomcontactcentercall:*) URL=$a ;;
   esac
 done
+start=$(date +%s)
 if [ -n "$LAUNCH" ] && [ -x "$DIR/ZoomLauncher" ]; then
   "$DIR/ZoomLauncher" "$URL" 2>>"$E"
   status=$?
-  [ "$status" -eq 0 ] && exit 0
+else
+  "$BIN" $GPU "$@" 2>>"$E"
+  status=$?
 fi
-exec "$BIN" $GPU "$@" 2>>"$E"
+end=$(date +%s)
+# Webview умер сигналом или клиент сразу вышел — один повтор без GPU.
+if [ "$SOFT" != 1 ] && [ -z "$MATRYOSHKA_ZOOM_GPU_RETRY" ]; then
+  if [ "$status" -gt 128 ] || { [ "$status" -ne 0 ] && [ $((end - start)) -lt 8 ]; }; then
+    export MATRYOSHKA_ZOOM_GPU_RETRY=1
+    export MATRYOSHKA_ZOOM_GPU=0
+    exec "$0" "$EXE" "$@"
+  fi
+fi
+exit "$status"

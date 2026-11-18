@@ -506,33 +506,58 @@ BROWSER_FLAG_FILES = (
 )
 
 
-def browser_flags():
-    # Строка --password-store=basic отрывает Вивальди от уже записанного
-    # хранилища ключей. Браузер тогда предлагает стереть логины и cookie.
-    # Раньше эта строка дописывалась сюда сама. Теперь она убирается.
+def browser_flags(enabled):
+    # enabled=False — Вивальди берёт ключ peanuts из своего файла и бумажник
+    # не вызывает. enabled=True — строка убирается, ключ снова в бумажнике.
+    # Сами логины к этому моменту уже переложены, жёлтая кнопка не нужна.
     d = os.path.expanduser("~/.config")
+    os.makedirs(d, exist_ok=True)
     for name in BROWSER_FLAG_FILES:
         path = os.path.join(d, name)
         try:
             old = open(path, encoding="utf-8").read() if os.path.isfile(path) else ""
         except OSError:
             continue
-        if "--password-store=basic" not in old:
-            continue
-        kept = [line for line in old.splitlines() if line.strip() != "--password-store=basic"]
+        lines = [line for line in old.splitlines() if line.strip() != "--password-store=basic"]
+        if not enabled:
+            lines.append("--password-store=basic")
+        body = "\n".join([line for line in lines if line.strip()])
         try:
-            if not any(line.strip() for line in kept):
-                os.remove(path)
+            if not body:
+                if os.path.isfile(path):
+                    os.remove(path)
                 continue
-            body = "\n".join(kept)
-            if old.endswith("\n"):
-                body += "\n"
+            body += "\n"
+            if body == old:
+                continue
             tmp = path + ".tmp"
             with open(tmp, "w", encoding="utf-8") as out:
                 out.write(body)
             os.replace(tmp, path)
         except OSError:
             pass
+
+
+def block_wallet_bus():
+    # Иначе Вивальди или сеть снова поднимают kwalletd6 через D-Bus и окно
+    # пароля появляется само. Пароль Wi-Fi к этому моменту уже в файле.
+    d = os.path.expanduser("~/.local/share/dbus-1/services")
+    os.makedirs(d, exist_ok=True)
+    for name in ("org.kde.kwalletd6", "org.kde.kwalletd5", "org.freedesktop.secrets"):
+        path = os.path.join(d, name + ".service")
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as out:
+            out.write("[D-BUS Service]\nName=%s\nExec=/bin/true\nX-Matryoshka-KWallet=off\n" % name)
+        os.replace(tmp, path)
+    auto = os.path.expanduser("~/.config/autostart")
+    os.makedirs(auto, exist_ok=True)
+    desk = os.path.join(auto, "org.kde.kwalletd6.desktop")
+    with open(desk, "w", encoding="utf-8") as out:
+        out.write("[Desktop Entry]\nType=Application\nHidden=true\nX-Matryoshka-KWallet=off\nName=kwalletd\nExec=/bin/true\n")
+
+
+def stop_kwalletd():
+    subprocess.run(["killall", "-q", "kwalletd6", "kwalletd5"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def wifi_save():
@@ -590,16 +615,32 @@ def apply_wallet(on):
 
 def kwallet(on):
     on = bool(on)
-    browser_flags()
-    wallet_cleanup()
-    # Галочка в меню и «Параметры системы» пишут в один файл бумажника.
-    # Служба остаётся включённой: в ней ключ логинов Вивальди. Пароль входа
-    # передаёт pam_kwallet5 демону kwalletd6. Здесь пароль в файл не пишется.
-    apply_wallet(True)
-    # Пароль точки, который уже в файле, поднимает Wi-Fi сразу, как в Windows.
-    # Это не зависит от галочки бумажника и не трогает USB.
-    if wifi_save():
+    # Пароль точки пишется в файл до того, как служба секретов исчезнет.
+    # USB и кабель эта команда не отключает.
+    wifi_save()
+    if not on:
+        ready = True
+        try:
+            import browser_key
+            ready = browser_key.migrate_to_basic()
+        except Exception:
+            ready = False
+        if ready:
+            browser_flags(False)
+        apply_wallet(False)
+        block_wallet_bus()
+        stop_kwalletd()
         connect_saved_wifi()
+        return
+    wallet_cleanup()
+    browser_flags(True)
+    apply_wallet(on)
+    try:
+        import browser_key
+        browser_key.restore_to_wallet()
+    except Exception:
+        pass
+    connect_saved_wifi()
 
 
 def wallet_unlocked():
@@ -672,6 +713,8 @@ def connect_saved_wifi():
 
 
 def wifi_after_unlock():
+    if C.settings().get("kwallet", True) is False:
+        return
     def loop():
         tries = 0
         for _ in range(90):

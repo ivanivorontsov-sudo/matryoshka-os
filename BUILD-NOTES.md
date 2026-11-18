@@ -86,3 +86,22 @@ packaging/matryoshka-upgrade/make-bundle.sh 18.6.17 dist
 - Тот же список пакетов в `packaging/matryoshka-upgrade/remove.list` строками `pkg …`, чтобы обновление 18.6.17 сняло их с уже установленной системы. Скрипт обновления дополнительно вызывает `drop-vpn.sh`: профили NetworkManager типов `vpn`, `wireguard`, `tun`, `ip-tunnel`, `vxlan`, системный прокси (`http_proxy` и `Acquire::http::Proxy`), `ProxyType` в `kioslaverc`, оставшиеся ярлыки и автозапуск.
 
 Нарочно не удаляется и в список не входит: `network-manager`, `wpasupplicant`, `modemmanager`, `usb-modeswitch`, `ppp`, `dnsmasq-base`, `libopenconnect5` (это библиотека, её требует `plasma-nm`), `openssh-client`, `ksshaskpass`, `plasma-nm`, `ufw`, `nftables`. Из хука убран `modemmanager` из команды `apt-get purge`: пакет есть в `matryoshka.list.chroot`, USB-модем должен остаться. В `NetworkManager.state` для живого образа стоит `WWANEnabled=true`. `NetworkingEnabled=false` в этом файле не менялся. Файл `waydroid_net.py` этот выпуск не трогает: NAT `192.168.240.0/24`, IPv6, DNS и ТТЛ контейнера Android те же.
+
+## Статус 18.6.17 на 18 ноября 2026
+
+Релиз v18.6.17 и ISO `matryoshka-18.6.17-amd64.iso` ещё не выложены. Пакет в `dist/` от более ранней сборки, его не подписывать и не публиковать: в нём нет правок бумажника и программного рендера Zoom.
+
+Что уже в дереве, но не проверено в установленной системе до конца:
+
+- Переключатель «Отключить бумажник» выключает KWallet целиком (PAM, dbus, процесс), пароль Wi-Fi остаётся в файле соединения, логины Vivaldi переносятся на обычное хранилище и возвращаются, когда бумажник снова включают.
+- VPN и прокси снимаются и при сборке, и при обновлении с 18.6.9–18.6.16. USB-модем и NAT Android не входят в список удаления.
+- `zoom-run` на виртуальной видеокарте (Virtio, QXL, Bochs, VMware, VirtualBox, Hyper-V) включает программный GL: `LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`, `ANGLE_DEFAULT_PLATFORM=gl`, в `~/.config/zoomus.conf` пишет `enableHardwareAcc=false` и `enableHardwareAcceleration=false`. Встречу по-прежнему открывает ZoomLauncher, чтобы ссылка `zoommtg://` дошла до клиента. Если webview падает сигналом, запуск повторяется один раз уже без GPU.
+
+Что выяснилось про ошибку Zoom 100000400:
+
+- Сеть здесь ни при чём. `https://zoom.us` из гостя отвечает, строки `zoom.us`/`zoom.com` в `/etc/hosts` нет, и та же ошибка есть и у случайного номера, и у живой тестовой встречи с zoom.us/test.
+- В журнале клиента: видеокарта Virtio, `libva` не поднимает `virtio_gpu_drv_video.so`, ANGLE падает на Vulkan (`VK_KHR_xcb_surface` / лимит uniform-буферов). После этого окно встречи показывает «Please join this meeting from your browser. Error code: 100000400».
+- `QT_XCB_GL_INTEGRATION=none` и пустой `VK_ICD_FILENAMES` проверены и вредны: Qt не создаёт ни GLX, ни EGL, процесс падает с кодом 139. В запасной путь они не входят.
+- На этой машине (не в госте) тот же Zoom 7.2.5 с `LIBGL_ALWAYS_SOFTWARE=1` и `ANGLE_DEFAULT_PLATFORM=gl` поднимает webview через swiftshader и рисует окно Workplace, без 100000400. Окно «неверный номер встречи» при этом не получено: клиент остался на главном экране. В госте этот запасной путь ещё не прогонялся. `sudo` в госте сломан (`/etc/sudoers.d` принадлежит uid 1000), libguestfs не монтирует диск (в `/boot` нет ядра), SSH с `hostfwd` не поднимался.
+
+Сборку ISO на этой Ubuntu 24.04 не начинать: `build.sh` рассчитан на Debian 13, см. раздел выше. Диск свободный есть (около 213 ГБ), нехватка места сборку не останавливала.

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Переключатель «Отключить бумажник» в меню сетей Plasma. Правка до входа в систему."""
 import os
+import subprocess
 import sys
 
 MARKER = "matryoshkaWalletSwitch"
@@ -141,6 +142,13 @@ def main(argv):
         print("меню сетей: переключатель бумажника — " + ", ".join(changed))
     if missed:
         print("меню сетей: файл Plasma не совпал с ожидаемым, правка пропущена — " + ", ".join(missed))
+    # Старые архивы обновления (18.6.9–18.6.16) после копирования файлов
+    # вызывают этот скрипт от администратора и не знают про drop-vpn.sh.
+    # Поэтому снятие VPN и прокси запускается здесь, уже с новыми файлами.
+    if os.geteuid() == 0 and root == "/usr/share/plasma/plasmoids":
+        script = "/usr/lib/matryoshka/drop-vpn.sh"
+        if os.path.isfile(script) and os.access(script, os.X_OK):
+            subprocess.run([script], timeout=900)
     return 0
 
 
