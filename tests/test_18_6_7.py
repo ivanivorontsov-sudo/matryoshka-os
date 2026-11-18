@@ -1,4 +1,4 @@
-import json, os, random, stat, subprocess, sys, tempfile, unittest
+import json, os, random, shutil, stat, subprocess, sys, tempfile, unittest
 from unittest import mock
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -249,6 +249,14 @@ class Boot(unittest.TestCase):
         self.assertIn("lang=ru_RU", text)
         self.assertIn('menuentry "English"', text)
         self.assertIn("unicode.pf2", text)
+        body = text.split("cat <<'EOF'\n", 1)[1].split("\nEOF", 1)[0] + "\n"
+        self.assertNotIn("||", body)
+        self.assertNotIn("&&", body)
+        if shutil.which("grub-script-check"):
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".cfg") as f:
+                f.write(body)
+                f.flush()
+                self.assertEqual(subprocess.run(["grub-script-check", f.name]).returncode, 0)
         self.assertEqual(read(INC, "etc", "default", "grub.d", "matryoshka-lang.cfg").strip(), "GRUB_LANG=ru_RU")
         up = read(LIB, "upgrade.sh")
         self.assertIn("WINBEFORE", up)
