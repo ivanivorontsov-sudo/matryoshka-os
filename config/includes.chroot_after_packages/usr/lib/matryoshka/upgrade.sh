@@ -175,9 +175,10 @@ fi
 : >/tmp/matryoshka-grub.log
 GRUB_DONE=0
 update-grub >>/tmp/matryoshka-grub.log 2>&1 && GRUB_DONE=1
-if [ "$GRUB_DONE" = 0 ] && [ -x /etc/grub.d/01_matryoshka_lang ]; then
+if [ "$GRUB_DONE" = 0 ] && { [ -x /etc/grub.d/01_matryoshka_lang ] || [ -x /etc/grub.d/99_matryoshka_lang ]; }; then
   echo "update-grub завершился с ошибкой:"; tail -n 20 /tmp/matryoshka-grub.log
-  chmod -x /etc/grub.d/01_matryoshka_lang
+  [ -f /etc/grub.d/01_matryoshka_lang ] && chmod -x /etc/grub.d/01_matryoshka_lang
+  [ -f /etc/grub.d/99_matryoshka_lang ] && chmod -x /etc/grub.d/99_matryoshka_lang
   echo "Повторяю сборку меню без переключателя языка"
   update-grub >>/tmp/matryoshka-grub.log 2>&1 && GRUB_DONE=1
   [ "$GRUB_DONE" = 1 ] && echo "ВНИМАНИЕ: меню обновлено без пункта English. Обновление системы при этом применено."
@@ -193,6 +194,7 @@ if [ "$GRUB_DONE" = 0 ]; then
   echo "update-grub завершился с ошибкой:"; tail -n 20 /tmp/matryoshka-grub.log
   [ -f /etc/grub.d/43_matryoshka_live ] && chmod +x /etc/grub.d/43_matryoshka_live
   [ -f /etc/grub.d/01_matryoshka_lang ] && chmod +x /etc/grub.d/01_matryoshka_lang
+  [ -f /etc/grub.d/99_matryoshka_lang ] && chmod +x /etc/grub.d/99_matryoshka_lang
   rollback
 fi
 WINAFTER=0

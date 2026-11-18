@@ -244,24 +244,38 @@ class Boot(unittest.TestCase):
         self.assertIn("dejavu_16.pf2", theme)
         self.assertIn("light-gray/blue", theme)
         lang = os.path.join(INC, "etc", "grub.d", "01_matryoshka_lang")
+        late = os.path.join(INC, "etc", "grub.d", "99_matryoshka_lang")
         self.assertEqual(subprocess.run(["sh", "-n", lang]).returncode, 0)
+        self.assertEqual(subprocess.run(["sh", "-n", late]).returncode, 0)
         text = read(lang)
         self.assertIn("lang=ru_RU", text)
-        self.assertIn('menuentry "English"', text)
+        self.assertNotIn("menuentry", text)
+        self.assertIn('set default=0', text)
         self.assertIn("unicode.pf2", text)
-        body = text.split("cat <<'EOF'\n", 1)[1].split("\nEOF", 1)[0] + "\n"
-        self.assertNotIn("||", body)
-        self.assertNotIn("&&", body)
-        if shutil.which("grub-script-check"):
-            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".cfg") as f:
-                f.write(body)
-                f.flush()
-                self.assertEqual(subprocess.run(["grub-script-check", f.name]).returncode, 0)
+        late_text = read(late)
+        self.assertIn('menuentry "English"', late_text)
+        self.assertIn('menuentry "Русский"', late_text)
+        self.assertIn("set default=0", late_text)
+        rescue = read(LIB, "rescue.sh")
+        self.assertIn('6 "Продолжить загрузку"', rescue)
+        self.assertIn('6 "Continue boot"', rescue)
+        self.assertIn('9 "English"', rescue)
+        self.assertEqual(subprocess.run(["bash", "-n", os.path.join(LIB, "rescue.sh")]).returncode, 0)
+        for text in (text, late_text):
+            body = text.split("cat <<'EOF'\n", 1)[1].split("\nEOF", 1)[0] + "\n"
+            self.assertNotIn("||", body)
+            self.assertNotIn("&&", body)
+            if shutil.which("grub-script-check"):
+                with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".cfg") as f:
+                    f.write(body)
+                    f.flush()
+                    self.assertEqual(subprocess.run(["grub-script-check", f.name]).returncode, 0)
         self.assertEqual(read(INC, "etc", "default", "grub.d", "matryoshka-lang.cfg").strip(), "GRUB_LANG=ru_RU")
         up = read(LIB, "upgrade.sh")
         self.assertIn("WINBEFORE", up)
         self.assertIn("меню загрузки возвращено", up)
         self.assertIn("01_matryoshka_lang", up)
+        self.assertIn("99_matryoshka_lang", up)
 
     def test_net_keeps_bbr_and_drops_server_fastopen(self):
         s = read(INC, "etc", "sysctl.d", "90-matryoshka-net.conf")
