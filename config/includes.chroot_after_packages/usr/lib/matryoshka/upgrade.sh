@@ -205,6 +205,7 @@ if [ "${WINBEFORE:-0}" -gt 0 ] && [ "${WINAFTER:-0}" -eq 0 ]; then
 fi
 grep -q "живая система" /boot/grub/grub.cfg && say "В меню загрузки есть пункт «Матрёшка — живая система»" || echo "ВНИМАНИЕ: пункта живой системы в меню нет (журнал /tmp/matryoshka-grub.log)"; grep -i "живая\|error\|ошибк" /tmp/matryoshka-grub.log | tail -n 5
 [ -x /etc/grub.d/01_matryoshka_lang ] || echo "ВНИМАНИЕ: нет /etc/grub.d/01_matryoshka_lang, русский текст меню может не включиться. Обновление из-за этого не откатываю."
+rm -f /var/lib/matryoshka/booting /var/lib/matryoshka/boot-reached
 cat $W/VERSION > /etc/matryoshka-version
 [ -x /usr/lib/matryoshka/apply-look.sh ] && /usr/lib/matryoshka/apply-look.sh || true
 rm -rf $W

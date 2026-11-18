@@ -276,6 +276,39 @@ class Boot(unittest.TestCase):
         self.assertIn("меню загрузки возвращено", up)
         self.assertIn("01_matryoshka_lang", up)
         self.assertIn("99_matryoshka_lang", up)
+        self.assertIn("boot-reached", up)
+        self.assertIn("FullCyrSlav-Terminus16.psf.gz", rescue)
+        self.assertIn("setfont -C", rescue)
+        font = os.path.join(INC, "usr", "share", "matryoshka", "fonts", "FullCyrSlav-Terminus16.psf.gz")
+        self.assertTrue(os.path.isfile(font))
+        ok = read(INC, "etc", "systemd", "system", "matryoshka-bootok.service")
+        self.assertIn("bootok.sh", ok)
+        self.assertNotIn("After=graphical.target", ok)
+
+    def test_login_screen_shutdown_is_not_a_failed_boot(self):
+        script = os.path.join(LIB, "bootcheck.sh")
+        mark = os.path.join(LIB, "bootok.sh")
+        d = tempfile.mkdtemp()
+        fake = os.path.join(d, "systemctl")
+        with open(fake, "w", encoding="utf-8") as f:
+            f.write("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$MATRYOSHKA_STATE/called\"\n")
+        os.chmod(fake, 0o755)
+        env = dict(os.environ)
+        env["MATRYOSHKA_STATE"] = d
+        env["MATRYOSHKA_SYSTEMCTL"] = fake
+        for _ in range(4):
+            self.assertEqual(subprocess.run(["sh", script], env=env).returncode, 0)
+        self.assertEqual(open(os.path.join(d, "booting"), encoding="utf-8").read().strip(), "4")
+        self.assertFalse(os.path.exists(os.path.join(d, "called")))
+        self.assertEqual(subprocess.run(["sh", script], env=env).returncode, 0)
+        self.assertIn("isolate matryoshka-rescue.target", open(os.path.join(d, "called"), encoding="utf-8").read())
+        self.assertEqual(subprocess.run(["sh", mark], env=env).returncode, 0)
+        self.assertTrue(os.path.isfile(os.path.join(d, "boot-reached")))
+        self.assertFalse(os.path.exists(os.path.join(d, "booting")))
+        os.remove(os.path.join(d, "called"))
+        self.assertEqual(subprocess.run(["sh", script], env=env).returncode, 0)
+        self.assertEqual(open(os.path.join(d, "booting"), encoding="utf-8").read().strip(), "1")
+        self.assertFalse(os.path.exists(os.path.join(d, "called")))
 
     def test_net_keeps_bbr_and_drops_server_fastopen(self):
         s = read(INC, "etc", "sysctl.d", "90-matryoshka-net.conf")

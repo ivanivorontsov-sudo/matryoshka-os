@@ -1,17 +1,36 @@
 #!/bin/bash
-# Синее меню, если система не загрузилась пять раз подряд. Пункт 6 всегда продолжает загрузку.
+# Синее меню, если пять загрузок подряд не дошли до экрана входа. Пункт 6 всегда продолжает загрузку.
 export TERM=linux
-export LANG=ru_RU.UTF-8
-export LC_ALL=ru_RU.UTF-8
-if command -v setfont >/dev/null; then
-  for f in /usr/share/consolefonts/Cyr_a8x16.psf.gz \
-           /usr/share/consolefonts/LatArCyrHeb-16.psfu.gz \
-           /usr/share/consolefonts/UniCyr_8x16.psf.gz \
-           /usr/share/consolefonts/cyr-sun16.psfu.gz; do
-    if [ -f "$f" ]; then setfont "$f" && break; fi
-  done
+if locale -a 2>/dev/null | grep -qi '^ru_RU.utf-8$'; then
+  export LANG=ru_RU.UTF-8
+else
+  export LANG=C.UTF-8
 fi
+export LC_ALL=$LANG
+FONT_OK=0
+load_cyr() {
+  command -v setfont >/dev/null 2>&1 || return 1
+  tty=/dev/tty1
+  [ -c /dev/tty0 ] && tty=/dev/tty0
+  # Свой шрифт: в консоли по умолчанию нет кириллицы, и русские строки рисуются клетками.
+  # FullCyrSlav-Terminus16 — консольный шрифт из console-setup, общественное достояние.
+  for f in /usr/share/matryoshka/fonts/FullCyrSlav-Terminus16.psf.gz \
+           /usr/share/consolefonts/FullCyrSlav-Terminus16.psf.gz \
+           /usr/share/consolefonts/FullCyrSlav-TerminusBold16.psf.gz \
+           /usr/share/kbd/consolefonts/LatArCyrHeb-16.psfu.gz \
+           /usr/share/consolefonts/LatArCyrHeb-16.psf.gz \
+           /usr/share/consolefonts/UniCyr_8x16.psf.gz \
+           /usr/share/kbd/consolefonts/cyr-sun16.psfu.gz \
+           /usr/share/consolefonts/Cyr_a8x16.psf.gz; do
+    [ -f "$f" ] || continue
+    setfont -C "$tty" "$f" && return 0
+  done
+  return 1
+}
+load_cyr && FONT_OK=1
+printf '\033%%G' > /dev/tty1 2>/dev/null || true
 UI=ru
+if [ "$FONT_OK" = 1 ]; then RU_BTN=Русский; else RU_BTN=Russian; fi
 explain() {
   log=$(journalctl -b -1 -p 3 -n 40 --no-pager 2>/dev/null; cat /sys/fs/pstore/* 2>/dev/null | tail -40)
   if [ "$UI" = en ]; then
@@ -48,7 +67,7 @@ while true; do
     export LC_ALL=en_US.UTF-8
     c=$(whiptail --title "Matryoshka: recovery" --menu "The system failed to boot five times in a row. What should we do?" 22 78 10 \
       1 "Explain what happened" 2 "Show the error log" 3 "Roll back to a snapshot" 4 "Repair GRUB" \
-      5 "Disable a driver" 6 "Continue boot" 7 "Reboot" 8 "Command line" 9 "Русский" 3>&1 1>&2 2>&3) || c=6
+      5 "Disable a driver" 6 "Continue boot" 7 "Reboot" 8 "Command line" 9 "$RU_BTN" 3>&1 1>&2 2>&3) || c=6
   else
     export LANG=ru_RU.UTF-8
     export LC_ALL=ru_RU.UTF-8
