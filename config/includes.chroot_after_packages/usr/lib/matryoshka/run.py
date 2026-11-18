@@ -84,10 +84,9 @@ def launch_scan(kind, enabled, disabled):
 BROWSER_ENV = {
     "MOZ_DISABLE_LAUNCHER_PROCESS": "1",
 }
-FIREFOX_PREFS = (
-    'user_pref("browser.tabs.inTitlebar", false);\n'
-    'user_pref("browser.tabs.drawInTitlebar", false);\n'
-)
+# У Firefox это целое число: 0 — вкладки под обычным заголовком, 1 — внутри него.
+# Ложь false браузер не принимает, вкладки остаются в заголовке и под рамкой Wine их не видно.
+FIREFOX_PREF = 'user_pref("browser.tabs.inTitlebar", 0);\n'
 CHROME_FLAGS = ["--no-sandbox", "--disable-gpu-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--disable-software-rasterizer"]
 CHROME_NAMES = ("chrome", "chromium", "vivaldi", "msedge", "opera", "brave", "yandex", "electron", "code", "discord", "slack", "teams")
 
@@ -122,16 +121,60 @@ def firefox_profiles(prefix):
             dirnames[:] = []
     return found
 
+def firefox_policy():
+    return json.dumps({"policies": {"Preferences": {"browser.tabs.inTitlebar": {"Value": 0, "Status": "locked"}}}}, ensure_ascii=False) + "\n"
+
+def firefox_userjs(old):
+    kept = []
+    for line in (old or "").splitlines(True):
+        if "browser.tabs.inTitlebar" in line or "browser.tabs.drawInTitlebar" in line:
+            continue
+        kept.append(line)
+    text = "".join(kept)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if FIREFOX_PREF not in text:
+        text += FIREFOX_PREF
+    return text
+
+def write_firefox_policy(path):
+    # Политика лежит рядом с firefox.exe и действует при любом запуске, не только из Матрёшки.
+    # Чужие правила в файле сохраняются. Значение 0 заперто: уже записанное true его не перебьёт.
+    dist = os.path.join(os.path.dirname(os.path.abspath(path)), "distribution")
+    os.makedirs(dist, exist_ok=True)
+    policy = os.path.join(dist, "policies.json")
+    data = {"policies": {}}
+    try:
+        if os.path.isfile(policy):
+            loaded = json.load(open(policy, encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+    except (OSError, ValueError):
+        data = {"policies": {}}
+    policies = data.get("policies")
+    if not isinstance(policies, dict):
+        policies = {}
+        data["policies"] = policies
+    prefs = policies.get("Preferences")
+    if not isinstance(prefs, dict):
+        prefs = {}
+        policies["Preferences"] = prefs
+    prefs.pop("browser.tabs.drawInTitlebar", None)
+    prefs["browser.tabs.inTitlebar"] = {"Value": 0, "Status": "locked"}
+    text = json.dumps(data, ensure_ascii=False, indent=1) + "\n"
+    try:
+        old = open(policy, encoding="utf-8").read() if os.path.isfile(policy) else ""
+    except OSError:
+        old = ""
+    if old != text:
+        open(policy, "w", encoding="utf-8").write(text)
+    return text
+
 def firefox_window(path, prefix):
     # У Firefox для Windows вкладки живут в заголовке. Wine рисует свой заголовок
     # поверх, получается каша, и полосы вкладок не видно.
     try:
-        dist = os.path.join(os.path.dirname(os.path.abspath(path)), "distribution")
-        os.makedirs(dist, exist_ok=True)
-        policy = os.path.join(dist, "policies.json")
-        text = '{"policies":{"Preferences":{"browser.tabs.inTitlebar":{"Value":false,"Status":"default"},"browser.tabs.drawInTitlebar":{"Value":false,"Status":"default"}}}}\n'
-        if not os.path.isfile(policy) or open(policy, encoding="utf-8", errors="replace").read() != text:
-            open(policy, "w", encoding="utf-8").write(text)
+        write_firefox_policy(path)
     except OSError:
         pass
     for prof in firefox_profiles(prefix):
@@ -140,10 +183,10 @@ def firefox_window(path, prefix):
             old = open(user_js, encoding="utf-8", errors="replace").read() if os.path.isfile(user_js) else ""
         except OSError:
             old = ""
-        extra = "".join(line for line in FIREFOX_PREFS.splitlines(True) if line.strip() not in old)
-        if extra:
+        text = firefox_userjs(old)
+        if text != old:
             try:
-                open(user_js, "a", encoding="utf-8").write(extra)
+                open(user_js, "w", encoding="utf-8").write(text)
             except OSError:
                 pass
 

@@ -660,11 +660,159 @@ def diagnose():
     check_logs(r)
     return r
 
+def report_lines(r):
+    mark = {"ok": "В порядке.", "warn": "Внимание.", "bad": "Ошибка.", "info": "Справка."}
+    return ["%s %s" % (mark[level], text) for level, text in r.items]
+
+def fix_lines(r, reset=False):
+    lines = []
+    bound = bind_handler()
+    lines.append("Кнопка «Запустить Zoom» в браузере открывает клиент. " + (("Снята блокировка протокола: " + ", ".join(bound)) if bound else "Если браузер был открыт, закройте его полностью и нажмите кнопку ещё раз."))
+    if "handler" in r.fixes:
+        lines.append("Ярлык и ссылки zoommtg:// перепривязаны: " + (", ".join(fix_handler()) or "без изменений"))
+    if "exec" in r.fixes:
+        fix_exec()
+        lines.append("Права на запуск файлов Zoom восстановлены.")
+    if "conf" in r.fixes:
+        p = zconf()
+        bak = p + ".broken-" + time.strftime("%Y%m%d-%H%M%S")
+        shutil.move(p, bak)
+        lines.append("Повреждённый zoomus.conf перенесён в %s (Zoom создаст новый)" % bak)
+    if "wayland" in r.fixes and os.environ.get("XDG_SESSION_TYPE") == "wayland" and not conf_broken():
+        conf_set("enableWaylandShare", "true")
+        if (conf_get("xwayland") or "").lower() == "false":
+            conf_set("xwayland", "true")
+        lines.append("zoomus.conf: включены enableWaylandShare и xwayland")
+    if "cache" in r.fixes and not reset:
+        lines.append("Если ошибка останется, нажмите «Сбросить профиль». Вход в Zoom придётся выполнить заново.")
+    ra = root_args(r)
+    if ra:
+        lines.append("Нужны права администратора для: " + " ".join(ra))
+        p = run(["pkexec", "/usr/lib/matryoshka/root.sh", "zoom-fix"] + ra, timeout=900)
+        lines.append((p.stdout or p.stderr or "").strip() or "Права администратора не получены, эта часть не сделана.")
+    return lines
+
+def capture(fn):
+    import io
+    buf = io.StringIO()
+    old = sys.stdout
+    sys.stdout = buf
+    try:
+        code = fn()
+    finally:
+        sys.stdout = old
+    text = buf.getvalue().strip()
+    if text:
+        return text
+    return "Готово." if code == 0 else "Не получилось."
+
+def gui_requested(args):
+    return not args or args == ["--gui"]
+
+def gui():
+    from PyQt6.QtCore import QThread, pyqtSignal
+    from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QLineEdit
+    app = QApplication.instance() or QApplication(sys.argv)
+    try:
+        import wheelguard
+        wheelguard.install(app)
+    except Exception:
+        pass
+    w = QWidget()
+    w.setWindowTitle("Доктор Zoom")
+    w.resize(840, 640)
+    lay = QVBoxLayout(w)
+    lay.addWidget(QLabel("Проверка и починка Zoom. Это обычное окно программы, не командная строка."))
+    out = QTextBrowser()
+    out.setPlainText("Нажмите «Проверить».")
+    lay.addWidget(out, 1)
+    link = QLineEdit()
+    link.setPlaceholderText("Ссылка на встречу: https://zoom.us/j/… или zoommtg://…")
+    lay.addWidget(link)
+    buttons = []
+    holder = {"job": None}
+
+    class Job(QThread):
+        finished_text = pyqtSignal(str)
+
+        def __init__(self, fn):
+            super().__init__(w)
+            self.fn = fn
+
+        def run(self):
+            try:
+                self.finished_text.emit(self.fn())
+            except Exception as e:
+                self.finished_text.emit("Не получилось: %s" % e)
+
+    def start(fn):
+        if holder["job"] is not None:
+            return
+        for b in buttons:
+            b.setEnabled(False)
+        out.setPlainText("Выполняю…")
+        job = Job(fn)
+        holder["job"] = job
+
+        def done(text):
+            out.setPlainText(text)
+            for b in buttons:
+                b.setEnabled(True)
+            holder["job"] = None
+
+        job.finished_text.connect(done)
+        job.start()
+
+    def add(row, title, fn):
+        b = QPushButton(title)
+        buttons.append(b)
+        row.addWidget(b)
+        b.clicked.connect(lambda _checked=False, fn=fn: start(fn))
+
+    def text_check():
+        r = diagnose()
+        lines = report_lines(r)
+        lines.append("")
+        lines.append("Есть что исправить. Кнопка «Исправить» сделает это." if r.fixes else "Критических неисправностей не найдено.")
+        return "\n".join(lines)
+
+    def text_fix():
+        r = diagnose()
+        lines = report_lines(r) + ["", "Исправление:"] + fix_lines(r)
+        lines += ["", "Повторная проверка:"]
+        lines += report_lines(diagnose())
+        return "\n".join(lines)
+
+    def text_web():
+        u = web_url(link.text())
+        if not u:
+            return "Вставьте ссылку на встречу."
+        subprocess.Popen(["xdg-open", u], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return "Открываю встречу в браузере: " + re.sub(r"pwd=.*", "pwd=…", u)
+
+    row = QHBoxLayout()
+    row2 = QHBoxLayout()
+    add(row, "Проверить", text_check)
+    add(row, "Исправить", text_fix)
+    add(row, "Очистить кэш", lambda: "Кэш Zoom очищен: " + (", ".join(clear_runtime_cache()) or "уже пусто. Вход в аккаунт не трогал."))
+    add(row, "Без видеоускорения", disable_gpu)
+    add(row2, "Сбросить профиль", lambda: "Профиль Zoom перенесён в %s. Вход в Zoom нужно выполнить заново." % (reset_cache() or "(нечего переносить)"))
+    add(row2, "Тестовая встреча", lambda: capture(run_test))
+    add(row2, "Обновить из архива", lambda: capture(update_zoom))
+    add(row2, "Скачать установщик", lambda: capture(lambda: download_zoom("latest-deb")))
+    add(row2, "Открыть в браузере", text_web)
+    lay.addLayout(row)
+    lay.addLayout(row2)
+    w.show()
+    return app.exec()
+
 def main():
     args = sys.argv[1:]
     if os.geteuid() == 0:
         print("Запускайте без sudo, от своего пользователя: matryoshka zoom-doctor [--fix] [--cache] [--gpu] [--download ИМЯ] [--reset-cache] [--test] [--update] [--web ССЫЛКА] [--code N]")
         return 2
+    if gui_requested(args) and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return gui()
     if "--downloads" in args:
         print_repairs()
         return 0
@@ -708,29 +856,8 @@ def main():
         print("Если Zoom всё равно пишет ошибку с кодом, пришлите код.")
         print_repairs()
         return 1 if any(l == "bad" for l, _ in r.items) else 0
-    bound = bind_handler()
-    print("Кнопка «Запустить Zoom» в браузере открывает клиент.", ("Снята блокировка протокола: " + ", ".join(bound)) if bound else "Если браузер был открыт, закройте его полностью и нажмите кнопку ещё раз.")
-    if "handler" in r.fixes:
-        print("Ярлык и ссылки zoommtg:// перепривязаны:", ", ".join(fix_handler()) or "без изменений")
-    if "exec" in r.fixes:
-        fix_exec()
-    if "conf" in r.fixes:
-        p = zconf()
-        bak = p + ".broken-" + time.strftime("%Y%m%d-%H%M%S")
-        shutil.move(p, bak)
-        print("Повреждённый zoomus.conf перенесён в", bak, "(Zoom создаст новый)")
-    if "wayland" in r.fixes and os.environ.get("XDG_SESSION_TYPE") == "wayland" and not conf_broken():
-        conf_set("enableWaylandShare", "true")
-        if (conf_get("xwayland") or "").lower() == "false":
-            conf_set("xwayland", "true")
-        print("zoomus.conf: включены enableWaylandShare и xwayland (копия: zoomus.conf.matryoshka.bak)")
-    if "cache" in r.fixes and "--reset-cache" not in args:
-        print("Для сброса профиля Zoom: matryoshka zoom-doctor --fix --reset-cache")
-    ra = root_args(r)
-    if ra:
-        print("Нужны права администратора для:", " ".join(ra))
-        p = run(["pkexec", "/usr/lib/matryoshka/root.sh", "zoom-fix"] + ra, timeout=900)
-        print(p.stdout.strip() or p.stderr.strip())
+    for line in fix_lines(r, reset="--reset-cache" in args):
+        print(line)
     print("\nПовторная проверка:")
     r2 = diagnose()
     r2.show()

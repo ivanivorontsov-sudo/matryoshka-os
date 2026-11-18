@@ -389,7 +389,10 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
         have_iptables = bool(shutil.which("iptables"))
     if have_sysctl:
         run(["sysctl", "-w", "net.ipv4.ip_forward=1"])
-        run(["sysctl", "-w", "net.ipv4.tcp_mtu_probing=0"])
+        # 1 — настройка всего компьютера из 90-matryoshka-net.conf.
+        # Прошлый архив ставил здесь 0: зонд размера пакета выключался у системы,
+        # и на раздаче с телефона интернет самого компьютера становился крайне медленным.
+        run(["sysctl", "-w", "net.ipv4.tcp_mtu_probing=1"])
     tune(run)
     # Прошлая правка выключала суммы из сеанса пользователя. Войти в сеть
     # контейнера без прав администратора нельзя, поэтому eth0 Android не менялся.
