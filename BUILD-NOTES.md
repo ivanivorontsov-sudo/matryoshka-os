@@ -87,21 +87,13 @@ packaging/matryoshka-upgrade/make-bundle.sh 18.6.17 dist
 
 Нарочно не удаляется и в список не входит: `network-manager`, `wpasupplicant`, `modemmanager`, `usb-modeswitch`, `ppp`, `dnsmasq-base`, `libopenconnect5` (это библиотека, её требует `plasma-nm`), `openssh-client`, `ksshaskpass`, `plasma-nm`, `ufw`, `nftables`. Из хука убран `modemmanager` из команды `apt-get purge`: пакет есть в `matryoshka.list.chroot`, USB-модем должен остаться. В `NetworkManager.state` для живого образа стоит `WWANEnabled=true`. `NetworkingEnabled=false` в этом файле не менялся. Файл `waydroid_net.py` этот выпуск не трогает: NAT `192.168.240.0/24`, IPv6, DNS и ТТЛ контейнера Android те же.
 
-## Статус 18.6.17 на 18 ноября 2026
+## Статус 18.6.17 (19 ноября 2026)
 
-Релиз v18.6.17 и ISO `matryoshka-18.6.17-amd64.iso` ещё не выложены. Пакет в `dist/` от более ранней сборки, его не подписывать и не публиковать: в нём нет правок бумажника и программного рендера Zoom.
+Пакет обновления `matryoshka-update-18.6.17.tar.gz` выложен в релиз v18.6.17 вместе с исходниками. ISO собирается на Debian 13 после этого и добавляется в тот же релиз.
 
-Что уже в дереве, но не проверено в установленной системе до конца:
-
-- Переключатель «Отключить бумажник» выключает KWallet целиком (PAM, dbus, процесс), пароль Wi-Fi остаётся в файле соединения, логины Vivaldi переносятся на обычное хранилище и возвращаются, когда бумажник снова включают.
-- VPN и прокси снимаются и при сборке, и при обновлении с 18.6.9–18.6.16. USB-модем и NAT Android не входят в список удаления.
-- `zoom-run` на виртуальной видеокарте (Virtio, QXL, Bochs, VMware, VirtualBox, Hyper-V) включает программный GL: `LIBGL_ALWAYS_SOFTWARE=1`, `GALLIUM_DRIVER=llvmpipe`, `ANGLE_DEFAULT_PLATFORM=gl`, в `~/.config/zoomus.conf` пишет `enableHardwareAcc=false` и `enableHardwareAcceleration=false`. Встречу по-прежнему открывает ZoomLauncher, чтобы ссылка `zoommtg://` дошла до клиента. Если webview падает сигналом, запуск повторяется один раз уже без GPU.
-
-Что выяснилось про ошибку Zoom 100000400:
-
-- Сеть здесь ни при чём. `https://zoom.us` из гостя отвечает, строки `zoom.us`/`zoom.com` в `/etc/hosts` нет, и та же ошибка есть и у случайного номера, и у живой тестовой встречи с zoom.us/test.
-- В журнале клиента: видеокарта Virtio, `libva` не поднимает `virtio_gpu_drv_video.so`, ANGLE падает на Vulkan (`VK_KHR_xcb_surface` / лимит uniform-буферов). После этого окно встречи показывает «Please join this meeting from your browser. Error code: 100000400».
-- `QT_XCB_GL_INTEGRATION=none` и пустой `VK_ICD_FILENAMES` проверены и вредны: Qt не создаёт ни GLX, ни EGL, процесс падает с кодом 139. В запасной путь они не входят.
-- На этой машине (не в госте) тот же Zoom 7.2.5 с `LIBGL_ALWAYS_SOFTWARE=1` и `ANGLE_DEFAULT_PLATFORM=gl` поднимает webview через swiftshader и рисует окно Workplace, без 100000400. Окно «неверный номер встречи» при этом не получено: клиент остался на главном экране. В госте этот запасной путь ещё не прогонялся. `sudo` в госте сломан (`/etc/sudoers.d` принадлежит uid 1000), libguestfs не монтирует диск (в `/boot` нет ядра), SSH с `hostfwd` не поднимался.
-
-Сборку ISO на этой Ubuntu 24.04 не начинать: `build.sh` рассчитан на Debian 13, см. раздел выше. Диск свободный есть (около 213 ГБ), нехватка места сборку не останавливала.
+- `build.sh` на Debian 13: файлов `lb_chroot_archives` и `lb_chroot_linux-image` там нет (скрипты называются `chroot_archives`, `chroot_linux-image`, live-build 20250505 сам умеет trixie и `[trusted=yes]`). Правки этих файлов теперь выполняются, только если файл есть; раньше `sed -i` по отсутствующему файлу обрывал сборку из-за `set -e`.
+- С машины, где `http://deb.debian.org` отвечает 500 через прокси, сборку можно вести с зеркалами `https://ftp.debian.org/debian/` и `https://security.debian.org/debian-security/`: заменить `LB_*MIRROR_BOOTSTRAP`, `LB_*MIRROR_CHROOT` и `LB_*MIRROR_CHROOT_SECURITY` в `config/bootstrap` только на время сборки. `LB_MIRROR_BINARY` остаётся `deb.debian.org` — он попадает в `sources.list` готовой системы.
+- Браузер «Тихо»: `Tiho-Linux-x86_64.deb` из релиза `desktop-v153.7.0-tiho` репозитория `ivanivorontsov-sudo/tiho-browser`, затем `packaging/tiho-browser/repack.sh … config/includes.chroot_after_packages/root/extra-debs`. Хук `0590` ставит его и удаляет каталог. В git deb не кладётся.
+- `/etc/sudoers.d`: `sudoers-fix.sh` (root:root 0755, файлы 0440) вызывается хуком, установщиком, `upgrade.sh` и `homefix.sh`.
+- Zoom 7.2.5 на Xvfb без видеокарты с `zoom-run` и программным GL: `zoommtg://zoom.us/join?confno=10000000001` и тот же адрес с `action=join` дают окно «Invalid meeting ID». `zoom-open` переводит `https://…zoom.us/j/НОМЕР?pwd=…` в `zoommtg://…/join?action=join&confno=…`.
+- Модуль `matryoshka-gxfp` 0.1.12 содержит `.ko` для ядер 6.12.113, 6.12.115 и 6.12.116. В trixie-security сейчас 6.12.117: для него модуль нужно пересобрать (`packaging/matryoshka-gxfp/build.sh`).

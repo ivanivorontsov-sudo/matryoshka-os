@@ -55,6 +55,7 @@ ls -1 /usr/share/applications/*.desktop 2>/dev/null > $W/desktop-before.txt
 say "Копирую файлы системы"
 rsync -aK --exclude=/etc/sddm.conf.d/ --exclude=/etc/hostname --exclude=/etc/hosts $W/includes/ / || rollback
 rm -f /etc/debian_chroot
+if [ -x /usr/lib/matryoshka/sudoers-fix.sh ]; then /usr/lib/matryoshka/sudoers-fix.sh; else chown root:root /etc/sudoers.d; chmod 0755 /etc/sudoers.d; chown root:root /etc/sudoers.d/*; chmod 0440 /etc/sudoers.d/*; fi
 if [ -s $W/remove.list ]; then
   say "Убираю то, что больше не входит в Матрёшку"
   awk '$1=="file"{print $2}' $W/remove.list >> $W/files.txt

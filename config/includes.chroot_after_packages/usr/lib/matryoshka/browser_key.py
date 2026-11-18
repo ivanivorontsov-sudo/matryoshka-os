@@ -124,7 +124,16 @@ def reencrypt_file(path, old, new):
     src.close()
     if not changed:
         return 0
-    dst = sqlite3.connect(path)
+    # Копия файла до перешифровки: если что-то пойдёт не так, логины можно вернуть.
+    bak = path + ".matryoshka-before-rekey"
+    if not os.path.exists(bak):
+        try:
+            import shutil
+            shutil.copy2(path, bak)
+            os.chmod(bak, 0o600)
+        except OSError:
+            return 0
+    dst = sqlite3.connect(path, timeout=5)
     try:
         dst.executemany("update %s set %s=? where rowid=?" % (table, column), changed)
         dst.commit()

@@ -93,5 +93,5 @@ systemctl enable matryoshka-autotest.service 2>/dev/null || true
 systemctl enable matryoshka-snapper-setup.service matryoshka-dpkg-recover.service matryoshka-flatpak-update.timer 2>/dev/null || true
 systemctl enable matryoshka-auth.service matryoshka-gxfp-watch.service matryoshka-homefix.service matryoshka-mediakeys.service 2>/dev/null || true
 true
-chmod 0440 /etc/sudoers.d/matryoshka 2>/dev/null || true
+/usr/lib/matryoshka/sudoers-fix.sh || true
 if [ -x /usr/lib/matryoshka/drop-vpn.sh ]; then /usr/lib/matryoshka/drop-vpn.sh || echo "VPN/прокси не вычищены"; fi

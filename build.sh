@@ -33,7 +33,9 @@ if grep -q 'gpg --batch --gen-key' /usr/lib/live/build/lb_chroot_archives 2>/dev
   sudo sed -i 's/gpg --batch --gen-key/gpg --batch --pinentry-mode loopback --gen-key/; s/gpg --no-default-keyring/gpg --batch --pinentry-mode loopback --no-default-keyring/g' /usr/lib/live/build/lb_chroot_archives
   sudo sed -i 's#mkdir -p chroot/root/.gnupg#mkdir -p chroot/root/.gnupg\n\t\t\t\t\techo allow-loopback-pinentry > chroot/root/.gnupg/gpg-agent.conf#' /usr/lib/live/build/lb_chroot_archives
 fi
-sudo sed -i 's#deb file:/root/packages ./#deb [trusted=yes] file:/root/packages ./#' /usr/lib/live/build/lb_chroot_archives
+if [ -f /usr/lib/live/build/lb_chroot_archives ]; then
+  sudo sed -i 's#deb file:/root/packages ./#deb [trusted=yes] file:/root/packages ./#' /usr/lib/live/build/lb_chroot_archives
+fi
 # gpg 2.4 не пишет %secring и не смотрит --secret-keyring. Локальный репозиторий и так trusted=yes, срыв подписи не должен оборвать образ.
 if ! grep -q 'Release.gpg /root/packages/Release" || true' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
   sudo sed -i 's#/root/packages/Release.gpg /root/packages/Release"#/root/packages/Release.gpg /root/packages/Release" || true#' /usr/lib/live/build/lb_chroot_archives
@@ -51,10 +53,12 @@ done
 sudo python3 - << 'PY'
 from pathlib import Path
 p = Path("/usr/lib/live/build/lb_chroot_linux-image")
-text = p.read_text()
+text = p.read_text() if p.is_file() else ""
 old = """\t\tmkdir -p cache/contents.chroot\n\t\twget ${WGET_OPTIONS} ${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/Contents-${LB_ARCHITECTURES}.gz -O - | gunzip -c > cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES}\n\n\t\tFIRMWARE_PACKAGES=\"\"\n\t\tFIRMWARE_PACKAGES=\"$(awk '/^lib\\/firmware/ { print $2 }' cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES} | sort -u)\"\n"""
 new = """\t\tmkdir -p cache/contents.chroot\n\t\t: > cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES}\n\t\tfor _AREA in ${LB_PARENT_ARCHIVE_AREAS}\n\t\tdo\n\t\t\twget ${WGET_OPTIONS} ${LB_PARENT_MIRROR_CHROOT}/dists/${LB_PARENT_DISTRIBUTION}/${_AREA}/Contents-${LB_ARCHITECTURES}.gz -O - | gunzip -c >> cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES}\n\t\tdone\n\n\t\tFIRMWARE_PACKAGES=\"\"\n\t\tFIRMWARE_PACKAGES=\"$(awk '/^(usr\\/)?lib\\/firmware/ { print $2 }' cache/contents.chroot/contents.${LB_PARENT_DISTRIBUTION}.${LB_ARCHITECTURES} | sort -u)\"\n"""
-if old in text:
+if text and old in text:
     p.write_text(text.replace(old, new, 1))
 PY
+# git хранит файлы sudoers как 0644 владельца сборщика. В образ они идут root:root 0440.
+chmod 0755 $I/etc/sudoers.d && chmod 0440 $I/etc/sudoers.d/*
 sudo env MKSQUASHFS_OPTIONS="-processors 2 -mem 1G" nice -n 19 lb build
