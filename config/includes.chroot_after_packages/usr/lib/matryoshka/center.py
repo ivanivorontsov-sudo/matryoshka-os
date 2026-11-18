@@ -205,6 +205,54 @@ class Center(QWidget):
         v.addWidget(QLabel("Движок ClamAV: %s · страж папок: %s" % (eng, "работает" if g else "не запущен")))
     def p_apps(self, v):
         v.addWidget(QLabel("<h2>Программы</h2>Linux-программы работают сразу. .exe и .msi — через Wine, .apk/.xapk — через Waydroid. Двойной щелчок по файлу делает всё сам (сначала проверка антивирусом).<br>Папка <b>~/Общее</b> видна всем: в Windows-программах это диск S:, в Android — папка «Общее» во внутренней памяти. Буфер обмена общий.", wordWrap=True))
+        v.addWidget(QLabel("<h3>Клонирование</h3>Вторая копия со своим входом и настройками: любая Linux-программа, Windows (.exe), Android и DOS. Документы, загрузки и «Общее» остаются общими. Щелчок правой кнопкой по значку тоже предлагает «Клонировать программу».", wordWrap=True))
+        def clone_done(res):
+            if res.get("ok"):
+                QMessageBox.information(self, "Клонирование", "Готова копия «%s». Значок лежит в меню программ и на рабочем столе." % res.get("name"))
+            else:
+                QMessageBox.warning(self, "Клонирование", res.get("error") or "Не удалось")
+        def clone_pick():
+            import clone
+            apps = clone.programs()
+            if not apps:
+                QMessageBox.information(self, "Клонирование", "Список программ пуст. Выберите файл программы.")
+                return
+            labels, used = [], {}
+            for item in apps:
+                lab = "%s — %s" % (item["name"], item["kind_ru"])
+                if lab in used:
+                    lab = "%s — %s" % (lab, os.path.basename(item.get("desktop") or item.get("source") or ""))
+                used[lab] = item
+                labels.append(lab)
+            name, ok = QInputDialog.getItem(self, "Клонировать программу", "Какую программу скопировать:", labels, 0, False)
+            if ok:
+                clone_done(clone.create(used[name]))
+        def clone_file():
+            import clone
+            path, _ = QFileDialog.getOpenFileName(self, "Программа", os.path.expanduser("~"), "Программы (*.desktop *.exe *.bat *.com *.AppImage *.appimage);;Все (*)")
+            if path:
+                clone_done(clone.create_from_path(path))
+        def clone_del():
+            import clone
+            items = clone.clones()
+            if not items:
+                QMessageBox.information(self, "Клонирование", "Копий пока нет.")
+                return
+            labels = ["%s — %s" % (item.get("name"), item.get("kind")) for item in items]
+            name, ok = QInputDialog.getItem(self, "Удалить копию", "Какую копию удалить:", labels, 0, False)
+            if not ok:
+                return
+            chosen = items[labels.index(name)]
+            if QMessageBox.question(self, "Удалить копию", "Удалить «%s» и её настройки?" % chosen.get("name")) != QMessageBox.StandardButton.Yes:
+                return
+            res = clone.remove(chosen["id"])
+            if res.get("ok"):
+                QMessageBox.information(self, "Клонирование", "Копия удалена.")
+            else:
+                QMessageBox.warning(self, "Клонирование", res.get("error") or "Не удалось")
+        v.addWidget(btn("Клонировать программу из списка…", clone_pick))
+        v.addWidget(btn("Клонировать файл программы…", clone_file))
+        v.addWidget(btn("Удалить копию…", clone_del))
         o = self.out(v)
         def pick():
             p, _ = QFileDialog.getOpenFileName(self, "Программа", os.path.expanduser("~"), "Программы (*.exe *.msi *.apk *.xapk *.apks *.AppImage *.deb *.sh);;Все (*)")

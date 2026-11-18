@@ -24,15 +24,25 @@ def screen():
     return 1280, 800
 
 def props():
-    w, h = screen()
-    # Одно окно, а не россыпь без рамок. Высота меньше экрана, чтобы сверху осталась полоса с крестиком.
-    for k, v in (("persist.waydroid.multi_windows", "false"), ("persist.waydroid.width", str(w)), ("persist.waydroid.height", str(max(600, h - 80))), ("persist.waydroid.suspend", "false")):
+    # Официальный многооконный режим: у каждого приложения свои кнопки Android, включая крестик.
+    # Пустое значение снимает ширину и высоту, которые прошлая версия записала в waydroid.cfg.
+    for k, v in (("persist.waydroid.multi_windows", "true"), ("persist.waydroid.width", ""), ("persist.waydroid.height", ""), ("persist.waydroid.suspend", "false")):
         run(["waydroid", "prop", "set", k, v], timeout=30)
 
 
-def shrink_inside():
+def guest_fix():
     ensure_net()
-    run(["waydroid", "shell", "ip", "link", "set", "eth0", "mtu", "1280"], timeout=20)
+    run(["waydroid", "shell", "settings", "delete", "global", "policy_control"], timeout=20)
+    run(["waydroid", "shell", "settings", "put", "secure", "show_ime_with_hard_keyboard", "0"], timeout=20)
+    run(["waydroid", "shell", "ip", "link", "set", "eth0", "mtu", "1500"], timeout=20)
+    info = run(["lxc-info", "-n", "waydroid", "-pH"], timeout=10)
+    pid = (info.stdout or "").strip().split()[-1] if (info.stdout or "").strip() else ""
+    if pid.isdigit():
+        try:
+            import waydroid_net
+            waydroid_net.guest_offload(pid)
+        except Exception:
+            pass
 
 
 def ensure_net():
@@ -56,7 +66,7 @@ def ensure(wait=90):
                 break
             time.sleep(2)
     if running():
-        shrink_inside()
+        guest_fix()
     return running()
 
 def show():
@@ -73,7 +83,7 @@ def show():
         time.sleep(2)
     if not running():
         return 1
-    shrink_inside()
+    guest_fix()
     subprocess.Popen(["waydroid", "show-full-ui"], start_new_session=True)
     return 0
 
@@ -107,7 +117,7 @@ def controller():
     w.setWindowTitle("Android")
     w.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowSystemMenuHint | Qt.WindowType.WindowMinimizeButtonHint | Qt.WindowType.WindowMaximizeButtonHint | Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.WindowStaysOnTopHint)
     h = QHBoxLayout(w)
-    h.addWidget(QLabel("Закрыть Android можно крестиком этого окна. Окно Android тоже должно быть с рамкой."))
+    h.addWidget(QLabel("Закрыть Android можно этой кнопкой. Крестик на окне программы рисует сам Android."))
     bmin = QPushButton("Свернуть")
     bmin.clicked.connect(lambda: minimize())
     bclose = QPushButton("Закрыть окно")

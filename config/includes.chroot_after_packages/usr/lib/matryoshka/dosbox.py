@@ -32,14 +32,17 @@ def session_text(program_dir, program, dos_root, home, shared, print_dir, deskto
     run = run_line(name) if name else "echo C: программа, D: DOS, E: домашняя папка, F: Общее, G: рабочий стол, H: FreeDOS\n"
     return """[sdl]
 fullscreen=false
+maximize=true
 autolock=false
 output=ttf
 usesystemcursor=true
 mouse_emulation=always
+showmenu=true
 [ttf]
 outputswitch=auto
 lins=25
 cols=80
+winperc=100
 [dosbox]
 machine=svga_s3
 memsize=64
@@ -184,20 +187,21 @@ def places(home=None):
 def desktop_dir(home):
     return next((p for p in (os.path.join(home, "Рабочий стол"), os.path.join(home, "Desktop")) if os.path.isdir(p)), None)
 
-def launcher_text(label, conf, program):
+def launcher_text(label, program, clone_id=""):
     me = "/usr/lib/matryoshka/dosbox.py"
     pq = program.replace('"', "")
-    return ("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=dosbox-x -nopromptfolder -fastlaunch -conf \"%s\"\nIcon=dosbox-x\n"
-            "X-Matryoshka-DOS-Program=%s\nActions=addfile;opendir;\n\n"
+    clone = ("X-Matryoshka-Clone=true\nX-Matryoshka-Clone-Id=%s\n" % clone_id) if clone_id else ""
+    return ("[Desktop Entry]\nType=Application\nName=%s (DOS)\nExec=python3 %s \"%s\"\nIcon=dosbox-x\n"
+            "X-Matryoshka-DOS-Program=%s\n%sActions=addfile;opendir;\n\n"
             "[Desktop Action addfile]\nName=Добавить файл в папку программы\nIcon=list-add\nExec=python3 %s --add-file \"%s\"\n\n"
-            "[Desktop Action opendir]\nName=Открыть папку диска программы (C:)\nIcon=folder-open\nExec=python3 %s --open-dir \"%s\"\n") % (label, conf, pq, me, pq, me, pq)
+            "[Desktop Action opendir]\nName=Открыть папку диска программы (C:)\nIcon=folder-open\nExec=python3 %s --open-dir \"%s\"\n") % (label, me, pq, pq, clone, me, pq, me, pq)
 
-def write_launcher(home, label, conf, program):
+def write_launcher(home, label, program, clone_id=""):
     desk = desktop_dir(home)
     if not desk or not program:
         return None
     lf = os.path.join(desk, label + " (DOS).desktop")
-    text = launcher_text(label, conf, program)
+    text = launcher_text(label, program, clone_id)
     if os.path.exists(lf):
         old = open(lf, encoding="utf-8", errors="replace").read()
         if old == text or "dosbox-x" not in old:
@@ -259,7 +263,17 @@ def refresh_launchers(home=None):
     n = 0
     for lf in glob.glob(os.path.join(desk, "* (DOS).desktop")):
         t = open(lf, encoding="utf-8", errors="replace").read()
-        if "X-Matryoshka-DOS-Program=" in t or "dosbox-x" not in t:
+        prog_key = re.search(r"^X-Matryoshka-DOS-Program=(.+)$", t, re.M)
+        if prog_key:
+            prog = prog_key.group(1).strip()
+            label = os.path.basename(lf)[:-len(" (DOS).desktop")]
+            text = launcher_text(label, prog)
+            if t != text:
+                with open(lf, "w", encoding="utf-8") as f:
+                    f.write(text)
+            n += 1
+            continue
+        if "dosbox-x" not in t:
             continue
         m = re.search(r'-conf "([^"]+)"', t)
         if not m or not os.path.isfile(m.group(1)):
@@ -281,10 +295,73 @@ def refresh_launchers(home=None):
         if not prog:
             continue
         label = os.path.basename(lf)[:-len(" (DOS).desktop")]
-        with open(lf, "w", encoding="utf-8") as f:
-            f.write(launcher_text(label, conf, prog))
+        text = launcher_text(label, prog)
+        if t != text:
+            with open(lf, "w", encoding="utf-8") as f:
+                f.write(text)
         n += 1
     return n
+
+def command(conf):
+    cmd = ["dosbox-x", "-nopromptfolder", "-fastlaunch", "-conf", conf]
+    if os.path.isfile(LNG):
+        cmd[1:1] = ["-lang", LNG]
+    return cmd
+
+def ensure_user_lang(home=None):
+    if not os.path.isfile(LNG):
+        return False
+    home = home or os.path.expanduser("~")
+    d = os.path.join(home, ".config", "dosbox-x")
+    os.makedirs(d, exist_ok=True)
+    f = os.path.join(d, "dosbox-x.conf")
+    line = "language=%s" % LNG
+    try:
+        text = open(f, encoding="utf-8").read() if os.path.isfile(f) else ""
+    except UnicodeError:
+        return False
+    if line in text:
+        return True
+    if re.search(r"(?m)^language=", text):
+        text = re.sub(r"(?m)^language=.*$", line, text, count=1)
+    elif "[dosbox]" in text:
+        text = text.replace("[dosbox]", "[dosbox]\n" + line, 1)
+    else:
+        text = "[dosbox]\n%s\n%s" % (line, text)
+    tmp = f + ".new"
+    with open(tmp, "w", encoding="utf-8") as out:
+        out.write(text)
+    os.replace(tmp, f)
+    return True
+
+def file_bar(program, pid=0):
+    try:
+        from PyQt6.QtCore import Qt, QTimer
+        from PyQt6.QtWidgets import QApplication, QHBoxLayout, QPushButton, QWidget
+    except Exception:
+        return 0
+    app = QApplication.instance() or QApplication([])
+    w = QWidget()
+    w.setWindowTitle("DOS")
+    w.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowCloseButtonHint)
+    h = QHBoxLayout(w)
+    b = QPushButton("Добавить файл в папку программы")
+    b.clicked.connect(lambda: add_file(program))
+    h.addWidget(b)
+    w.resize(460, 64)
+    screen = app.primaryScreen()
+    if screen:
+        g = screen.availableGeometry()
+        w.move(g.x() + max(0, (g.width() - 460) // 2), g.y())
+    if pid:
+        timer = QTimer()
+        def tick():
+            if not os.path.exists("/proc/%s" % pid):
+                app.quit()
+        timer.timeout.connect(tick)
+        timer.start(2000)
+    w.show()
+    return app.exec()
 
 def launch(program=None, home=None, timeout=None):
     home, dos_root, shared, prints = places(home)
@@ -317,9 +394,12 @@ def launch(program=None, home=None, timeout=None):
         text = text.replace("c:\n" + run_line(name), "mount -q y \"%s\"\nc:\n%s" % (run_dir, run_line("y:\\RUN" + ext)), 1)
     write_conf(conf, text)
     if name:
-        write_launcher(home, label, conf, program)
+        write_launcher(home, label, program)
+    ensure_user_lang(home)
     env = dict(os.environ, LANG=os.environ.get("LANG") or "ru_RU.UTF-8")
-    proc = subprocess.Popen(["dosbox-x", "-nopromptfolder", "-fastlaunch", "-conf", conf], env=env)
+    proc = subprocess.Popen(command(conf), env=env)
+    if name:
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), "--bar", program, str(proc.pid)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         code = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -330,6 +410,9 @@ def launch(program=None, home=None, timeout=None):
     return code
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2 and sys.argv[1] == "--bar":
+        watched = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3].isdigit() else 0
+        sys.exit(file_bar(sys.argv[2], watched))
     if len(sys.argv) > 2 and sys.argv[1] == "--add-file":
         sys.exit(add_file(sys.argv[2]))
     if len(sys.argv) > 2 and sys.argv[1] == "--open-dir":

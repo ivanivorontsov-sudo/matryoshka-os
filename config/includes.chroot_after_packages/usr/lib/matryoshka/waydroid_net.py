@@ -8,13 +8,16 @@ import sys
 
 SUBNET = "192.168.240.0/24"
 IFACE = "waydroid0"
-# Телефонная раздача часто не пропускает пакеты больше ~1280 байт и не сообщает об этом.
-# Без короткого MSS соединение есть, но скорость падает до килобит.
-MTU = "1280"
-MSS = "1200"
+# Официальный lxc.net.0.mtu у Waydroid — 1500. Короткий MTU 1280 и TCPMSS 1200
+# скорость не подняли: пакеты режет не телефон, а виртуальный кабель veth.
+# У veth по умолчанию включены контрольные суммы и TSO, пересланные пакеты
+# приходят битыми или длиннее MTU, и TCP сползает до килобит.
+MTU = "1500"
 SIOCETHTOOL = 0x8946
-# Выключить подсчёт контрольных сумм на виртуальном кабеле: иначе ядро пересылает битые пакеты и TCP ползёт.
-OFFLOAD_OFF = (0x17, 0x19, 0x1B, 0x2C, 0x2E)
+# SRXCSUM, STXCSUM, SSG, STSO, SGSO, SGRO. Ноль в data выключает функцию.
+OFFLOAD_OFF = (0x15, 0x17, 0x19, 0x1F, 0x24, 0x2C)
+OFFLOAD_NAMES = ("rx", "tx", "sg", "tso", "gso", "gro")
+CLONE_NEWNET = 0x40000000
 
 
 class _EthtoolValue(ctypes.Structure):
@@ -22,12 +25,11 @@ class _EthtoolValue(ctypes.Structure):
 
 
 class _Ifreq(ctypes.Structure):
-    _fields_ = [("ifr_name", ctypes.c_char * 16), ("ifr_data", ctypes.c_void_p)]
+    # struct ifreq на x86_64 — 40 байт: имя 16 и объединение, в которое входит ifmap.
+    _fields_ = [("ifr_name", ctypes.c_char * 16), ("ifr_data", ctypes.c_void_p), ("_pad", ctypes.c_char * 16)]
 
 
-def rules(subnet=SUBNET, iface=IFACE, mss=MSS):
-    tcp = ["-p", "tcp", "--tcp-flags", "SYN,RST", "SYN"]
-    clamp = ["-j", "TCPMSS", "--set-mss", mss]
+def rules(subnet=SUBNET, iface=IFACE):
     return (
         (
             ["iptables", "-C", "FORWARD", "-i", iface, "-j", "ACCEPT"],
@@ -41,15 +43,20 @@ def rules(subnet=SUBNET, iface=IFACE, mss=MSS):
             ["iptables", "-t", "nat", "-C", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"],
             ["iptables", "-t", "nat", "-A", "POSTROUTING", "-s", subnet, "!", "-d", subnet, "-j", "MASQUERADE"],
         ),
-        (
-            ["iptables", "-t", "mangle", "-C", "FORWARD"] + tcp + ["-o", iface] + clamp,
-            ["iptables", "-t", "mangle", "-I", "FORWARD", "1"] + tcp + ["-o", iface] + clamp,
-        ),
-        (
-            ["iptables", "-t", "mangle", "-C", "FORWARD"] + tcp + ["-i", iface] + clamp,
-            ["iptables", "-t", "mangle", "-I", "FORWARD", "1"] + tcp + ["-i", iface] + clamp,
-        ),
     )
+
+
+def mss_deletes(iface=IFACE):
+    base = ["iptables", "-t", "mangle", "-D", "FORWARD", "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN"]
+    tail = ["-j", "TCPMSS", "--set-mss", "1200"]
+    return (base + ["-o", iface] + tail, base + ["-i", iface] + tail)
+
+
+def drop_mss(run, iface=IFACE):
+    for rule in mss_deletes(iface):
+        for _ in range(8):
+            if run(rule).returncode != 0:
+                break
 
 
 def links(iface=IFACE):
@@ -62,12 +69,22 @@ def links(iface=IFACE):
     return found
 
 
-def offload_off(iface):
-    if not os.path.exists("/sys/class/net/" + iface):
+def offload_off(iface, require_sysfs=True):
+    if require_sysfs and not os.path.exists("/sys/class/net/" + iface):
         return False
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    ok = False
+    et = shutil.which("ethtool")
+    if et:
+        cmd = [et, "-K", iface]
+        for name in OFFLOAD_NAMES:
+            cmd.extend([name, "off"])
+        if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            ok = True
     try:
-        ok = False
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    except OSError:
+        return ok
+    try:
         for cmd in OFFLOAD_OFF:
             ev = _EthtoolValue(cmd, 0)
             ifr = _Ifreq()
@@ -89,7 +106,28 @@ def tune(run, iface=IFACE, mtu=MTU):
         offload_off(name)
     if os.path.isdir("/sys/class/net/" + iface):
         run(["sysctl", "-w", "net.ipv4.conf.%s.rp_filter=0" % iface])
-        run(["sysctl", "-w", "net.ipv6.conf.%s.disable_ipv6=1" % iface])
+        run(["sysctl", "-w", "net.ipv6.conf.%s.disable_ipv6=0" % iface])
+
+
+def guest_offload(pid):
+    ns = "/proc/%s/ns/net" % pid
+    if not (str(pid).isdigit() and os.path.exists(ns)):
+        return False
+    child = os.fork()
+    if child == 0:
+        try:
+            fd = os.open(ns, os.O_RDONLY)
+            libc = ctypes.CDLL("libc.so.6", use_errno=True)
+            if libc.setns(fd, CLONE_NEWNET) != 0:
+                os._exit(1)
+            os.close(fd)
+            subprocess.run(["ip", "link", "set", "dev", "eth0", "mtu", MTU], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            offload_off("eth0", require_sysfs=False)
+            os._exit(0)
+        except Exception:
+            os._exit(1)
+    _, status = os.waitpid(child, 0)
+    return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
 
 
 def apply(run=None, have_iptables=None, have_sysctl=None):
@@ -104,10 +142,11 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
     if not have_iptables:
         print("iptables нет, сеть Android не настроена")
         return 0
+    drop_mss(run)
     for check, add in rules():
         if run(check).returncode != 0:
             run(add)
-    print("сеть Android: пересылка только для %s, NAT %s, пакеты не больше %s" % (IFACE, SUBNET, MSS))
+    print("сеть Android: пересылка только для %s, NAT %s, MTU %s, без ложных контрольных сумм veth" % (IFACE, SUBNET, MTU))
     return 0
 
 

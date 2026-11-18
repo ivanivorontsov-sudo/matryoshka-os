@@ -336,10 +336,14 @@ class Boot(unittest.TestCase):
         self.assertIn("WindowCloseButtonHint", w)
         self.assertIn("WindowMinimizeButtonHint", w)
         self.assertIn("WindowStaysOnTopHint", w)
-        self.assertIn('persist.waydroid.multi_windows", "false"', w)
+        self.assertIn('persist.waydroid.multi_windows", "true"', w)
+        self.assertIn("show_ime_with_hard_keyboard", w)
+        self.assertIn("policy_control", w)
+        self.assertIn('mtu", "1500"', w)
         rules = read(LIB, "session.py")
         self.assertIn('(?i).*waydroid.*', rules)
-        self.assertIn('"fullscreen": "false"', rules)
+        self.assertIn('"fullscreenrule": "1"', rules)
+        self.assertNotIn('"fullscreenrule": "2"', rules)
         self.assertIn('C.root("waydroid-net"', w)
         calls = []
         seen = set()
@@ -362,14 +366,131 @@ class Boot(unittest.TestCase):
         self.assertEqual(waydroid_net.apply(run, True, True), 0)
         adds = [c for c in calls if "-I" in c or "-A" in c]
         self.assertEqual(len(adds), len(waydroid_net.rules()))
-        self.assertTrue(any("TCPMSS" in c and "--set-mss" in c and "1200" in c for c in adds))
-        self.assertTrue(any("ip_forward=1" in " ".join(c) for c in calls))
+        self.assertFalse(any("TCPMSS" in c for c in adds))
+        self.assertTrue(any("TCPMSS" in c and "-D" in c and "1200" in c for c in calls))
+        joined = "\n".join(" ".join(c) for c in calls)
+        self.assertIn("ip_forward=1", joined)
+        net = read(LIB, "waydroid_net.py")
+        self.assertIn("disable_ipv6=0", net)
+        self.assertNotIn("disable_ipv6=1", net)
         self.assertFalse(waydroid_net.offload_off("nosuch-iface"))
         self.assertEqual(waydroid_net.links("nosuch-iface"), [])
+        import ctypes
+        self.assertEqual(ctypes.sizeof(waydroid_net._Ifreq), 40)
         face = read(INC, "usr", "share", "applications", "kcm_matryoshka_face.desktop")
         self.assertIn("Распознавание лица", face)
         self.assertIn("X-KDE-Weight=51", face)
         self.assertIn("matryoshka-center users", face)
+        import dosbox
+        text = dosbox.session_text("/p", "FESTA.EXE", "/d", "/h", "/s", "/pr")
+        self.assertIn("winperc=100", text)
+        self.assertIn("maximize=true", text)
+        self.assertIn("output=ttf", text)
+        dosbox.LNG = os.path.join(tempfile.mkdtemp(), "ru.lng")
+        open(dosbox.LNG, "w").close()
+        self.assertEqual(dosbox.command("/tmp/x.conf")[:3], ["dosbox-x", "-lang", dosbox.LNG])
+        self.assertIn("Добавить файл в папку программы", read(LIB, "dosbox.py"))
+        run_text = read(LIB, "run.py")
+        self.assertIn("MOZ_DISABLE_LAUNCHER_PROCESS", run_text)
+        self.assertIn("Graphics", run_text)
+        self.assertIn("--disable-dev-shm-usage", run_text)
+        import run as runmod
+        self.assertEqual(runmod.wine_argv("/tmp/firefox.exe")[-1], "-no-remote")
+        self.assertIn("--no-sandbox", runmod.wine_argv("/tmp/chrome.exe"))
+        self.assertEqual(runmod.wine_argv("/tmp/notepad.exe")[:3], ["wine", "start", "/unix"])
+        external = read(INC, "usr", "share", "plasma", "systemsettings", "externalmodules", "kcm_matryoshka_face.desktop")
+        self.assertIn("Type=Service", external)
+        self.assertIn("X-KDE-ServiceTypes=SystemSettingsExternalApp", external)
+        self.assertIn("system-administration", external)
+        self.assertIn("Распознавание лица", external)
+        users = read(INC, "usr", "share", "plasma", "systemsettings", "externalmodules", "kcm_matryoshka_users.desktop")
+        self.assertIn("Вход по пальцу и лицу", users)
+
+
+class Clone(unittest.TestCase):
+    def test_copies_stay_separate(self):
+        import clone
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, "Документы"))
+            os.makedirs(os.path.join(home, "Desktop"))
+            desk = os.path.join(home, "apps")
+            os.makedirs(desk)
+            open(os.path.join(desk, "note.desktop"), "w", encoding="utf-8").write("[Desktop Entry]\nType=Application\nName[ru]=Блокнот\nExec=gedit %F\nIcon=text-editor\n")
+            found = clone.programs(home, [desk])
+            self.assertEqual(found[0]["name"], "Блокнот")
+            self.assertEqual(found[0]["argv"], ["gedit"])
+            made = clone.create(found[0], home)
+            self.assertTrue(made["ok"], made)
+            script = open(os.path.join(home, ".local/share/matryoshka/clones", made["id"], "run"), encoding="utf-8").read()
+            self.assertIn("export HOME=", script)
+            self.assertIn("gedit", script)
+            self.assertTrue(os.path.islink(os.path.join(home, ".local/share/matryoshka/clones", made["id"], "home", "Документы")))
+            again = clone.create(found[0], home)
+            self.assertIn("копия 3", again["name"])
+            gone = clone.remove(made["id"], home)
+            self.assertTrue(gone["ok"])
+            self.assertFalse(os.path.exists(os.path.join(home, ".local/share/matryoshka/clones", made["id"])))
+
+    def test_android_user_and_wine_prefix(self):
+        import clone
+        self.assertEqual(clone.parse_user_id("Success: created user id 10\n"), 10)
+        self.assertIsNone(clone.parse_user_id("id 0"))
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, "Desktop"))
+            calls = []
+
+            class R:
+                def __init__(self, code, out=""):
+                    self.returncode = code
+                    self.stdout = out
+                    self.stderr = ""
+
+            def shell(args):
+                calls.append(list(args))
+                if "create-user" in args:
+                    return R(0, "Success: created user id 12\n")
+                return R(0, "")
+
+            made = clone.create_android("com.example.App", "Чат", home, shell=shell)
+            self.assertTrue(made["ok"], made)
+            self.assertEqual(clone.clones(home)[0]["user"], 12)
+            desk = open(made["desktop"], encoding="utf-8").read()
+            self.assertIn("--user 12", desk)
+            self.assertIn("-p com.example.App", desk)
+            prefix = os.path.join(home, "pfx")
+            os.makedirs(os.path.join(prefix, "drive_c", "App"))
+            open(os.path.join(prefix, "system.reg"), "w").close()
+            os.makedirs(os.path.join(prefix, "dosdevices"))
+            os.symlink("/", os.path.join(prefix, "dosdevices", "z:"))
+            exe = os.path.join(prefix, "drive_c", "App", "app.exe")
+            open(exe, "wb").write(b"MZ")
+            wine = clone.create_wine(exe, "Блок", home)
+            self.assertTrue(wine["ok"], wine)
+            copied = os.path.join(home, ".local/share/matryoshka/clones", wine["id"], "wine")
+            self.assertTrue(os.path.isfile(os.path.join(copied, "drive_c", "App", "app.exe")))
+            self.assertFalse(os.path.exists(os.path.join(copied, "dosdevices")))
+            runner = open(os.path.join(home, ".local/share/matryoshka/clones", wine["id"], "run"), encoding="utf-8").read()
+            self.assertIn("WINEPREFIX=", runner)
+            self.assertIn("Graphics", runner)
+            self.assertIn("start /unix", runner)
+            self.assertIn("drive_c/App/app.exe", runner)
+
+    def test_dos_copy_is_another_folder(self):
+        import clone
+        with tempfile.TemporaryDirectory() as home:
+            os.makedirs(os.path.join(home, "Desktop"))
+            src = os.path.join(home, "CAD")
+            os.makedirs(src)
+            open(os.path.join(src, "FESTA.EXE"), "wb").write(b"MZ")
+            open(os.path.join(src, "DATA.DAT"), "w").write("1")
+            made = clone.create_dos(os.path.join(src, "FESTA.EXE"), home, "FESTA")
+            self.assertTrue(made["ok"], made)
+            copy = os.path.join(home, "DOS", "Копии", made["id"], "FESTA.EXE")
+            self.assertTrue(os.path.isfile(copy))
+            self.assertNotEqual(os.path.realpath(copy), os.path.realpath(os.path.join(src, "FESTA.EXE")))
+            self.assertIn("dosbox.py", open(made["desktop"], encoding="utf-8").read())
+            clone.remove(made["id"], home)
+            self.assertFalse(os.path.exists(os.path.join(home, "DOS", "Копии", made["id"])))
 
 
 if __name__ == "__main__":

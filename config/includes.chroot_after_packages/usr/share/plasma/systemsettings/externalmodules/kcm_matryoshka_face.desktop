@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Service
+Name=Распознавание лица
+Name[ru]=Распознавание лица
+GenericName=Запись лица
+GenericName[ru]=Запись лица
+Comment=Записать лицо для входа
+Comment[ru]=Записать, проверить и удалить лицо
+Icon=preferences-desktop-user
+Exec=matryoshka-center users
+X-KDE-ServiceTypes=SystemSettingsExternalApp
+X-KDE-Weight=51
+X-KDE-System-Settings-Parent-Category=system-administration
+Keywords=face;biometric;camera
+Keywords[ru]=лицо;распознавание;камера;биометрия
+OnlyShowIn=KDE;

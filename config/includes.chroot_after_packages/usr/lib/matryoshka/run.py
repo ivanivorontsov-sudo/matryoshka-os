@@ -79,6 +79,45 @@ def launch_scan(kind, enabled, disabled):
         return False
     return True
 
+BROWSER_ENV = {
+    "MOZ_DISABLE_LAUNCHER_PROCESS": "1",
+    "MOZ_DISABLE_CONTENT_SANDBOX": "1",
+    "MOZ_DISABLE_GPU_SANDBOX": "1",
+    "MOZ_DISABLE_RDD_SANDBOX": "1",
+    "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX": "1",
+    "MOZ_DISABLE_GMP_SANDBOX": "1",
+    "MOZ_DISABLE_UTILITY_SANDBOX": "1",
+}
+CHROME_FLAGS = ["--no-sandbox", "--disable-gpu-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--disable-software-rasterizer"]
+CHROME_NAMES = ("chrome", "chromium", "vivaldi", "msedge", "opera", "brave", "yandex", "electron", "code", "discord", "slack", "teams")
+
+def wine_env(base=None):
+    env = dict(base or os.environ)
+    env["LANG"] = env.get("LANG") or "ru_RU.UTF-8"
+    env.update(BROWSER_ENV)
+    return env
+
+def wine_x11(env):
+    # Wine 10 включает драйвер Wayland. Firefox.exe и Chrome.exe падают в нём
+    # на видеопроцессе. Ключ Graphics=x11 — штатный переключатель на драйвер X11.
+    prefix = env.get("WINEPREFIX") or os.path.expanduser("~/.wine")
+    mark = os.path.join(prefix, ".matryoshka-x11")
+    if os.path.exists(mark):
+        return 0
+    rc = subprocess.call(["wine", "reg", "add", r"HKCU\Software\Wine\Drivers", "/v", "Graphics", "/d", "x11", "/f"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if rc == 0 and os.path.isdir(prefix):
+        open(mark, "w").close()
+    return rc
+
+def wine_argv(path, electron=False):
+    b = os.path.basename(path).lower()
+    installer = any(x in b for x in ("setup", "install", "update"))
+    if not installer and (electron or any(x in b for x in CHROME_NAMES)):
+        return ["wine", path] + CHROME_FLAGS
+    if b.startswith("firefox") and not installer:
+        return ["wine", path, "-no-remote"]
+    return ["wine", "start", "/unix", path]
+
 def main(path):
     import scangate
     kind = path.lower().rsplit(".", 1)[-1]
@@ -109,25 +148,21 @@ def main(path):
     if ext in ("com", "bat") or (ext == "exe" and exe_kind(path) == "dos"):
         return dos(path)
     if ext in ("exe", "msi", "lnk"):
-        C.prep_wine(); env = dict(os.environ, LANG="ru_RU.UTF-8")
+        C.prep_wine(); env = wine_env()
         if os.path.exists("/usr/lib/matryoshka-fixes/wine-fonts"):
             subprocess.call(["/usr/lib/matryoshka-fixes/wine-fonts"], env=dict(env, WINEPREFIX=os.path.expanduser("~/.wine")), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if ext == "msi": return subprocess.call(["wine", "msiexec", "/i", path], env=env)
-        env.update(MOZ_DISABLE_CONTENT_SANDBOX="1", MOZ_DISABLE_GPU_SANDBOX="1", MOZ_DISABLE_RDD_SANDBOX="1", MOZ_DISABLE_SOCKET_PROCESS_SANDBOX="1", MOZ_DISABLE_GMP_SANDBOX="1", MOZ_DISABLE_UTILITY_SANDBOX="1")
         if not os.path.exists(os.path.expanduser("~/.wine/.matryoshka-win10")):
             C.run(["wine", "reg", "add", "HKCU\\Software\\Wine", "/v", "Version", "/d", "win10", "/f"], env=env, timeout=300)
             open(os.path.expanduser("~/.wine/.matryoshka-win10"), "w").close() if os.path.isdir(os.path.expanduser("~/.wine")) else None
+        wine_x11(env)
         b = os.path.basename(path).lower()
         if ("chrome" in b or "chromium" in b) and any(x in b for x in ("setup", "install")):
             if shutil.which("chromium"): return subprocess.call(["chromium"])
             if subprocess.call(["kdialog", "--yesno", "Установщик Chrome для Windows под Wine не работает (ошибка 0x124fb).\nУстановить обычный Chromium для Linux (около 100 МБ, нужен интернет)?"]) == 0:
                 return subprocess.call(["matryoshka-pkginstall", "--apt", "chromium"])
             return 1
-        if (electron_dir(os.path.dirname(path)) or any(x in b for x in ("chrome", "vivaldi", "msedge", "opera", "brave", "yandex", "electron", "code", "discord", "slack", "teams"))) and not any(x in b for x in ("setup", "install", "update")):
-            return subprocess.call(["wine", path, "--no-sandbox", "--disable-gpu-sandbox", "--disable-gpu", "--disable-gpu-compositing", "--in-process-gpu"], env=env, cwd=os.path.dirname(path))
-        if b.startswith("firefox") and not any(x in b for x in ("setup", "install")):
-            return subprocess.call(["wine", path, "-no-remote"], env=env, cwd=os.path.dirname(path))
-        return subprocess.call(["wine", "start", "/unix", path], env=env)
+        return subprocess.call(wine_argv(path, electron_dir(os.path.dirname(path))), env=env, cwd=os.path.dirname(path) or None)
     if ext == "jar":
         if shutil.which("java"): return subprocess.call(["java", "-jar", path])
         if subprocess.call(["kdialog", "--yesno", "Для .jar нужна Java (около 200 МБ). Установить?"]) == 0: return subprocess.call(["matryoshka-pkginstall", "--apt", "default-jre"])

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Service
+Name=Вход по пальцу и лицу
+Name[ru]=Вход по пальцу и лицу
+GenericName=Отпечаток и лицо
+GenericName[ru]=Отпечаток и лицо
+Comment=Записать отпечаток и лицо
+Comment[ru]=Отпечаток уже записывается здесь. Страница «Пользователи» KDE про вход по пальцу не знает.
+Icon=system-users
+Exec=matryoshka-center users
+X-KDE-ServiceTypes=SystemSettingsExternalApp
+X-KDE-Weight=60
+X-KDE-System-Settings-Parent-Category=system-administration
+Keywords=users;fingerprint;face
+Keywords[ru]=пользователи;отпечаток;палец;лицо;вход
+OnlyShowIn=KDE;
