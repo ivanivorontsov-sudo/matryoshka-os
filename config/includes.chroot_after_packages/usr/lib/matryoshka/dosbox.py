@@ -32,10 +32,9 @@ def session_text(program_dir, program, dos_root, home, shared, print_dir, deskto
     run = run_line(name) if name else "echo C: программа, D: DOS, E: домашняя папка, F: Общее, G: рабочий стол, H: FreeDOS\n"
     return """[sdl]
 fullscreen=false
-maximize=true
+maximize=false
 autolock=false
-output=opengl
-windowresolution=1600x900
+output=ttf
 usesystemcursor=true
 mouse_emulation=always
 showmenu=true
@@ -43,6 +42,7 @@ showmenu=true
 outputswitch=auto
 lins=25
 cols=80
+winperc=90
 [dosbox]
 machine=svga_s3
 memsize=64

@@ -597,7 +597,9 @@ def icons_fix():
 KWIN_RULES = {
     "matryoshka-print-okular": {"Description": "Матрёшка: окно печати Okular поверх", "wmclass": "okular", "wmclassmatch": "2", "types": "32", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2", "acceptfocus": "true", "acceptfocusrule": "2"},
     "matryoshka-print-portal": {"Description": "Матрёшка: окно печати поверх", "wmclass": "xdg-desktop-portal-kde", "wmclassmatch": "2", "title": "Печать|Print", "titlematch": "3", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2"},
-    "matryoshka-waydroid": {"Description": "Матрёшка: окно Android с рамкой", "wmclass": "(?i).*waydroid.*", "wmclassmatch": "3", "noborder": "false", "noborderrule": "2", "fullscreen": "false", "fullscreenrule": "2", "maximizevertrule": "1", "maximizehorizrule": "1", "closeable": "true", "closeablerule": "2"},
+    # Правило 2 (Force) срабатывает на каждый щелчок и уносит окно в левый верхний угол.
+    # Правило 3 (Apply) задаёт рамку один раз при появлении окна и дальше его не трогает.
+    "matryoshka-waydroid": {"Description": "Матрёшка: окно Android с рамкой", "wmclass": "(?i).*waydroid.*", "wmclassmatch": "3", "noborder": "false", "noborderrule": "3", "fullscreen": "false", "fullscreenrule": "3", "maximizevert": "false", "maximizevertrule": "3", "maximizehoriz": "false", "maximizehorizrule": "3", "closeable": "true", "closeablerule": "2"},
 }
 
 def kwin_rules():
