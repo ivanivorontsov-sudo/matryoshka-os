@@ -1,10 +1,12 @@
 #!/bin/sh
-# Пароль Wi-Fi, который уже работает, сохранить в файл соединения.
-# Иначе выключенный бумажник при следующем входе просит пароль сети заново.
+# Пароль сети, которая уже поднялась, сохранить в файл соединения.
+# Иначе выключенный бумажник при следующем входе просит пароль или открывает окно.
 IFACE=${DEVICE_IFACE:-$1}
 ACTION=${2:-}
 [ "$ACTION" = "up" ] || exit 0
-[ -d "/sys/class/net/$IFACE/phy80211" ] || exit 0
+case "$IFACE" in
+  lo|waydroid*|docker*|br-*|veth*|virbr*) exit 0 ;;
+esac
 UUID=${CONNECTION_UUID:-}
 [ -n "$UUID" ] || exit 0
 exec /usr/bin/python3 /usr/lib/matryoshka/wifi_secret.py "$UUID"

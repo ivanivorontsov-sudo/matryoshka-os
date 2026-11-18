@@ -210,6 +210,11 @@ apply_greeter() {
   if cmp -s "$GREETER_CONF.new" "$GREETER_CONF"; then rm -f "$GREETER_CONF.new"; else mv -f "$GREETER_CONF.new" "$GREETER_CONF"; chmod 644 "$GREETER_CONF"; fi
 }
 
+wallet_pam() {
+  [ -f /usr/lib/matryoshka/wallet_pam.py ] || return 0
+  python3 /usr/lib/matryoshka/wallet_pam.py apply || true
+}
+
 apply() {
   migrate
   finger_once
@@ -217,6 +222,7 @@ apply() {
   apply_lock
   apply_admin
   apply_greeter
+  wallet_pam
   return 0
 }
 

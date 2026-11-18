@@ -141,6 +141,10 @@ if [ -x /usr/sbin/matryoshka-auth ]; then
 fi
 modprobe tun 2>/dev/null || true
 sysctl --system >/dev/null 2>&1 || true
+if [ -x /usr/lib/matryoshka/android-gl.sh ] && [ -d /var/lib/waydroid ]; then
+  /usr/lib/matryoshka/android-gl.sh || true
+  systemctl try-restart waydroid-container >/dev/null 2>&1 || true
+fi
 FB=/usr/lib/matryoshka/fix-boot.sh; [ -x "$FB" ] || FB="$(dirname "$(readlink -f "$0")")/fix-boot.sh"; "$FB" || rollback
 findmnt --verify >/dev/null 2>&1 || { echo "проверка fstab не прошла"; rollback; }
 udevadm control --reload 2>/dev/null
@@ -210,5 +214,6 @@ cat $W/VERSION > /etc/matryoshka-version
 [ -x /usr/lib/matryoshka/apply-look.sh ] && /usr/lib/matryoshka/apply-look.sh || true
 python3 /usr/lib/matryoshka/kickoff_memory.py || true
 python3 /usr/lib/matryoshka/netmenu.py || true
+python3 /usr/lib/matryoshka/wallet_pam.py stop || true
 rm -rf $W
 echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО. Перезагрузите компьютер."
