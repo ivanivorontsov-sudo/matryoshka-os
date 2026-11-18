@@ -70,25 +70,23 @@ def size_differs(text):
     return ("persist.waydroid.width=%s" % w) not in t or ("persist.waydroid.height=%s" % h) not in t
 
 def prepare():
-    # Перезапуск на каждый значок гасит окно. Он нужен один раз, когда размер
-    # ещё пустой или не совпадает с экраном. Повторный запуск размер не трогает.
-    before = cfg_text()
-    if props() and (window_is_trap(before) or size_differs(before)):
-        run(["systemctl", "restart", "waydroid-container"], timeout=90)
-        run(["waydroid", "session", "start"], timeout=40)
-        for _ in range(20):
-            if running():
-                break
-            time.sleep(1)
+    # Не останавливать контейнер из значка: вопрос пароля администратора
+    # и зависание Android были из-за этого.
+    props()
     return 0
 
 def props():
-    # Одно окно на площадь экрана, но ниже панели: рамку рисует Plasma.
-    # Отдельной полоски кнопок нет. Кнопки свернуть, развернуть и закрыть — у рамки.
+    # Размер меняется один раз, со старых 1280. Уже записанное число не трогаем:
+    # иначе экран «прыгает» между режимами и сессия гаснет.
     text = cfg_text().replace(" ", "")
-    w, h = screen()
     changed = False
-    for k, v in (("persist.waydroid.multi_windows", "false"), ("persist.waydroid.width", str(w)), ("persist.waydroid.height", str(h)), ("persist.waydroid.suspend", "false")):
+    keys = [("persist.waydroid.multi_windows", "false"), ("persist.waydroid.suspend", "false")]
+    import re
+    width = re.search(r"persist\.waydroid\.width=(\d+)", text)
+    if not width or width.group(1) in ("0", "1280"):
+        w, h = screen()
+        keys.extend((("persist.waydroid.width", str(w)), ("persist.waydroid.height", str(h))))
+    for k, v in keys:
         if ("%s=%s" % (k, v)) in text:
             continue
         run(["waydroid", "prop", "set", k, v], timeout=30)
@@ -111,20 +109,18 @@ def guest_fix():
 
 
 def ensure_net():
+    # Без вопроса пароля. Если права не выданы, сеть поднимает служба контейнера.
     try:
-        import common as C
-        C.root("waydroid-net", timeout=30)
+        subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "waydroid-net"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
     except Exception:
         pass
 
 def ensure(wait=90):
     if not shutil.which("waydroid"):
         return False
-    run(["systemctl", "start", "waydroid-container"], timeout=40)
     ensure_net()
     if not running():
         props()
-        run(["systemctl", "restart", "waydroid-container"], timeout=60)
         run(["waydroid", "session", "start"], timeout=40)
         for _ in range(wait // 2):
             if running():
@@ -137,15 +133,14 @@ def ensure(wait=90):
 def show():
     if not shutil.which("waydroid"):
         return 1
-    run(["systemctl", "start", "waydroid-container"], timeout=40)
     ensure_net()
     props()
-    run(["systemctl", "restart", "waydroid-container"], timeout=90)
-    run(["waydroid", "session", "start"], timeout=40)
-    for _ in range(30):
-        if running():
-            break
-        time.sleep(2)
+    if not running():
+        run(["waydroid", "session", "start"], timeout=40)
+        for _ in range(30):
+            if running():
+                break
+            time.sleep(2)
     if not running():
         return 1
     guest_fix()

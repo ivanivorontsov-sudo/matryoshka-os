@@ -121,6 +121,12 @@ def guest_sysctl(pid, rel, value):
     # иначе 65 всей системы станет другим числом.
     if not str(pid).isdigit():
         return False
+    root = "/proc/%s/root" % pid
+    try:
+        if os.path.samefile(root, "/"):
+            return False
+    except OSError:
+        return False
     path = "/proc/%s/root/proc/sys/%s" % (pid, rel)
     if not os.path.isfile(path):
         return False

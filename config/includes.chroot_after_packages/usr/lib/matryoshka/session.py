@@ -431,15 +431,17 @@ def firefox_icon():
     open(p, "w", encoding="utf-8").write("[Desktop Entry]\nType=Application\nNoDisplay=true\nName=Firefox\nExec=firefox-esr %u\nIcon=firefox-esr\nStartupWMClass=firefox\n")
 
 def kwallet_text(on):
-    en = "true" if on else "false"
+    # Галочка больше не выключает хранилище. Иначе пропадают пароли Wi-Fi и VPN:
+    # точка доступа и расширение VPN начинают спрашивать пользователя и пароль сами.
+    # Окно пароля бумажника при этом не показывается.
     return (
-        ("Enabled", en),
+        ("Enabled", "true"),
         ("First Use", "false"),
         ("Use One Wallet", "true"),
-        ("SecretServiceEnabled", en),
+        ("SecretServiceEnabled", "true"),
         ("Prompt on Open", "false"),
-        ("Close When Idle", "false" if on else "true"),
-        ("Launch", en),
+        ("Close When Idle", "false"),
+        ("Launch", "true"),
     )
 
 def kwallet_write(path, on):
@@ -459,33 +461,23 @@ def kwallet_write(path, on):
     os.replace(tmp, path)
 
 def kwallet(on):
-    kwallet_write(os.path.expanduser("~/.config/kwalletrc"), on)
-    for key, value in kwallet_text(on):
+    # on не выключает службу: сохранённые пароли сетей и VPN остаются на месте.
+    kwallet_write(os.path.expanduser("~/.config/kwalletrc"), True)
+    for key, value in kwallet_text(True):
         C.kwrite("kwalletrc", "Wallet", key, value)
     for rc in ("kded5rc", "kded6rc"):
-        C.kwrite(rc, "Module-kwallet", "autoload", "true" if on else "false")
-        C.kwrite(rc, "Module-kwalletd", "autoload", "true" if on else "false")
+        C.kwrite(rc, "Module-kwallet", "autoload", "true")
+        C.kwrite(rc, "Module-kwalletd", "autoload", "true")
     d = os.path.expanduser("~/.config/autostart")
-    os.makedirs(d, exist_ok=True)
     for name in ("org.kde.kwalletd5.desktop", "org.kde.kwalletd6.desktop"):
         p = os.path.join(d, name)
-        if on:
-            try:
-                if os.path.isfile(p) and "X-Matryoshka-KWallet=off" in open(p, encoding="utf-8", errors="replace").read():
-                    os.remove(p)
-            except OSError:
-                pass
-        else:
-            open(p, "w", encoding="utf-8").write("[Desktop Entry]\nType=Application\nName=KWallet\nHidden=true\nX-Matryoshka-KWallet=off\n")
-    if not on:
-        for dest, path, iface in (("org.kde.kded6", "/kded", "org.kde.kded6"), ("org.kde.kded5", "/kded", "org.kde.kded5")):
-            C.run(["busctl", "--user", "call", dest, path, iface, "unloadModule", "s", "kwallet"], timeout=8)
-            C.run(["busctl", "--user", "call", dest, path, iface, "setModuleAutoloading", "sb", "kwallet", "false"], timeout=8)
-        for name in ("kwalletd6", "kwalletd5", "ksecretd"):
-            C.run(["killall", "-q", name], timeout=5)
-    else:
-        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
-        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "loadModule", "s", "kwallet"], timeout=8)
+        try:
+            if os.path.isfile(p) and "X-Matryoshka-KWallet=off" in open(p, encoding="utf-8", errors="replace").read():
+                os.remove(p)
+        except OSError:
+            pass
+    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
+    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "loadModule", "s", "kwallet"], timeout=8)
 
 def chooser():
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox
@@ -630,7 +622,10 @@ KWIN_RULES = {
     "matryoshka-dos-files": {"Description": "Матрёшка: окно файлов DOS поверх", "title": "Файлы DOS", "titlematch": "1", "above": "true", "aboverule": "2", "fsplevel": "0", "fsplevelrule": "2"},
     # Только рамка, и только когда окно появляется (правило 3). Размер и полный
     # экран не задаются: из-за них щелчок внутри Android двигал окно.
-    "matryoshka-waydroid": {"Description": "Матрёшка: у окна Android обычная рамка", "wmclass": "waydroid", "wmclassmatch": "2", "noborder": "false", "noborderrule": "3"},
+    # Рамка — принудительно, иначе Waydroid рисует голую поверхность.
+    # Размер и центр задаются один раз при появлении (правило 3). Правило 2
+    # на размере двигало окно при каждом щелчке.
+    "matryoshka-waydroid": {"Description": "Матрёшка: у окна Android обычная рамка", "wmclass": "waydroid", "wmclassmatch": "2", "noborder": "false", "noborderrule": "2", "placement": "4", "placementrule": "3", "maximizehoriz": "true", "maximizehorizrule": "3", "maximizevert": "true", "maximizevertrule": "3"},
     # winperc=100 уводил заголовок за край экрана, крестика не было. Полный экран
     # здесь запрещён, рамка остаётся. Кнопку «развернуть» пользователь нажимает сам.
     "matryoshka-dosbox": {"Description": "Матрёшка: DOS не закрывает экран без кнопок", "wmclass": "dosbox-x", "wmclassmatch": "2", "noborder": "false", "noborderrule": "2", "fullscreen": "false", "fullscreenrule": "2"},
