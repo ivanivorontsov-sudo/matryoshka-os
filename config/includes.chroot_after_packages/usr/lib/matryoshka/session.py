@@ -593,12 +593,13 @@ def kwallet(on):
     browser_flags()
     wallet_cleanup()
     # Галочка в меню и «Параметры системы» пишут в один файл бумажника.
-    # Выключать там службу нельзя: Вивальди хранит в ней ключ логинов и cookie
-    # и без неё показывает «Дешифровка прервана». Галочка только пропускает
-    # лишний пароль после отпечатка и выписывает пароль Wi-Fi в файл сети.
+    # Служба остаётся включённой: в ней ключ логинов Вивальди. Пароль входа
+    # передаёт pam_kwallet5 демону kwalletd6. Здесь пароль в файл не пишется.
     apply_wallet(True)
-    if not on:
-        wifi_save()
+    # Пароль точки, который уже в файле, поднимает Wi-Fi сразу, как в Windows.
+    # Это не зависит от галочки бумажника и не трогает USB.
+    if wifi_save():
+        connect_saved_wifi()
 
 
 def wallet_unlocked():
@@ -613,51 +614,79 @@ def wallet_unlocked():
     return False
 
 
+def wifi_state_up(state):
+    # Коды NetworkManager: 100 — activated. Текст зависит от языка, поэтому
+    # сравнивается код, а nmcli ниже запускается с LC_ALL=C.
+    text = (state or "").strip().lower()
+    code = text.split(" ", 1)[0].strip("()")
+    return code in ("100", "connected") or text.startswith("connected")
+
+
+def wifi_should_connect(states):
+    if not states:
+        return False
+    return not any(wifi_state_up(item) for item in states)
+
+
+def newest_wifi_uuid(rows):
+    best, best_ts = "", -1
+    for uuid, kind, ts in rows:
+        if kind not in ("802-11-wireless", "wifi") or not uuid:
+            continue
+        try:
+            stamp = int(ts)
+        except (TypeError, ValueError):
+            stamp = 0
+        if stamp >= best_ts:
+            best, best_ts = uuid, stamp
+    return best
+
+
 def connect_saved_wifi():
-    # После пароля бумажника NetworkManager уже знает ключ сети, но само
-    # подключение не нажимает. USB и кабель здесь не отключаются.
-    shown = C.run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"], timeout=8)
+    # Активируется сохранённая сеть Wi-Fi. Это то же действие, что пункт
+    # «Подключиться»: ActivateConnection, без перечитывания всех соединений.
+    # USB и кабель не отключаются и здесь не упоминаются в команде.
+    env = dict(os.environ)
+    env["LC_ALL"] = "C"
+    env["LANG"] = "C"
+    shown = C.run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"], timeout=8, env=env)
     wifi = []
     for line in (shown.stdout or "").splitlines():
         dev, _, rest = line.partition(":")
         kind, _, state = rest.partition(":")
         if kind != "wifi" or not dev or "/" in dev:
             continue
-        wifi.append(state.lower())
-    if not wifi or any(item.startswith("connected") or item.startswith("100") for item in wifi):
+        wifi.append(state)
+    if not wifi_should_connect(wifi):
         return
-    listed = C.run(["nmcli", "-t", "-f", "UUID,TYPE,TIMESTAMP", "connection", "show"], timeout=8)
-    best, best_ts = "", -1
+    listed = C.run(["nmcli", "-t", "-f", "UUID,TYPE,TIMESTAMP", "connection", "show"], timeout=8, env=env)
+    rows = []
     for line in (listed.stdout or "").splitlines():
         parts = line.split(":")
         if len(parts) < 3:
             continue
-        uuid, kind, ts = parts[0], parts[1], parts[2]
-        if kind not in ("802-11-wireless", "wifi") or not uuid:
-            continue
-        try:
-            stamp = int(ts)
-        except ValueError:
-            stamp = 0
-        if stamp >= best_ts:
-            best, best_ts = uuid, stamp
+        rows.append((parts[0], parts[1], parts[2]))
+    best = newest_wifi_uuid(rows)
     if best:
-        C.run(["nmcli", "connection", "up", best], timeout=40)
+        C.run(["nmcli", "-w", "25", "connection", "up", best], timeout=40, env=env)
 
 
 def wifi_after_unlock():
     def loop():
-        armed = False
+        tries = 0
         for _ in range(90):
             time.sleep(2)
             try:
                 if not wallet_unlocked():
                     continue
-                if armed:
-                    continue
-                armed = True
                 wifi_save()
                 connect_saved_wifi()
+                tries += 1
+                # Первая попытка может прийти раньше, чем агент секретов увидит
+                # открытый бумажник. Дальше повтор ничего не рвёт: уже
+                # подключённый Wi-Fi функция не трогает.
+                if tries >= 3:
+                    return
             except Exception:
                 pass
     threading.Thread(target=loop, daemon=True).start()

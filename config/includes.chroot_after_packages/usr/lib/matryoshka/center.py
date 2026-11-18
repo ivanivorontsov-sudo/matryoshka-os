@@ -154,9 +154,21 @@ class Center(QWidget):
         box.toggled.connect(on)
         self._wallet_boxes.append((box, disable))
         return box
+    def wallet_auto_box(self):
+        box = QCheckBox("Вводить пароль бумажника при входе")
+        box.blockSignals(True)
+        box.setChecked(self.s.get("wallet_auto", True) is not False)
+        box.blockSignals(False)
+        def on(checked):
+            self.s["wallet_auto"] = bool(checked)
+            self.save()
+        box.toggled.connect(on)
+        return box
     def p_net(self, v):
         v.addWidget(QLabel("<h2>Сеть</h2>По умолчанию сеть выключена: система ничего никуда не отправляет. Включайте, только когда нужно.", wordWrap=True))
         v.addWidget(self.wallet_box("Отключить бумажник", True))
+        v.addWidget(self.wallet_auto_box())
+        v.addWidget(QLabel("Пароль, введённый на экране входа, pam_kwallet5 передаёт /usr/bin/kwalletd6 и открывает kdewallet. Хранилище ключей остаётся включённым, им Вивальди открывает логины. Жёлтую кнопку «Продолжить с потерей данных» нажимать нельзя. Отпечаток пароль не передаёт: чтобы бумажник открылся сам, пароль нужно ввести в поле входа.", wordWrap=True))
         st = QLabel(); v.addWidget(st)
         def upd(): st.setText("<h3>Сейчас: %s</h3>" % ("включена" if C.net_on() else "выключена"))
         v.addWidget(btn("Включить / выключить одним нажатием", lambda: (C.net_set(not C.net_on()), upd()))); upd()
@@ -429,14 +441,15 @@ class Center(QWidget):
                 am.blockSignals(True); am.setCurrentIndex(0); am.blockSignals(False); m = "confirm"
             r("admin-" + m)
         am.currentIndexChanged.connect(am_set); v.addWidget(am)
-        v.addWidget(QLabel("<h3>Бумажник KDE</h3>Бумажник хранит пароли Wi-Fi и программ. Если вы входите пальцем или лицом, он не открывается сам и спрашивает свой пароль.", wordWrap=True))
+        v.addWidget(QLabel("<h3>Бумажник KDE</h3>Бумажник хранит пароли Wi-Fi и ключ логинов Вивальди. В этом выпуске его открывает pam_kwallet5: пароль с экрана входа уходит в /usr/bin/kwalletd6, кошелёк называется kdewallet и его пароль должен совпадать с паролем учётной записи. Служба не выключается. Отпечаток пароль не несёт, поэтому после одного только пальца вопрос может появиться уже на рабочем столе. Сеть Android эта страница не меняет.", wordWrap=True))
         def kw(key, val): C.run(["kwriteconfig6", "--file", "kwalletrc", "--group", "Wallet", "--key", key, val])
         def kr(key, d): return (C.run(["kreadconfig6", "--file", "kwalletrc", "--group", "Wallet", "--key", key, "--default", d]).stdout.strip() or d) == "true"
         lo = QCheckBox("Не закрывать бумажник до выхода из сеанса (пароль бумажника один раз за сеанс)"); lo.setChecked(kr("Leave Open", "true") and not kr("Close When Idle", "false"))
         def lo_set(x):
             kw("Leave Open", "true" if x else "false"); kw("Close When Idle", "false" if x else "true"); kw("Close on Screensaver", "false")
         lo.toggled.connect(lo_set); v.addWidget(lo)
-        v.addWidget(self.wallet_box("Отключить бумажник: после отпечатка лишний пароль не спрашивается. Хранилище ключей в параметрах системы остаётся включённым, иначе Вивальди пишет «Дешифровка прервана». Жёлтую кнопку там нажимать нельзя", True))
+        v.addWidget(self.wallet_box("Отключить бумажник: хранилище ключей в параметрах системы остаётся включённым, иначе Вивальди пишет «Дешифровка прервана». Жёлтую кнопку там нажимать нельзя", True))
+        v.addWidget(self.wallet_auto_box())
         v.addWidget(QLabel("<h3>Драйвер Goodix GXFP5130 (экспериментальный)</h3>Для Huawei MateBook D16 2024 и похожих. Выключен по умолчанию. При первом включении в сканер записывается ключ шифрования, как это делает Windows. При включённом Secure Boot модуль не загрузится.", wordWrap=True))
         def gx(m):
             if not os.path.exists("/usr/sbin/matryoshka-gxfp"): o.setPlainText("Пакет matryoshka-gxfp не установлен."); return

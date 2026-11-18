@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Выключенный бумажник не должен спрашивать пароль на входе и на блокировке.
+"""Пароль входа открывает бумажник. Отпечаток пароль не несёт.
 
-pam_kwallet видит пустой пароль после отпечатка и сам показывает «Password».
-Строка перед ним пропускает модуль, только если в настройках пользователя
-бумажник выключен. Включённый бумажник эта строка не трогает.
+pam_kwallet5 из libpam-kwallet5 в этом образе передаёт введённый пароль
+демону /usr/bin/kwalletd6 и открывает кошелёк kdewallet до рабочего стола.
+Это штатный путь KDE: пароль бумажника совпадает с паролем учётной записи,
+хранилище ключей остаётся включённым, Вивальди им расшифровывает логины.
+
+Если токена нет (вход только пальцем), тот же модуль сам пишет «Password:».
+Экран входа такой вопрос не показывает, поэтому без пароля модуль пропускается.
+Настройка «Вводить пароль бумажника при входе» как раз включает передачу
+уже введённого пароля. Отдельный пароль никуда не записывается.
 """
 import json
 import os
@@ -11,7 +17,7 @@ import pwd
 import subprocess
 import sys
 
-SKIP = "pam_exec.so quiet /usr/lib/matryoshka/wallet-pam-skip"
+SKIP = "pam_exec.so quiet expose_authtok /usr/lib/matryoshka/wallet-pam-skip"
 MARK = "wallet-pam-skip"
 TARGETS = ("pam_kwallet5.so", "pam_gnome_keyring.so")
 PAM_FILES = (
@@ -25,13 +31,28 @@ PAM_FILES = (
 )
 
 
-def wallet_disabled(path):
+def load_settings(path):
     try:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
     except Exception:
-        return False
-    return isinstance(data, dict) and data.get("kwallet", True) is False
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def wallet_disabled(path):
+    return load_settings(path).get("kwallet", True) is False
+
+
+def should_skip(data, password_present):
+    # Выключенная настройка и выключенный переключатель — прежний пропуск.
+    # Иначе уже введённый пароль отдаётся pam_kwallet5, пустой токен — нет:
+    # пустой токен заставляет модуль спросить «Password:» на экране входа.
+    if not isinstance(data, dict):
+        data = {}
+    if data.get("wallet_auto", True) is False and data.get("kwallet", True) is False:
+        return True
+    return not password_present
 
 
 def stack_kind(line):
@@ -44,6 +65,12 @@ def stack_kind(line):
     return ""
 
 
+def expose_line(line):
+    if MARK not in line or "expose_authtok" in line:
+        return line
+    return line.replace("pam_exec.so quiet ", "pam_exec.so quiet expose_authtok ", 1)
+
+
 def insert_skips(text):
     lines = text.splitlines(keepends=True)
     out = []
@@ -54,7 +81,7 @@ def insert_skips(text):
         prev = out[-1].strip() if out else ""
         if hit and MARK not in prev and MARK not in stripped:
             out.append("%s\t[success=1 default=ignore]\t%s\n" % (kind, SKIP))
-        out.append(line if line.endswith("\n") or not line else line + "\n")
+        out.append(expose_line(line if line.endswith("\n") or not line else line + "\n"))
     body = "".join(out)
     if text.endswith("\n") or not text:
         return body if body.endswith("\n") or not body else body
@@ -113,8 +140,29 @@ def stop_running():
             pass
 
 
+def password_present():
+    # pam_exec expose_authtok кладёт токен во вход этого процесса.
+    # Токен не печатается и не сохраняется: нужна только его непустота.
+    if not os.environ.get("PAM_USER"):
+        return False
+    try:
+        import select
+        ready, _, _ = select.select([sys.stdin], [], [], 0)
+        if not ready:
+            return False
+        blob = bytearray(os.read(sys.stdin.fileno(), 4096))
+    except Exception:
+        return False
+    try:
+        return any(byte not in (0, 10, 13, 32) for byte in blob)
+    finally:
+        for index in range(len(blob)):
+            blob[index] = 0
+
+
 def pam_status():
     user = os.environ.get("PAM_USER", "")
+    present = password_present()
     if not user or user in (".", "..") or "/" in user or "\x00" in user:
         return 1
     try:
@@ -124,7 +172,7 @@ def pam_status():
     if not home.startswith("/") or home.startswith("//"):
         return 1
     path = os.path.join(home, ".config", "matryoshka", "settings.json")
-    return 0 if wallet_disabled(path) else 1
+    return 0 if should_skip(load_settings(path), present) else 1
 
 
 def main(argv):
