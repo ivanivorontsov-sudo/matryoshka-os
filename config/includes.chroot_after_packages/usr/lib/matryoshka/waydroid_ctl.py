@@ -23,10 +23,40 @@ def screen():
         pass
     return 1280, 800
 
+def cfg_text():
+    parts = []
+    for path in ("/var/lib/waydroid/waydroid.cfg", "/var/lib/waydroid/waydroid_base.prop"):
+        try:
+            parts.append(open(path, encoding="utf-8", errors="replace").read())
+        except OSError:
+            pass
+    return "\n".join(parts)
+
+def window_is_trap(text):
+    t = text.replace(" ", "")
+    if "multi_windows=true" in t:
+        return True
+    if "persist.waydroid.width=" in t and "persist.waydroid.width=1280" not in t:
+        return True
+    return False
+
+def prepare():
+    # Значок приложения не проходит через этот модуль. Свойство читается при старте контейнера,
+    # поэтому старый полный экран снимается один раз, до запуска приложения.
+    before = cfg_text()
+    props()
+    if window_is_trap(before):
+        run(["systemctl", "restart", "waydroid-container"], timeout=90)
+        run(["waydroid", "session", "start"], timeout=40)
+        for _ in range(20):
+            if running():
+                break
+            time.sleep(1)
+    return 0
+
 def props():
-    # Официальный многооконный режим: у каждого приложения свои кнопки Android, включая крестик.
-    # Пустое значение снимает ширину и высоту, которые прошлая версия записала в waydroid.cfg.
-    for k, v in (("persist.waydroid.multi_windows", "true"), ("persist.waydroid.width", ""), ("persist.waydroid.height", ""), ("persist.waydroid.suspend", "false")):
+    # Одно окно 1280×800: рамку, свернуть и закрыть рисует Plasma. Весь экран без кнопок оставлять нельзя.
+    for k, v in (("persist.waydroid.multi_windows", "false"), ("persist.waydroid.width", "1280"), ("persist.waydroid.height", "800"), ("persist.waydroid.suspend", "false")):
         run(["waydroid", "prop", "set", k, v], timeout=30)
 
 
@@ -36,15 +66,11 @@ def guest_fix():
     run(["waydroid", "shell", "settings", "put", "secure", "show_ime_with_hard_keyboard", "0"], timeout=20)
     # Частный DNS Android (часто dns.google) на раздаче ждёт и повторяет запрос.
     run(["waydroid", "shell", "settings", "put", "global", "private_dns_mode", "off"], timeout=20)
+    run(["waydroid", "shell", "settings", "put", "secure", "navigation_mode", "0"], timeout=20)
+    run(["waydroid", "shell", "cmd", "overlay", "enable", "com.android.internal.systemui.navbar.threebutton"], timeout=20)
+    run(["waydroid", "shell", "cmd", "overlay", "disable", "com.android.internal.systemui.navbar.gestural"], timeout=20)
     run(["waydroid", "shell", "ip", "link", "set", "eth0", "mtu", "1500"], timeout=20)
-    info = run(["lxc-info", "-n", "waydroid", "-pH"], timeout=10)
-    pid = (info.stdout or "").strip().split()[-1] if (info.stdout or "").strip() else ""
-    if pid.isdigit():
-        try:
-            import waydroid_net
-            waydroid_net.guest_offload(pid)
-        except Exception:
-            pass
+    # Суммы eth0 снимает root внутри waydroid_net.apply. Из сеанса пользователя в сеть контейнера хода нет.
 
 
 def ensure_net():
@@ -105,6 +131,31 @@ def minimize():
             return 0
     return 1
 
+def normal_window():
+    if shutil.which("wmctrl"):
+        run(["wmctrl", "-xr", "waydroid", "-b", "remove,fullscreen,maximized_vert,maximized_horz"], timeout=5)
+    return 0
+
+def android_key(code):
+    return run(["waydroid", "shell", "input", "keyevent", str(code)], timeout=15).returncode
+
+def bar_running():
+    me = str(os.getpid())
+    try:
+        pids = os.listdir("/proc")
+    except OSError:
+        return False
+    for pid in pids:
+        if not pid.isdigit() or pid == me:
+            continue
+        try:
+            cmd = open("/proc/%s/cmdline" % pid, "rb").read()
+        except OSError:
+            continue
+        if b"waydroid_ctl.py" in cmd and b"\0bar\0" in cmd:
+            return True
+    return False
+
 def stop_ui():
     run(["waydroid", "session", "stop"], timeout=30)
     return 0
@@ -112,28 +163,36 @@ def stop_ui():
 def controller():
     import sys
     from PyQt6.QtCore import Qt
-    from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QWidget
+    from PyQt6.QtWidgets import QApplication, QHBoxLayout, QPushButton, QWidget
+    if bar_running():
+        return 0
     app = QApplication.instance() or QApplication(sys.argv)
     if not app.desktopFileName(): app.setDesktopFileName("matryoshka-android")
     w = QWidget()
     w.setWindowTitle("Android")
     w.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowSystemMenuHint | Qt.WindowType.WindowMinimizeButtonHint | Qt.WindowType.WindowMaximizeButtonHint | Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.WindowStaysOnTopHint)
     h = QHBoxLayout(w)
-    h.addWidget(QLabel("Закрыть Android можно этой кнопкой. Крестик на окне программы рисует сам Android."))
-    bmin = QPushButton("Свернуть")
-    bmin.clicked.connect(lambda: minimize())
-    bclose = QPushButton("Закрыть окно")
+    for title, fn in (
+        ("Домой", lambda: android_key(3)),
+        ("Приложения", lambda: android_key(284)),
+        ("Назад", lambda: android_key(4)),
+        ("Свернуть", minimize),
+        ("Обычный размер", normal_window),
+    ):
+        b = QPushButton(title)
+        b.clicked.connect(lambda _checked=False, fn=fn: fn())
+        h.addWidget(b)
+    bclose = QPushButton("Закрыть")
     def close():
         stop_ui()
         w.close()
     bclose.clicked.connect(close)
-    h.addWidget(bmin)
     h.addWidget(bclose)
-    w.resize(720, 90)
+    w.resize(760, 72)
     screen = app.primaryScreen()
     if screen:
         g = screen.availableGeometry()
-        w.move(g.x() + max(0, (g.width() - 720) // 2), g.y())
+        w.move(g.x() + max(0, (g.width() - 760) // 2), g.y())
     def key(e):
         if e.key() == Qt.Key.Key_Escape:
             minimize()
@@ -170,6 +229,10 @@ if __name__ == "__main__":
         sys.exit(install(a[1]))
     if a[0] == "launch" and len(a) > 1:
         sys.exit(launch(a[1]))
+    if a[0] == "prepare":
+        sys.exit(prepare())
+    if a[0] == "bar":
+        sys.exit(controller())
     if a[0] == "minimize":
         sys.exit(minimize())
     if a[0] == "stop":

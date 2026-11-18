@@ -32,7 +32,7 @@ def session_text(program_dir, program, dos_root, home, shared, print_dir, deskto
     run = run_line(name) if name else "echo C: программа, D: DOS, E: домашняя папка, F: Общее, G: рабочий стол, H: FreeDOS\n"
     return """[sdl]
 fullscreen=false
-maximize=true
+maximize=false
 autolock=false
 output=ttf
 usesystemcursor=true
@@ -42,7 +42,7 @@ showmenu=true
 outputswitch=auto
 lins=25
 cols=80
-winperc=100
+ptsize=22
 [dosbox]
 machine=svga_s3
 memsize=64
@@ -345,14 +345,24 @@ def file_bar(program, pid=0):
     w.setWindowTitle("DOS")
     w.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowCloseButtonHint)
     h = QHBoxLayout(w)
-    b = QPushButton("Добавить файл в папку программы")
+    b = QPushButton("Добавить файл")
     b.clicked.connect(lambda: add_file(program))
     h.addWidget(b)
-    w.resize(460, 64)
+    def close():
+        if pid:
+            try:
+                os.kill(pid, 15)
+            except OSError:
+                pass
+        app.quit()
+    c = QPushButton("Закрыть DOS")
+    c.clicked.connect(close)
+    h.addWidget(c)
+    w.resize(420, 64)
     screen = app.primaryScreen()
     if screen:
         g = screen.availableGeometry()
-        w.move(g.x() + max(0, (g.width() - 460) // 2), g.y())
+        w.move(g.x() + max(0, (g.width() - 420) // 2), g.y())
     if pid:
         timer = QTimer()
         def tick():

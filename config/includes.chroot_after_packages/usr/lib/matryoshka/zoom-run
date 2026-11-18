@@ -37,4 +37,6 @@ E="$L/matryoshka-stderr.log"
 BIN="$DIR/zoom"
 [ -x "$BIN" ] || BIN="$EXE"
 cd "$DIR" || exit 1
-exec "$BIN" "$@" 2>>"$E"
+GPU=""
+[ -f "$HOME/.config/matryoshka/zoom-no-gpu" ] && GPU="--disable-gpu --disable-gpu-sandbox"
+exec "$BIN" $GPU "$@" 2>>"$E"

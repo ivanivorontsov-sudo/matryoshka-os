@@ -23,7 +23,7 @@ SCHEMES = ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-hand
 PROXY_VARS = ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "no_proxy", "NO_PROXY"]
 
 CODES = {
-    "100000400": "Сервер Zoom не пустил клиент в конференцию (MEETING_STATUS_FAILED). Если та же встреча открывается в браузере, сеть и Россия тут ни при чём: виноват сам клиент. Частые причины: повреждённый профиль ~/.zoom и ~/.config/zoomus.conf, устаревший клиент, запуск под Wayland без xcb. Доктор с --code 100000400 --fix переносит профиль в резервную копию, чинит ярлык (QT_QPA_PLATFORM=xcb) и проверяет версию. Ещё причины на стороне встречи: организатор не начал её, вход только для вошедших в аккаунт Zoom, ссылка без pwd=. Проверка клиента: matryoshka zoom-doctor --test.",
+    "100000400": "Клиент Zoom не смог войти в конференцию (у клиента Windows этот код называется Meeting join failed). Официальная очистка Linux: кэш ~/.cache/zoom и каталог ~/.zoom. Здесь это два разных шага: --cache стирает кэш и GPUCache и оставляет вход, --reset-cache переносит весь профиль в копию. Ещё: --gpu выключает видеоускорение, --download скачивает другой установщик, --web открывает ту же встречу в браузере. Сеть и смена MAC-адреса этот код сами по себе не объясняют.",
     "100000403": "Нет доступа к службе Zoom: сеть, фильтр провайдера, брандмауэр или устаревший клиент.",
     "5003": "Нет соединения с серверами Zoom: сеть, DNS или брандмауэр.",
     "5004": "Нет соединения с серверами Zoom: сеть, DNS или брандмауэр.",
@@ -411,6 +411,76 @@ def fix_exec():
             if os.path.isfile(p) and os.access(p, os.W_OK):
                 os.chmod(p, os.stat(p).st_mode | 0o111)
 
+DOWNLOADS = {
+    "latest-deb": ("https://zoom.us/client/latest/zoom_amd64.deb", "zoom_amd64.deb"),
+    "latest-tar": ("https://zoom.us/client/latest/zoom_x86_64.tar.xz", "zoom_x86_64.tar.xz"),
+    "7.2.5": ("https://zoom.us/client/7.2.5.6661/zoom_amd64.deb", "zoom_7.2.5.6661_amd64.deb"),
+    "7.0.5": ("https://zoom.us/client/7.0.5.3034/zoom_amd64.deb", "zoom_7.0.5.3034_amd64.deb"),
+    "6.6.11": ("https://zoom.us/client/6.6.11.6052/zoom_amd64.deb", "zoom_6.6.11.6052_amd64.deb"),
+}
+
+def download_dir():
+    for name in ("Загрузки", "Downloads"):
+        path = os.path.join(HOME, name)
+        if os.path.isdir(path):
+            return path
+    return HOME
+
+def download_zoom(kind):
+    spec = DOWNLOADS.get(kind)
+    if not spec:
+        print("Нет такого варианта. Доступны:", ", ".join(DOWNLOADS))
+        return 2
+    url, name = spec
+    dest = os.path.join(download_dir(), name)
+    urls = [url]
+    if kind not in ("latest-deb", "latest-tar"):
+        urls.append("https://repo.zoom.us/repo/deb/pool/main/z/zoom/" + name)
+    for one in urls:
+        if run(["curl", "-fL", "--retry", "3", "-o", dest, one], timeout=900).returncode == 0 and os.path.isfile(dest) and os.path.getsize(dest) > 1000000:
+            print("Скачано:", dest)
+            print("deb ставится так: sudo apt install --reinstall", dest)
+            print("tar.xz ставится так: matryoshka zoom-doctor --update  (только если архив уже лежит как установка в домашней папке)")
+            return 0
+        print("Не скачалось:", one)
+    return 1
+
+def clear_runtime_cache():
+    removed = []
+    cache = os.path.join(HOME, ".cache", "zoom")
+    if os.path.isdir(cache):
+        shutil.rmtree(cache)
+        removed.append(cache)
+    root = os.path.join(HOME, ".zoom")
+    if os.path.isdir(root):
+        for folder, dirs, _names in os.walk(root):
+            for name in list(dirs):
+                if name in ("GPUCache", "Code Cache", "Cache", "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache"):
+                    path = os.path.join(folder, name)
+                    shutil.rmtree(path, ignore_errors=True)
+                    removed.append(path)
+                    dirs.remove(name)
+    return removed
+
+def disable_gpu():
+    d = os.path.join(HOME, ".config", "matryoshka")
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, "zoom-no-gpu"), "w", encoding="utf-8").write("1\n")
+    if conf_broken():
+        return "zoomus.conf повреждён, его не менял. Видеоускорение выключено флагом запуска."
+    conf_set("enableHardwareAcc", "false")
+    return "Видеоускорение Zoom выключено (enableHardwareAcc=false и запуск с --disable-gpu)."
+
+def print_repairs():
+    print("Варианты починки и загрузки:")
+    print("  --cache          официальный кэш: ~/.cache/zoom и GPUCache. Вход в аккаунт остаётся.")
+    print("  --gpu            без видеоускорения. Помогает, когда клиент падает на входе в конференцию.")
+    print("  --reset-cache    весь профиль ~/.zoom переносится в копию. Это полная очистка с сайта Zoom.")
+    print("  --download ИМЯ   скачать установщик. Имена: " + ", ".join(DOWNLOADS))
+    print("  --web ССЫЛКА     открыть эту встречу в браузере.")
+    print("  --update         обновить установку tar.xz в домашней папке до latest.")
+    print("  --test           открыть тестовую встречу zoom.us/test.")
+
 def reset_cache():
     z = os.path.join(HOME, ".zoom")
     if not os.path.isdir(z):
@@ -509,8 +579,11 @@ def diagnose():
 def main():
     args = sys.argv[1:]
     if os.geteuid() == 0:
-        print("Запускайте без sudo, от своего пользователя: matryoshka zoom-doctor [--fix] [--reset-cache] [--test] [--update] [--code N]")
+        print("Запускайте без sudo, от своего пользователя: matryoshka zoom-doctor [--fix] [--cache] [--gpu] [--download ИМЯ] [--reset-cache] [--test] [--update] [--web ССЫЛКА] [--code N]")
         return 2
+    if "--downloads" in args:
+        print_repairs()
+        return 0
     if "--code" in args:
         i = args.index("--code")
         c = re.sub(r"\D", "", args[i + 1] if i + 1 < len(args) else "")
@@ -527,26 +600,29 @@ def main():
         return 0
     if "--test" in args:
         return run_test()
+    if "--download" in args:
+        i = args.index("--download")
+        kind = args[i + 1] if i + 1 < len(args) else ""
+        return download_zoom(kind)
     if "--update" in args:
         return update_zoom()
     r = diagnose()
     r.show()
     if "--json" in args:
         print(json.dumps({"items": r.items, "root": root_args(r)}, ensure_ascii=False))
-    if "--fix" in args and "--code" in args and "100000400" in " ".join(args) and "--reset-cache" not in args:
-        args.append("--reset-cache")
-        zc = zconf()
-        if os.path.isfile(zc):
-            bak = zc + ".before-reset-" + time.strftime("%Y%m%d-%H%M%S")
-            shutil.move(zc, bak)
-            print("zoomus.conf перенесён в", bak)
+    if "--cache" in args:
+        gone = clear_runtime_cache()
+        print("Кэш Zoom очищен:", ", ".join(gone) if gone else "уже пусто. Вход в аккаунт не трогал.")
+    if "--gpu" in args:
+        print(disable_gpu())
     if "--reset-cache" in args:
         d = reset_cache()
         print("Кэш и данные Zoom перенесены в", d if d else "(нечего переносить)")
     if "--fix" not in args:
         if r.fixes:
             print("\nЧтобы исправить найденное: matryoshka zoom-doctor --fix")
-        print("Если Zoom всё равно пишет ошибку с кодом, пришлите код. Запасной путь: войти в конференцию из браузера: matryoshka zoom-doctor --web 'ссылка на встречу'")
+        print("Если Zoom всё равно пишет ошибку с кодом, пришлите код.")
+        print_repairs()
         return 1 if any(l == "bad" for l, _ in r.items) else 0
     if "handler" in r.fixes:
         print("Ярлык и ссылки zoommtg:// перепривязаны:", ", ".join(fix_handler()) or "без изменений")
