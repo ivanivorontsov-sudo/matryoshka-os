@@ -377,6 +377,25 @@ class Boot(unittest.TestCase):
         self.assertEqual(waydroid_net.links("nosuch-iface"), [])
         import ctypes
         self.assertEqual(ctypes.sizeof(waydroid_net._Ifreq), 40)
+        self.assertEqual(waydroid_net.usable_nameservers("nameserver 127.0.0.53\nnameserver 192.168.43.1\n"), ["192.168.43.1"])
+        stub = "nameserver 127.0.0.53\n"
+        real = "nameserver 192.168.43.1\n"
+        current = "dnsmasq --interface=waydroid0 --listen-address 192.168.240.1"
+        self.assertTrue(waydroid_net.needs_dns(stub, ["192.168.43.1"], current))
+        self.assertFalse(waydroid_net.needs_dns(real, ["192.168.43.1"], current))
+        self.assertFalse(waydroid_net.needs_dns(stub, ["192.168.43.1"], ""))
+        fixed = current + " --no-resolv --server 192.168.43.1"
+        self.assertFalse(waydroid_net.needs_dns(stub, ["192.168.43.1"], fixed))
+        argv = waydroid_net.dnsmasq_argv(["192.168.43.1"], "nobody")
+        self.assertIn("--no-resolv", argv)
+        self.assertIn("192.168.43.1", argv)
+        self.assertNotIn("127.0.0.53", argv)
+        hook = read(INC, "etc", "systemd", "system", "waydroid-container.service.d", "matryoshka-net.conf")
+        self.assertIn("waydroid_net.py apply", hook)
+        self.assertIn("private_dns_mode", w)
+        wrap = read(INC, "usr", "local", "bin", "waydroid")
+        self.assertIn("/usr/bin/waydroid", wrap)
+        self.assertIn("waydroid-net", wrap)
         face = read(INC, "usr", "share", "applications", "kcm_matryoshka_face.desktop")
         self.assertIn("Распознавание лица", face)
         self.assertIn("X-KDE-Weight=51", face)

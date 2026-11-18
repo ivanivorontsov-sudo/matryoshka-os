@@ -34,6 +34,8 @@ def guest_fix():
     ensure_net()
     run(["waydroid", "shell", "settings", "delete", "global", "policy_control"], timeout=20)
     run(["waydroid", "shell", "settings", "put", "secure", "show_ime_with_hard_keyboard", "0"], timeout=20)
+    # Частный DNS Android (часто dns.google) на раздаче ждёт и повторяет запрос.
+    run(["waydroid", "shell", "settings", "put", "global", "private_dns_mode", "off"], timeout=20)
     run(["waydroid", "shell", "ip", "link", "set", "eth0", "mtu", "1500"], timeout=20)
     info = run(["lxc-info", "-n", "waydroid", "-pH"], timeout=10)
     pid = (info.stdout or "").strip().split()[-1] if (info.stdout or "").strip() else ""

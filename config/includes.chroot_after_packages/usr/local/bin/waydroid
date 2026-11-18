@@ -1,0 +1,12 @@
+#!/bin/sh
+# Значок Android вызывает waydroid напрямую. Сеть чинится после старта,
+# когда кабель контейнера уже есть: сам /usr/bin/waydroid здесь не подменяется навсегда.
+case "$1" in
+  app|session|show-full-ui)
+    ( sleep 3
+      sudo -n /usr/lib/matryoshka/root.sh waydroid-net
+      /usr/bin/waydroid shell settings put global private_dns_mode off
+    ) >/dev/null 2>&1 &
+    ;;
+esac
+exec /usr/bin/waydroid "$@"
