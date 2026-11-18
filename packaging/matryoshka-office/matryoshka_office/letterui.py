@@ -95,6 +95,7 @@ class LetterArea(QWidget):
         r2 = self.ribbon2
         for text, tip, slot in (
             ("Таблица", "Вставить таблицу", self._table),
+            ("Ширина таблицы", "Разовый автоподбор ширины столбцов; после него ширины жёсткие", self._table_width),
             ("Рисунок", "Вставить рисунок", self._image),
             ("Формула", "Редактор формул", self._equation),
             ("Разрыв страницы", "Начать новую страницу", self._page_break),
@@ -289,6 +290,49 @@ class LetterArea(QWidget):
             tables = self.doc.tables()
             if tables:
                 self.doc.set_header_row(max(0, pos), True)
+        self.window.refresh()
+
+    def _current_table(self):
+        tables = self.doc.tables()
+        if not tables:
+            return None
+        if self.canvas.caret is not None:
+            node = self.canvas.caret[0]
+            top = None
+            while node is not None:
+                if node.tag == wedit.w("tbl"):
+                    top = node
+                node = node.getparent()
+            if top is not None and top in tables:
+                return tables.index(top)
+        return len(tables) - 1
+
+    def _table_width(self):
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QCursor
+        idx = self._current_table()
+        if idx is None:
+            QMessageBox.information(self, "Ширина таблицы", "В документе нет таблиц.")
+            return
+        menu = QMenu(self)
+        act_c = menu.addAction("Автоподбор по содержимому")
+        act_w = menu.addAction("Автоподбор по ширине окна")
+        act_e = menu.addAction("Поровну")
+        got = menu.exec(QCursor.pos())
+        if got is None:
+            return
+        self.window.session.snapshot()
+        if got is act_c:
+            self.doc.autofit_table(idx, "contents")
+        elif got is act_w:
+            self.doc.autofit_table(idx, "window")
+        else:
+            from . import wtables
+            tbl = self.doc.tables()[idx]
+            avail = wtables.section_width(tbl)
+            n = wtables.ncols(tbl)
+            wtables.fix_table(tbl, [avail / n] * n)
+            self.doc.touch("word/document.xml")
         self.window.refresh()
 
     def _image(self):

@@ -1172,9 +1172,7 @@ class TableLayout:
             want = avail
         if abs(want - total) > 0.5 and total > 0:
             grid = [g * want / total for g in grid]
-        lay_el = tpr.find(w("tblLayout")) if tpr is not None else None
-        if lay_el is not None and lay_el.get(w("type")) == "autofit" and len(set(round(g, 1) for g in grid)) == 1 and len(grid) > 1:
-            grid = self._autofit(rows_el, grid, sum(grid))
+        # Жёсткая сетка: ширины столбцов не зависят от содержимого (см. wtables).
         self.grid = grid
         self.width = sum(grid)
         if self.jc == "center":
@@ -1233,7 +1231,7 @@ class TableLayout:
                     if cell["h"] > span_h:
                         self.rows[end]["h"] += cell["h"] - span_h
 
-    def _autofit(self, rows_el, grid, total):
+    def _autofit(self, rows_el, grid, total, natural=False):
         """Ширина столбцов по содержимому, как «Автоподбор» Word."""
         eng = self.engine
         backup = {k: dict(v) for k, v in eng.styles.numbering.counters.items()}
@@ -1257,6 +1255,8 @@ class TableLayout:
         eng.styles.numbering.counters = backup
         smax, smin = sum(maxs), sum(mins)
         if smax <= total:
+            if natural:
+                return maxs
             return [m + (total - smax) * m / smax for m in maxs]
         if smin <= total:
             spread = sum(mx - mn for mx, mn in zip(maxs, mins)) or 1.0

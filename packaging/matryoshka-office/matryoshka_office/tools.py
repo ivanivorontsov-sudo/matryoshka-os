@@ -24,7 +24,8 @@ TOOLS = {
     "set_table_borders": "границы таблицы: {table, color?, size?}",
     "set_cell_shading": "заливка ячейки: {table, row, col, color}",
     "set_cell_font": "шрифт ячейки таблицы: {table, row, col, name?, size?, bold?, color?}",
-    "autofit_table": "автоподбор таблицы: {table}",
+    "autofit_table": "разовый автоподбор ширины столбцов, потом ширины жёсткие: {table, mode?} — mode contents (по содержимому) или window (по окну)",
+    "set_column_widths": "жёсткие ширины столбцов таблицы в мм: {table, widths_mm}",
     "set_section": "раздел: {index, orientation?, columns?, margin_mm?, width_mm?, height_mm?}",
     "split_section": "разрыв раздела после абзаца: {after}",
     "set_header": "верхний колонтитул: {text, section?}",
@@ -206,7 +207,7 @@ def _cell_font(doc, a):
 
 def _autofit(doc, a):
     _need(doc, "letter")
-    return doc.autofit_table(a["table"])
+    return doc.autofit_table(a["table"], a.get("mode", "contents"))
 
 
 def _section(doc, a):
@@ -612,6 +613,7 @@ _DISPATCH = {
     "set_section_break": _kw("set_section_break", "section"),
     "float_image": _kw("float_image", "image_index"),
     "format_text": _format_text,
+    "set_column_widths": _kw("set_column_widths", "table"),
     "set_indent": _indent,
     "set_line_spacing": _line_spacing,
     "insert_merge_field": _kw("insert_merge_field", "paragraph"),

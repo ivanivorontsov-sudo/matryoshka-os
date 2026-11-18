@@ -94,6 +94,7 @@ def build(path=None):
     doc.insert_table(j, len(data), 4, data)
     tbl = len(doc.tables()) - 1
     doc.set_header_row(tbl, True)
+    doc.autofit_table(tbl, "contents")  # разовый автоподбор, дальше ширины жёсткие
     for c in range(4):
         doc.set_cell_shading(tbl, 0, c, "FFC94A")
         doc.set_cell_font(tbl, 0, c, bold=True)

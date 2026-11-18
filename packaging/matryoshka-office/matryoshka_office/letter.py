@@ -91,6 +91,13 @@ class Letter:
         self.opc.dirty.add(name)
 
     def save_bytes(self):
+        from . import wtables
+        for name in [n for n in self.opc.order if n == "word/document.xml" or n.startswith(("word/header", "word/footer"))] + list(self.dirty_trees):
+            if not name.endswith(".xml") or "_rels" in name:
+                continue
+            root = self.xml(name)
+            if root is not None and root.find(".//" + ooxml.w("tbl")) is not None and wtables.fix_all(root):
+                self.touch(name)
         for name in list(self.dirty_trees):
             self.opc.parts[name] = ooxml.dump(self.trees[name])
             if name not in self.opc.order:
@@ -244,6 +251,7 @@ class Letter:
         return "разрыв страницы добавлен"
 
     def insert_table(self, after, rows, cols, data=None):
+        from . import wtables
         tbl = self._make_table(int(rows), int(cols), data)
         paras = self.paragraphs()
         if after is None or int(after) >= len(paras) - 1:
@@ -254,6 +262,8 @@ class Letter:
                 self.body().append(tbl)
         else:
             paras[int(after)].addnext(tbl)
+        avail = wtables.section_width(tbl)
+        wtables.fix_table(tbl, [avail / int(cols)] * int(cols))
         self.touch("word/document.xml")
         return "таблица %d×%d вставлена" % (rows, cols)
 
@@ -265,7 +275,7 @@ class Letter:
         tw.set(ooxml.w("w"), "5000")
         tw.set(ooxml.w("type"), "pct")
         layout = etree.SubElement(tbl_pr, ooxml.w("tblLayout"))
-        layout.set(ooxml.w("type"), "autofit")
+        layout.set(ooxml.w("type"), "fixed")
         grid = etree.SubElement(tbl, ooxml.w("tblGrid"))
         for _ in range(cols):
             gc = etree.SubElement(grid, ooxml.w("gridCol"))
@@ -352,20 +362,27 @@ class Letter:
         self.touch("word/document.xml")
         return "границы таблицы изменены"
 
-    def autofit_table(self, table):
-        tbl = self._tbl(table)
-        tbl_pr = ooxml.ensure_child(tbl, "tblPr", first=True)
-        tw = tbl_pr.find(ooxml.w("tblW"))
-        if tw is None:
-            tw = etree.SubElement(tbl_pr, ooxml.w("tblW"))
-        tw.set(ooxml.w("w"), "5000")
-        tw.set(ooxml.w("type"), "pct")
-        layout = tbl_pr.find(ooxml.w("tblLayout"))
-        if layout is None:
-            layout = etree.SubElement(tbl_pr, ooxml.w("tblLayout"))
-        layout.set(ooxml.w("type"), "autofit")
+    def autofit_table(self, table, mode="contents"):
+        """Явный автоподбор: ширины считаются один раз и записываются жёстко (fixed)."""
+        from . import wtables
+        tbl = self._tbl(int(table))
+        if mode in ("window", "окно", "по окну"):
+            widths = wtables.widths_window(tbl)
+            what = "по ширине окна"
+        else:
+            widths = wtables.widths_contents(self, tbl)
+            what = "по содержимому"
+        wtables.fix_table(tbl, widths)
         self.touch("word/document.xml")
-        return "автоподбор ширины включён"
+        return "ширина таблицы %s: %s" % (what, ", ".join("%.1f см" % (x / 567.0) for x in widths))
+
+    def set_column_widths(self, table, widths_mm):
+        """Жёсткие ширины столбцов в миллиметрах."""
+        from . import wtables
+        tbl = self._tbl(int(table))
+        wtables.fix_table(tbl, [float(x) * 56.7 for x in widths_mm])
+        self.touch("word/document.xml")
+        return "ширины столбцов заданы"
 
     def merge_cells(self, table, r1, c1, r2, c2):
         r1, c1, r2, c2 = int(r1), int(c1), int(r2), int(c2)

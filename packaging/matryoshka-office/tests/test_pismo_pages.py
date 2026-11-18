@@ -112,6 +112,74 @@ class LayoutTests(unittest.TestCase):
         self.assertGreater(pages[-1].width, pages[-1].height)
 
 
+class RigidTableTests(unittest.TestCase):
+    """Таблицы не «расползаются» в Word: fixed, явная сетка, tcW, поля ячеек."""
+
+    def _check(self, tbl):
+        from matryoshka_office import wtables
+        W = wedit.W
+        tpr = tbl.find("{%s}tblPr" % W)
+        self.assertEqual(tpr.find("{%s}tblLayout" % W).get("{%s}type" % W), "fixed")
+        self.assertIsNotNone(tpr.find("{%s}tblCellMar" % W))
+        tw = tpr.find("{%s}tblW" % W)
+        self.assertEqual(tw.get("{%s}type" % W), "dxa")
+        grid = [int(g.get("{%s}w" % W)) for g in tbl.findall("{%s}tblGrid/{%s}gridCol" % (W, W))]
+        self.assertEqual(sum(grid), int(tw.get("{%s}w" % W)))
+        for tc in tbl.iter("{%s}tc" % W):
+            tcw = tc.find("{%s}tcPr/{%s}tcW" % (W, W))
+            self.assertEqual(tcw.get("{%s}type" % W), "dxa")
+        self.assertTrue(wtables.is_fixed(tbl))
+        return grid, int(tw.get("{%s}w" % W))
+
+    def test_round_trip_fixed_grid(self):
+        from matryoshka_office import wtables
+        doc = Letter.new()
+        doc.set_paragraph_text(0, "Таблица")
+        doc.insert_table(0, 3, 4, [["Очень длинный заголовок столбца", "Б", "В", "Г"]] + [["1", "2", "3", "4"]] * 2)
+        doc.merge_cells(0, 1, 0, 1, 1)
+        again = Letter.from_bytes(doc.save_bytes())
+        tbl = again.tables()[0]
+        grid, total = self._check(tbl)
+        self.assertEqual(total, wtables.section_width(tbl))
+        self.assertLessEqual(max(grid) - min(grid), 4)  # содержимое не раздвигает столбцы
+        # вёрстка следует жёсткой сетке
+        pages, _ = layout.layout(again)
+        cells = sorted({round(ln.x) for ln in lines(pages[0]) if getattr(ln, "cell", None) is not None})
+        steps = [b - a for a, b in zip(cells, cells[1:])]
+        self.assertTrue(steps and max(steps) - min(steps) < 2, cells)
+
+    def test_foreign_autofit_table_is_fixed_on_save(self):
+        from lxml import etree
+        doc = Letter.new()
+        doc.insert_table(0, 2, 2, [["a", "b"], ["c", "d"]])
+        tbl = doc.tables()[0]
+        W = wedit.W
+        tpr = tbl.find("{%s}tblPr" % W)
+        tpr.find("{%s}tblLayout" % W).set("{%s}type" % W, "autofit")
+        tpr.remove(tpr.find("{%s}tblCellMar" % W))
+        tpr.find("{%s}tblW" % W).attrib.update({"{%s}w" % W: "5000", "{%s}type" % W: "pct"})
+        for tc in tbl.iter("{%s}tc" % W):
+            tc.find("{%s}tcPr" % W).remove(tc.find("{%s}tcPr/{%s}tcW" % (W, W)))
+        doc.touch("word/document.xml")
+        grid, total = self._check(Letter.from_bytes(doc.save_bytes()).tables()[0])
+        self.assertEqual(len(grid), 2)
+
+    def test_explicit_autofit_then_stays_fixed(self):
+        doc = Letter.new()
+        doc.insert_table(0, 2, 3, [["Наименование товара длинное", "Кол.", "Цена"], ["Матрёшка", "2", "100"]])
+        msg = doc.autofit_table(0, "contents")
+        self.assertIn("содержимому", msg)
+        grid, total = self._check(Letter.from_bytes(doc.save_bytes()).tables()[0])
+        self.assertGreater(grid[0], grid[1])
+        doc.set_cell(0, 1, 1, "очень-очень длинное значение, которое не должно ничего раздвигать")
+        grid2, _ = self._check(Letter.from_bytes(doc.save_bytes()).tables()[0])
+        self.assertEqual(grid, grid2)
+        doc.autofit_table(0, "window")
+        grid3, total3 = self._check(Letter.from_bytes(doc.save_bytes()).tables()[0])
+        from matryoshka_office import wtables
+        self.assertLessEqual(abs(total3 - wtables.section_width(doc.tables()[0])), 3)
+
+
 class EditTests(unittest.TestCase):
     def test_typing_keeps_formatting_of_neighbours(self):
         doc = Letter.new()
