@@ -17,13 +17,21 @@ def sinks():
 
 def restore_audio():
     data = audiodev.load_audio(AUDIO)
-    sink, vol = audiodev.restore_plan(data, sinks())
+    found = sinks()
+    sink = audiodev.choose_sink(data, found)
+    port = data.get("port") or ""
     if sink:
-        C.run(["pactl", "set-default-sink", sink], timeout=8)
-    if sink and vol:
-        C.run(["pactl", "set-sink-volume", sink, vol], timeout=8)
-    for n, port in audiodev.hw_routes(sinks()).items():
-        v = audiodev.saved_volume(data, n, port)
+        if pactl("get-default-sink").strip() != sink:
+            C.run(["pactl", "set-default-sink", sink], timeout=8)
+        for item in found:
+            if item["name"] == sink and port and item.get("port") != port:
+                C.run(["pactl", "set-sink-port", sink, port], timeout=8)
+                break
+        vol = audiodev.saved_volume(data, sink, port)
+        if vol:
+            C.run(["pactl", "set-sink-volume", sink, vol], timeout=8)
+    for n, active in audiodev.hw_routes(found).items():
+        v = audiodev.saved_volume(data, n, active)
         if v and n != sink:
             C.run(["pactl", "set-sink-volume", n, v], timeout=8)
 
@@ -246,7 +254,7 @@ def watch_session():
             pass
 
 def watch_audio():
-    state = {"dirty": False, "fresh": False, "src": False, "route": None, "src_seen": {}, "boot": time.time(), "hold": {}}
+    state = {"dirty": False, "fresh": False, "src": False, "route": None, "src_seen": {}, "boot": time.time(), "hold": {}, "applied": 0, "user_pick": False}
     lock = threading.Lock()
     def settle(n, port, vol, first_vol):
         try:
@@ -288,7 +296,22 @@ def watch_audio():
                     all_sinks = sinks()
                 for n in [k for k, t in state["hold"].items() if now - t > 6]:
                     state["hold"].pop(n, None)
-                audiodev.remember(data, all_sinks, default, hold=tuple(state["hold"]))
+                age = now - state["boot"]
+                saved = data.get("sink") or ""
+                if src and age > 20 and saved and default and default != saved and now - state.get("applied", 0) > 3:
+                    state["user_pick"] = True
+                keep = age < 90 and bool(saved) and saved != default and not state.get("user_pick")
+                audiodev.remember(data, all_sinks, default, hold=tuple(state["hold"]), keep_choice=keep)
+                chosen = audiodev.choose_sink(data, all_sinks)
+                if chosen and chosen != default and not state.get("user_pick"):
+                    C.run(["pactl", "set-default-sink", chosen], timeout=8)
+                    port = data.get("port") or ""
+                    if port:
+                        for item in all_sinks:
+                            if item["name"] == chosen and item.get("port") != port:
+                                C.run(["pactl", "set-sink-port", chosen, port], timeout=8)
+                                break
+                    state["applied"] = time.time()
                 audiodev.save_audio(AUDIO, data)
                 if src:
                     srcs = short_names("sources")
@@ -543,27 +566,6 @@ def wallet_cleanup():
             pass
 
 
-def hold_wallet_quiet():
-    # Служба секретов остаётся: в ней ключ логинов Вивальди и пароль Wi-Fi.
-    # Само окно при входе не открываем. Вивальди по-прежнему может спросить
-    # этот ключ, когда он ей нужен. Жёлтую кнопку потери данных нажимать нельзя.
-    path = os.path.expanduser("~/.config/kwalletrc")
-    kwallet_write(path, True)
-    try:
-        body = open(path, encoding="utf-8").read().replace("Launch=true", "Launch=false", 1)
-        open(path, "w", encoding="utf-8").write(body)
-    except OSError:
-        pass
-    C.kwrite("kwalletrc", "Wallet", "Enabled", "true")
-    C.kwrite("kwalletrc", "Wallet", "SecretServiceEnabled", "true")
-    C.kwrite("kwalletrc", "Wallet", "Leave Open", "true")
-    C.kwrite("kwalletrc", "Wallet", "Launch", "false")
-    for rc in ("kded5rc", "kded6rc"):
-        C.kwrite(rc, "Module-kwallet", "autoload", "false")
-        C.kwrite(rc, "Module-kwalletd", "autoload", "false")
-    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "false"], timeout=8)
-
-
 def apply_wallet(on):
     kwallet_write(os.path.expanduser("~/.config/kwalletrc"), on)
     for key, value in kwallet_text(on):
@@ -590,15 +592,75 @@ def kwallet(on):
     on = bool(on)
     browser_flags()
     wallet_cleanup()
-    # Службу нельзя гасить. В ней ключ уже сохранённых логинов Вивальди:
-    # без неё браузер предлагает стереть логины и cookie. Там же пароль Wi-Fi,
-    # и без службы авторизация сети крутится без окна. Выключенная галочка
-    # убирает лишний пароль после отпечатка и не открывает окно сама при входе.
-    if on:
-        apply_wallet(True)
-    else:
-        hold_wallet_quiet()
+    # Галочка в меню и «Параметры системы» пишут в один файл бумажника.
+    # Выключать там службу нельзя: Вивальди хранит в ней ключ логинов и cookie
+    # и без неё показывает «Дешифровка прервана». Галочка только пропускает
+    # лишний пароль после отпечатка и выписывает пароль Wi-Fi в файл сети.
+    apply_wallet(True)
+    if not on:
         wifi_save()
+
+
+def wallet_unlocked():
+    # status не запускает службу. isOpen у незапущенного бумажника не вызываем:
+    # иначе окно пароля появится само.
+    for dest in ("org.kde.kwalletd6", "org.kde.kwalletd5"):
+        if C.run(["busctl", "--user", "status", dest], timeout=5).returncode != 0:
+            continue
+        opened = C.run(["busctl", "--user", "call", dest, "/modules/kwalletd6" if dest.endswith("6") else "/modules/kwalletd5", "org.kde.KWallet", "isOpen", "s", "kdewallet"], timeout=5)
+        if opened.returncode == 0 and "true" in (opened.stdout or "").lower():
+            return True
+    return False
+
+
+def connect_saved_wifi():
+    # После пароля бумажника NetworkManager уже знает ключ сети, но само
+    # подключение не нажимает. USB и кабель здесь не отключаются.
+    shown = C.run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"], timeout=8)
+    wifi = []
+    for line in (shown.stdout or "").splitlines():
+        dev, _, rest = line.partition(":")
+        kind, _, state = rest.partition(":")
+        if kind != "wifi" or not dev or "/" in dev:
+            continue
+        wifi.append(state.lower())
+    if not wifi or any(item.startswith("connected") or item.startswith("100") for item in wifi):
+        return
+    listed = C.run(["nmcli", "-t", "-f", "UUID,TYPE,TIMESTAMP", "connection", "show"], timeout=8)
+    best, best_ts = "", -1
+    for line in (listed.stdout or "").splitlines():
+        parts = line.split(":")
+        if len(parts) < 3:
+            continue
+        uuid, kind, ts = parts[0], parts[1], parts[2]
+        if kind not in ("802-11-wireless", "wifi") or not uuid:
+            continue
+        try:
+            stamp = int(ts)
+        except ValueError:
+            stamp = 0
+        if stamp >= best_ts:
+            best, best_ts = uuid, stamp
+    if best:
+        C.run(["nmcli", "connection", "up", best], timeout=40)
+
+
+def wifi_after_unlock():
+    def loop():
+        armed = False
+        for _ in range(90):
+            time.sleep(2)
+            try:
+                if not wallet_unlocked():
+                    continue
+                if armed:
+                    continue
+                armed = True
+                wifi_save()
+                connect_saved_wifi()
+            except Exception:
+                pass
+    threading.Thread(target=loop, daemon=True).start()
 
 def chooser():
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox
@@ -930,8 +992,17 @@ def on_login():
         pass
     try:
         kwallet(bool(s.get("kwallet", True)))
+        wifi_after_unlock()
     except Exception:
         pass
+    def later_audio():
+        for delay in (8, 20):
+            time.sleep(delay)
+            try:
+                restore_audio()
+            except Exception:
+                pass
+    threading.Thread(target=later_audio, daemon=True).start()
     try:
         import hotkeys
         hotkeys.ensure_daemon()

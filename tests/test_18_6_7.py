@@ -682,6 +682,29 @@ class Clone(unittest.TestCase):
             clone.remove(made["id"], home)
             self.assertFalse(os.path.exists(os.path.join(home, "DOS", "Копии", made["id"])))
 
+    def test_audio_choice_survives_other_device(self):
+        import audiodev
+        usb = "alsa_output.usb-Kenshi_H2-00.analog-stereo"
+        pci = "alsa_output.pci-0000_00_1f.3.analog-stereo"
+        data = {"sink": "", "volumes": {}}
+        both = [
+            {"name": usb, "port": "analog-output-headphones", "volume": "40%"},
+            {"name": pci, "port": "analog-output-speaker", "volume": "70%"},
+        ]
+        audiodev.remember(data, both, usb)
+        self.assertEqual(data["sink"], usb)
+        self.assertEqual(data["port"], "analog-output-headphones")
+        self.assertEqual(data["device"], "usb:Kenshi_H2-00")
+        audiodev.remember(data, both, pci, keep_choice=True)
+        self.assertEqual(data["sink"], usb)
+        self.assertEqual(audiodev.choose_sink(data, both), usb)
+        self.assertEqual(audiodev.choose_sink(data, [both[1]]), "")
+        renamed = [{"name": "alsa_output.usb-Kenshi_H2-00.iec958-stereo", "port": "analog-output-headphones", "volume": "40%"}]
+        self.assertEqual(audiodev.choose_sink(data, renamed), renamed[0]["name"])
+        audiodev.remember(data, both, pci)
+        self.assertEqual(data["sink"], pci)
+        self.assertEqual(data["device"], "")
+
     def test_kickoff_keeps_search_for_a_minute(self):
         import kickoff_memory
         self.assertTrue(kickoff_memory.kept(1_000, 61_000))
@@ -759,9 +782,9 @@ class Clone(unittest.TestCase):
             self.assertNotIn("Exec=/bin/true", session_src)
             self.assertNotIn("unloadModule", session_src)
             self.assertNotIn("apply_wallet(False)", session_src)
-            self.assertIn("def hold_wallet_quiet", session_src)
-            self.assertIn('C.kwrite("kwalletrc", "Wallet", "SecretServiceEnabled", "true")', session_src)
-            self.assertIn('C.kwrite("kwalletrc", "Wallet", "Launch", "false")', session_src)
+            self.assertNotIn("def hold_wallet_quiet", session_src)
+            self.assertNotIn("Launch=false", session_src.split("def kwallet(")[1].split("def wallet_unlocked")[0])
+            self.assertIn("apply_wallet(True)", session_src.split("def kwallet(")[1].split("def wallet_unlocked")[0])
             self.assertIn("kate --block %1", session_src)
             bundle = read(ROOT, "packaging", "matryoshka-upgrade", "make-bundle.sh")
             self.assertIn("opt/ivankod/", bundle)

@@ -49,6 +49,8 @@ for a in "$@"; do
   esac
 done
 if [ -n "$URL" ] && [ -x "$DIR/ZoomLauncher" ]; then
-  exec "$DIR/ZoomLauncher" "$URL" 2>>"$E"
+  "$DIR/ZoomLauncher" "$URL" 2>>"$E"
+  status=$?
+  [ "$status" -eq 0 ] && exit 0
 fi
 exec "$BIN" $GPU "$@" 2>>"$E"
