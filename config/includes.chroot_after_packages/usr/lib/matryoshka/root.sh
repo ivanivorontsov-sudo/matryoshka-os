@@ -23,6 +23,23 @@ case "$cmd" in
   av-update)
     if systemctl is-active -q clamav-freshclam; then systemctl restart clamav-freshclam; sleep 25; tail -n 25 /var/log/clamav/freshclam.log; else freshclam; fi ;;
   av-start) systemctl start clamav-daemon.socket >/dev/null 2>&1; systemctl reset-failed clamav-daemon.service >/dev/null 2>&1; systemctl start clamav-daemon.service; systemctl is-active clamav-daemon.service ;;
+  av-pause) [ -f /etc/matryoshka/av-disabled ] && exit 0; systemctl stop clamav-daemon.service >/dev/null 2>&1; systemctl start clamav-daemon.socket >/dev/null 2>&1; echo "движок остановлен, чтобы виртуальной машине хватило памяти" ;;
+  av-off-begin) python3 /usr/lib/matryoshka/avoff.py begin "$U" "$H" ;;
+  av-off-finish)
+    case "$1" in /tmp/matryoshka-avoff-*) ;; *) echo "ответ не принят"; exit 2 ;; esac
+    case "$1" in *..*) echo "ответ не принят"; exit 2 ;; esac
+    python3 /usr/lib/matryoshka/avoff.py finish "$U" "$1" ;;
+  av-on) python3 /usr/lib/matryoshka/avoff.py enable ;;
+  av-token)
+    case "$1" in bluetooth|wifi|usb) ;; *) echo "нужно bluetooth, wifi или usb"; exit 2 ;; esac
+    [[ "$2" =~ ^[0-9A-Fa-f:.]+$ ]] || { echo "устройство не выбрано"; exit 2; }
+    MATRYOSHKA_HOME="$H" python3 /usr/lib/matryoshka/avoff.py enroll "$1" "$2" "${3:-$2}" ;;
+  waydroid-net) python3 /usr/lib/matryoshka/waydroid_net.py apply ;;
+  wifi-save) case "${1:-}" in
+      --stdin) python3 /usr/lib/matryoshka/wifi_secret.py --stdin ;;
+      --system) python3 /usr/lib/matryoshka/wifi_secret.py --system </dev/null ;;
+      *) python3 /usr/lib/matryoshka/wifi_secret.py </dev/null ;;
+    esac ;;
   av-log) tail -n 60 /var/log/clamav/freshclam.log 2>/dev/null || journalctl -u clamav-freshclam -n 60 --no-pager ;;
   snitch-on) systemctl enable --now opensnitch.service; echo "OpenSnitch включён" ;;
   snitch-off) systemctl disable --now opensnitch.service; echo "OpenSnitch выключен" ;;
@@ -152,7 +169,7 @@ case "$cmd" in
     echo "== Android-слой"; [ -d /var/lib/waydroid/images ] && waydroid upgrade || echo "не установлен"
     echo "== Антивирус"; freshclam --quiet || echo "базы ClamAV не обновились"
     t=$(mktemp -d); if curl -fsSL -o $t/y.zip "$(curl -fsSL https://api.github.com/repos/YARAHQ/yara-forge/releases/latest | python3 -c 'import sys,json;print([a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if a["name"]=="yara-forge-rules-core.zip"][0])')" && unzip -o -j -q $t/y.zip '*yara-rules-core.yar' -d $t && python3 /usr/lib/matryoshka/yarafilter.py $t/yara-rules-core.yar >/dev/null && yara -w $t/yara-rules-core.yar /etc/hostname >/dev/null 2>&1; then cp $t/yara-rules-core.yar /usr/share/matryoshka/yara/; echo "правила YARA обновлены"; fi
-    if curl -fsSL -o $t/hosts https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts && [ $(grep -c '^0\.0\.0\.0 ' $t/hosts) -gt 10000 ]; then sed -i '/# StevenBlack unified hosts/,$d' /etc/hosts; { echo "# StevenBlack unified hosts"; grep -E '^0\.0\.0\.0 ' $t/hosts | grep -v ' 0\.0\.0\.0$'; } >> /etc/hosts; echo "список блокировки рекламы обновлён"; fi
+    if curl -fsSL -o $t/hosts https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts && [ $(grep -c '^0\.0\.0\.0 ' $t/hosts) -gt 10000 ]; then sed -i '/# StevenBlack unified hosts/,$d' /etc/hosts; { echo "# StevenBlack unified hosts"; grep -E '^0\.0\.0\.0 ' $t/hosts | grep -v ' 0\.0\.0\.0$' | grep -v -E ' ([a-z0-9.-]+\.)?zoom\.(us|com)$'; } >> /etc/hosts; echo "список блокировки рекламы обновлён"; fi
     rm -rf $t
     echo "== Прошивки и ключи Secure Boot (UEFI CA 2023, dbx)"; [ -f /var/lib/matryoshka/fwupd-consent ] && { fwupdmgr refresh --force; fwupdmgr update -y --no-reboot-check; } || echo "пропущено (нет согласия)"
     mokutil --db 2>/dev/null | grep -q "UEFI CA 2023" && echo "ключ UEFI CA 2023 есть" || echo "ключа UEFI CA 2023 нет — обновите прошивку/ключи через fwupd или у производителя" ;;
@@ -255,6 +272,9 @@ case "$cmd" in
           echo "ufw: исходящие соединения запрещены вашей политикой. Матрёшка не открывает порты для всей системы; разрешите Zoom сами (TCP 443, 8801-8802, UDP 8801-8810) или верните исходящую политику allow" ;;
         ntp)
           timedatectl set-ntp true && systemctl restart systemd-timesyncd 2>/dev/null; echo "синхронизация времени включена" ;;
+        userns)
+          sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 >/dev/null
+          echo "окно входа Zoom может запустить свою песочницу" ;;
         chown)
           for f in "$H/.zoom" "$H/.config/zoomus.conf" "$H/.config/zoom.conf" "$H/.cache/zoom"; do [ -e "$f" ] && chown -R "$U:" "$f" && chmod -R u+rwX "$f"; done
           echo "права на профиль Zoom возвращены $U" ;;

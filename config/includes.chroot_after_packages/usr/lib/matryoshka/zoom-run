@@ -2,8 +2,31 @@
 EXE=$1
 shift
 [ -x "$EXE" ] || { notify-send -a Матрёшка -i camera-web "Zoom" "Zoom не найден: $EXE. Запустите matryoshka zoom-doctor --fix" 2>/dev/null; exit 1; }
+DIR=$(CDPATH= cd -- "$(dirname "$EXE")" && pwd) || exit 1
 unset QT_PLUGIN_PATH QML2_IMPORT_PATH QML_IMPORT_PATH QT_STYLE_OVERRIDE QT_QPA_PLATFORMTHEME QT_QUICK_CONTROLS_STYLE LD_LIBRARY_PATH LD_PRELOAD OPENSSL_CONF OPENSSL_MODULES OPENSSL_ENGINES GTK_MODULES
 export QT_QPA_PLATFORM=xcb
+[ -d "$DIR/Qt/plugins" ] && export QT_PLUGIN_PATH="$DIR/Qt/plugins"
+LIB="$DIR"
+[ -d "$DIR/Qt/lib" ] && LIB="$LIB:$DIR/Qt/lib"
+[ -d "$DIR/cef" ] && LIB="$LIB:$DIR/cef"
+export LD_LIBRARY_PATH="$LIB"
+# Вход через Google открывает обычный браузер. Если он унаследует библиотеки Zoom, окно есть, а страницы пустые.
+CLEAN="$HOME/.cache/matryoshka/zoom-bin"
+mkdir -p "$CLEAN"
+for b in xdg-open gio kde-open5 kde-open; do
+  real=""
+  for cand in /usr/bin/$b /usr/local/bin/$b; do
+    [ -x "$cand" ] && real=$cand && break
+  done
+  [ -n "$real" ] || continue
+  cat > "$CLEAN/$b" << EOF
+#!/bin/sh
+unset LD_LIBRARY_PATH LD_PRELOAD QT_PLUGIN_PATH QML2_IMPORT_PATH QML_IMPORT_PATH QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE QT_QPA_PLATFORM OPENSSL_CONF OPENSSL_MODULES OPENSSL_ENGINES GTK_MODULES
+exec $real "\$@"
+EOF
+  chmod 755 "$CLEAN/$b"
+done
+export PATH="$CLEAN:$PATH"
 [ -z "$SSL_CERT_FILE" ] && [ -f /etc/ssl/certs/ca-certificates.crt ] && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 [ -z "$SSL_CERT_DIR" ] && [ -d /etc/ssl/certs ] && export SSL_CERT_DIR=/etc/ssl/certs
 L="$HOME/.zoom/logs"
@@ -11,5 +34,174 @@ mkdir -p "$L"
 printf '%s %s %s\n' "$(date -Is)" "$EXE" "$(printf '%s' "$*" | sed -E 's/(pwd|tk|zak|uname)=[^&]*/\1=…/g')" >> "$L/matryoshka-run.log"
 E="$L/matryoshka-stderr.log"
 [ -f "$E" ] && [ "$(stat -c %s "$E" 2>/dev/null || echo 0)" -gt 1048576 ] && mv -f "$E" "$E.1"
-cd "$(dirname "$EXE")" || exit 1
-exec "$EXE" "$@" 2>>"$E"
+BIN="$DIR/zoom"
+[ -x "$BIN" ] || BIN="$EXE"
+cd "$DIR" || exit 1
+GPU=""
+# Виртуальная видеокарта (Virtio, QXL, Bochs, VMware, VirtualBox, Hyper-V)
+# не тянет GL/Vulkan в ZoomWebviewHost: CEF падает, Xorg сбрасывает клиентов,
+# а встреча отвечает «неизвестная ошибка 100000400» вместо окна с номером.
+# Тот же запасной путь включается файлом zoom-no-gpu, переменной
+# MATRYOSHKA_ZOOM_GPU=0 и повторным запуском после падения webview.
+software_gpu() {
+  [ "$MATRYOSHKA_ZOOM_GPU" = "0" ] && return 0
+  [ -n "$MATRYOSHKA_ZOOM_GPU_RETRY" ] && return 0
+  [ -f "$HOME/.config/matryoshka/zoom-no-gpu" ] && return 0
+  for ue in /sys/class/drm/card*/device/uevent; do
+    [ -r "$ue" ] || continue
+    grep -qiE 'DRIVER=(virtio_gpu|virtio-pci|virtio|qxl|bochs-drm|bochs|vmwgfx|vboxvideo|hyperv_fb|hyperv)' "$ue" && return 0
+  done
+  for v in /sys/bus/pci/devices/*/vendor; do
+    [ -r "$v" ] || continue
+    vendor=$(cat "$v" 2>/dev/null || true)
+    class=$(cat "$(dirname "$v")/class" 2>/dev/null || true)
+    case "$class" in
+      0x03*) ;;
+      *) continue ;;
+    esac
+    # 1af4 virtio, 1b36 qxl, 1234 bochs/stdvga, 15ad vmware, 80ee virtualbox, 1414 hyper-v
+    case "$vendor" in
+      0x1af4|0x1b36|0x1234|0x15ad|0x80ee|0x1414) return 0 ;;
+    esac
+  done
+  return 1
+}
+# Правка zoomus.conf побайтно: строки, которых правка не касается, не меняются
+# (18.6.17 перекодировал файл, а испорченный zoomus.conf даёт ошибку 5003 и
+# «Timeout» при входе). Перед первой правкой — копия zoomus.conf.matryoshka-bak.
+zoom_conf() {
+  python3 - "$HOME/.config/zoomus.conf" "$@" << 'PY'
+import os, shutil, sys
+p = sys.argv[1]
+want = [a.encode() .split(b"=", 1) for a in sys.argv[2:] if "=" in a]
+raw = open(p, "rb").read() if os.path.isfile(p) else b""
+if b"\0" in raw:
+    sys.exit(0)
+if raw.strip() and b"[General]" not in raw:
+    sys.exit(0)
+lines = raw.splitlines() if raw.strip() else [b"[General]"]
+out, have = [], set()
+for line in lines:
+    key = line.split(b"=", 1)[0] if b"=" in line else None
+    hit = [v for k, v in want if k == key]
+    if hit:
+        out.append(key + b"=" + hit[0]); have.add(key)
+    else:
+        out.append(line)
+add = [k + b"=" + v for k, v in want if k not in have]
+if add:
+    i = next((n for n, l in enumerate(out) if l.strip() == b"[General]"), None)
+    out[i + 1:i + 1] = add
+new = b"\n".join(out) + b"\n"
+if new == raw:
+    sys.exit(0)
+bak = p + ".matryoshka-bak"
+if raw and not os.path.exists(bak):
+    shutil.copy2(p, bak)
+os.makedirs(os.path.dirname(p), exist_ok=True)
+tmp = p + ".matryoshka-tmp"
+open(tmp, "wb").write(new)
+os.replace(tmp, p)
+PY
+}
+apply_software() {
+  # Qt с QT_XCB_GL_INTEGRATION=none вообще не создаёт контекст (ни GLX, ни EGL),
+  # а пустой VK_ICD_FILENAMES ломает ANGLE: нет VK_KHR_xcb_surface, webview падает.
+  # Поэтому запасной путь — программный GL (llvmpipe) и ANGLE на GL, не на Vulkan.
+  export LIBGL_ALWAYS_SOFTWARE=1
+  export GALLIUM_DRIVER=llvmpipe
+  export ANGLE_DEFAULT_PLATFORM=gl
+  GPU="--disable-gpu --disable-gpu-sandbox"
+  mkdir -p "$HOME/.config" "$HOME/.config/matryoshka"
+  # Метка пишется только для виртуальной видеокарты. Повтор после быстрого
+  # выхода её не ставит: на настоящей видеокарте программный GL навсегда не нужен.
+  [ "$1" = vm ] && printf 'vm\n' > "$HOME/.config/matryoshka/zoom-no-gpu"
+  zoom_conf enableHardwareAcc=false enableHardwareAcceleration=false
+}
+virtual_gpu() {
+  for ue in /sys/class/drm/card*/device/uevent; do
+    [ -r "$ue" ] || continue
+    grep -qiE 'DRIVER=(virtio_gpu|virtio-pci|virtio|qxl|bochs-drm|bochs|vmwgfx|vboxvideo|hyperv_fb|hyperv)' "$ue" && return 0
+  done
+  return 1
+}
+# 18.6.17 ставил пустую метку zoom-no-gpu после любого быстрого выхода
+# ZoomLauncher (а он и при передаче ссылки уже запущенному клиенту выходит
+# сразу). На настоящей видеокарте такая метка снимается. Метку zoom-doctor
+# («1») и переменную MATRYOSHKA_ZOOM_GPU=0 это не трогает.
+NG="$HOME/.config/matryoshka/zoom-no-gpu"
+if [ -f "$NG" ] && [ ! -s "$NG" ] && ! virtual_gpu; then
+  rm -f "$NG"
+fi
+# 18.6.17 на настоящей видеокарте после быстрого выхода ZoomLauncher
+# переписывал zoomus.conf (enableHardwareAcceleration — ключ Матрёшки, не Zoom).
+# Такой файл один раз откладывается в сторону: Zoom создаёт чистый, вход и
+# подключение снова работают. Копия: zoomus.conf.matryoshka-18.6.17.
+ZC="$HOME/.config/zoomus.conf"
+ZM="$HOME/.config/matryoshka/zoomus-reset-18.6.18"
+if [ ! -f "$ZM" ]; then
+  mkdir -p "$HOME/.config/matryoshka"
+  if [ -f "$ZC" ] && ! virtual_gpu && grep -q '^enableHardwareAcceleration=false' "$ZC" 2>/dev/null \
+     && ! pgrep -u "$(id -u)" -x zoom >/dev/null 2>&1; then
+    mv -f "$ZC" "$ZC.matryoshka-18.6.17"
+    printf '%s zoomus.conf 18.6.17 отложен в %s\n' "$(date -Is)" "$ZC.matryoshka-18.6.17" >> "$L/matryoshka-run.log"
+  fi
+  : > "$ZM"
+fi
+# Сеанс Plasma на Wayland: демонстрация экрана идёт через портал и PipeWire.
+if [ "$XDG_SESSION_TYPE" = wayland ]; then
+  zoom_conf enableWaylandShare=true
+fi
+SOFT=0
+software_gpu && SOFT=1
+if [ "$SOFT" = 1 ]; then
+  if virtual_gpu; then apply_software vm; else apply_software; fi
+fi
+printf '%s software-gpu=%s\n' "$(date -Is)" "$SOFT" >> "$L/matryoshka-run.log"
+# ZoomLauncher из пакета Zoom 7.2.5 знает только zoommtg:// и zoomus://.
+# Ссылку входа zoomprc:// (её отдаёт страница Google «Запустить Zoom») он
+# не содержит: отвечает успехом и не передаёт токен, окно Workplace крутится.
+# Такую ссылку принимает сам клиент zoom. Встречу по-прежнему отдаёт ZoomLauncher:
+# он передаёт zoommtg:// уже запущенному клиенту. Флаги --disable-gpu ZoomLauncher
+# не пробрасывает, поэтому на слабой графике хватает переменных окружения выше —
+# их наследует и сам клиент, и ZoomWebviewHost (CEF уходит на swiftshader).
+URL=""
+LAUNCH=""
+for a in "$@"; do
+  case "$a" in
+    zoommtg:*|zoomus:*) URL=$a; LAUNCH=1 ;;
+    zoomphonecall:*|zoomprc:*|zoomphonesms:*|zoomcontactcentercall:*) URL=$a ;;
+  esac
+done
+# Повтор без GPU нужен только для первого запуска клиента или встречи по номеру.
+# Ссылку входа (zoommtg://zoom.us/google?code=…, zoomprc://…, sso, token)
+# повторно не отправлять: код одноразовый, второй раз Zoom отвечает ошибкой входа.
+RUNNING=""
+pgrep -u "$(id -u)" -f "$DIR/zoom( |\$)" >/dev/null 2>&1 && RUNNING=1
+pgrep -u "$(id -u)" -x zoom >/dev/null 2>&1 && RUNNING=1
+RETRY_OK=1
+[ -n "$RUNNING" ] && RETRY_OK=""
+if [ -n "$URL" ]; then
+  case "$URL" in
+    zoommtg://*/join\?*confno=*|zoommtg://*/start\?*confno=*|zoomus://*/join\?*confno=*|zoomus://*/start\?*confno=*) ;;
+    *) RETRY_OK="" ;;
+  esac
+fi
+start=$(date +%s)
+if [ -n "$LAUNCH" ] && [ -x "$DIR/ZoomLauncher" ]; then
+  "$DIR/ZoomLauncher" "$URL" 2>>"$E"
+  status=$?
+else
+  "$BIN" $GPU "$@" 2>>"$E"
+  status=$?
+fi
+end=$(date +%s)
+# Webview умер сигналом или клиент сразу вышел — один повтор без GPU.
+if [ "$SOFT" != 1 ] && [ -z "$MATRYOSHKA_ZOOM_GPU_RETRY" ] && [ -n "$RETRY_OK" ]; then
+  if [ "$status" -gt 128 ] || { [ "$status" -ne 0 ] && [ $((end - start)) -lt 8 ]; }; then
+    export MATRYOSHKA_ZOOM_GPU_RETRY=1
+    export MATRYOSHKA_ZOOM_GPU=0
+    exec "$0" "$EXE" "$@"
+  fi
+fi
+exit "$status"

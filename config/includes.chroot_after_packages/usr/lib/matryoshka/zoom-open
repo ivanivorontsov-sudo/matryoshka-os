@@ -1,0 +1,49 @@
+#!/bin/sh
+# Кнопка «Запустить Zoom» в браузере открывает zoommtg://. Этот ярлык передаёт ссылку клиенту.
+URL=""
+for a in "$@"; do
+  case "$a" in
+    zoommtg:*|zoomus:*|zoomphonecall:*|zoomprc:*) URL=$a ;;
+    https://*zoom.us/j/*|https://*zoom.us/w/*|https://*zoom.us/s/*|http://*zoom.us/j/*|https://*zoom.com/j/*)
+      # Обычная ссылка приглашения https://zoom.us/j/НОМЕР?pwd=… превращается
+      # в zoommtg://, иначе клиент её не примет. Неверный номер Zoom покажет
+      # своим окном «Invalid meeting ID».
+      [ -n "$URL" ] && continue
+      URL=$(printf '%s' "$a" | python3 -c '
+import sys, urllib.parse as u
+p = u.urlsplit(sys.stdin.read().strip())
+parts = [x for x in p.path.split("/") if x]
+num = "".join(ch for ch in (parts[1] if len(parts) > 1 else "") if ch.isdigit())
+if not num:
+    sys.exit(1)
+q = u.parse_qs(p.query)
+out = [("action", "join"), ("confno", num)]
+if q.get("pwd"):
+    out.append(("pwd", q["pwd"][0]))
+host = p.hostname or "zoom.us"
+print("zoommtg://%s/join?%s" % (host, u.urlencode(out)))
+' 2>/dev/null) || URL=""
+      ;;
+  esac
+done
+EXE=""
+for c in /opt/zoom/ZoomLauncher /usr/bin/zoom "$HOME/zoom/ZoomLauncher" "$HOME/.local/opt/zoom/ZoomLauncher"; do
+  if [ -x "$c" ]; then EXE=$c; break; fi
+done
+if [ -z "$EXE" ]; then
+  for d in "$HOME/Программы" "$HOME/Загрузки" "$HOME/Downloads" "$HOME/Programs" "$HOME/.local/opt"; do
+    [ -d "$d" ] || continue
+    hit=$(find "$d" -maxdepth 3 -type f -name ZoomLauncher -perm -111 2>/dev/null | head -n 1)
+    if [ -n "$hit" ]; then EXE=$hit; break; fi
+  done
+fi
+mkdir -p "$HOME/.zoom/logs"
+printf '%s exe=%s url=%s\n' "$(date -Is)" "${EXE:-нет}" "$URL" >> "$HOME/.zoom/logs/matryoshka-url.log"
+if [ -z "$EXE" ]; then
+  notify-send -a Матрёшка -i camera-web "Zoom" "Клиент Zoom не найден. Команда: matryoshka zoom-doctor --download latest-deb" 2>/dev/null
+  exit 1
+fi
+if [ -n "$URL" ]; then
+  exec /usr/lib/matryoshka/zoom-run "$EXE" "$URL"
+fi
+exec /usr/lib/matryoshka/zoom-run "$EXE"

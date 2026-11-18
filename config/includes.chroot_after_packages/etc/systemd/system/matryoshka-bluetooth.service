@@ -1,0 +1,13 @@
+[Unit]
+Description=Matryoshka Bluetooth retry after the adapter appears
+After=systemd-udevd.service bluetooth.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/matryoshka/bluetooth-boot.sh
+RemainAfterExit=yes
+TimeoutStartSec=20
+
+[Install]
+WantedBy=multi-user.target

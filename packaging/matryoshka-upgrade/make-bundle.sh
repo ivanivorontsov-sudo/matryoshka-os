@@ -2,7 +2,23 @@
 set -e
 V=$1; R=$(cd "$(dirname "$0")/../.." && pwd); O=${2:-$R/out}; mkdir -p $O
 T=$(mktemp -d); mkdir -p $T/includes
-rsync -a --exclude=__pycache__ --exclude=/root/extra-debs --exclude=/etc/calamares --exclude=/etc/sddm.conf.d --exclude=/usr/share/applications/matryoshka-install.desktop --exclude=/etc/systemd/system/matryoshka-autotest.service ${INC:-$R/config/includes.chroot_after_packages}/ $T/includes/
+rsync -a \
+  --exclude=__pycache__ \
+  --exclude=/root/extra-debs \
+  --exclude=/etc/calamares \
+  --exclude=/etc/sddm.conf.d \
+  --exclude=/usr/share/applications/matryoshka-install.desktop \
+  --exclude=/etc/systemd/system/matryoshka-autotest.service \
+  --exclude=/usr/share/matryoshka/clamav/ \
+  --exclude=/usr/share/matryoshka/yara/ \
+  --exclude=/usr/share/matryoshka/hosts/ \
+  --exclude=/usr/share/matryoshka/apk/ \
+  --exclude=/usr/local/bin/ponyatny \
+  --exclude=/opt/ivankod/ \
+  --exclude=/opt/ivan/ \
+  --exclude=/opt/matryoshka-voice/ \
+  --exclude=/usr/share/waydroid-extra/ \
+  ${INC:-$R/config/includes.chroot_after_packages}/ $T/includes/
 [ -d $T/includes/etc/sudoers.d ] && chmod 0440 $T/includes/etc/sudoers.d/*
 cat $R/config/package-lists/matryoshka.list.chroot $R/config/package-lists/hardware.list.chroot 2>/dev/null | grep -v '^#' | tr ' ' '\n' | grep . | grep -vxE 'firmware-ipw2x00|firmware-ivtv|intel-media-va-driver' > $T/packages.list
 for f in ${EXTRA:-/nonexistent}/*.deb; do [ -f "$f" ] && dpkg-deb -f "$f" Package >> $T/packages.list; done

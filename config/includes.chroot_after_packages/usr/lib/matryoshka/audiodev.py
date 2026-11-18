@@ -102,9 +102,33 @@ def saved_volume(data, sink, port):
             return v
     return data.get("volumes", {}).get(vol_key(sink, port), "")
 
-def remember(data, sinks, default_sink, hold=()):
-    if default_sink and (real_sink(default_sink) or data.get("sink_virtual_ok")):
-        data["sink"] = default_sink
+def choose_sink(data, sinks):
+    by = {x["name"]: x for x in sinks or []}
+    saved = data.get("sink") or ""
+    if saved in by and not by[saved].get("dead"):
+        return saved
+    key = data.get("device") or ""
+    if not key:
+        return ""
+    for item in sinks or []:
+        if item.get("dead"):
+            continue
+        if dev_key(item["name"]) == key:
+            return item["name"]
+    return ""
+
+
+def remember(data, sinks, default_sink, hold=(), keep_choice=False):
+    saved = data.get("sink") or ""
+    if default_sink and not (keep_choice and saved and saved != default_sink):
+        if real_sink(default_sink) or data.get("sink_virtual_ok"):
+            data["sink"] = default_sink
+            for item in sinks:
+                if item["name"] != default_sink:
+                    continue
+                data["port"] = item.get("port") or ""
+                data["device"] = dev_key(default_sink) or ""
+                break
     for s in sinks:
         if s["volume"] and s["name"] not in hold:
             data["volumes"][vol_key(s["name"], s["port"])] = s["volume"]

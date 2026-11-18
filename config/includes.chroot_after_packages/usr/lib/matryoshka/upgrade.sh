@@ -40,6 +40,7 @@ rollback() {
     tar -C / -xpf "$PAMSNAP" && say "настройки входа (PAM) возвращены"
   fi
   systemctl daemon-reload; dpkg --configure -a >/dev/null 2>&1
+  if [ -n "${GRUBBAK:-}" ] && [ -f "$GRUBBAK" ]; then cp -a "$GRUBBAK" /boot/grub/grub.cfg && say "меню загрузки возвращено, пункт Windows на месте"; fi
   echo "ОБНОВЛЕНИЕ НЕ ПРИМЕНЕНО, файлы возвращены. Если система ведёт себя странно: загрузитесь с флешки через F12 и выполните полное восстановление (инструкция в программе)."
   type isoclean >/dev/null 2>&1 && isoclean
   exit 7
@@ -54,6 +55,7 @@ ls -1 /usr/share/applications/*.desktop 2>/dev/null > $W/desktop-before.txt
 say "Копирую файлы системы"
 rsync -aK --exclude=/etc/sddm.conf.d/ --exclude=/etc/hostname --exclude=/etc/hosts $W/includes/ / || rollback
 rm -f /etc/debian_chroot
+if [ -x /usr/lib/matryoshka/sudoers-fix.sh ]; then /usr/lib/matryoshka/sudoers-fix.sh; else chown root:root /etc/sudoers.d; chmod 0755 /etc/sudoers.d; chown root:root /etc/sudoers.d/*; chmod 0440 /etc/sudoers.d/*; fi
 if [ -s $W/remove.list ]; then
   say "Убираю то, что больше не входит в Матрёшку"
   awk '$1=="file"{print $2}' $W/remove.list >> $W/files.txt
@@ -140,6 +142,17 @@ if [ -x /usr/sbin/matryoshka-auth ]; then
 fi
 modprobe tun 2>/dev/null || true
 sysctl --system >/dev/null 2>&1 || true
+if [ -x /usr/lib/matryoshka/android-gl.sh ] && [ -d /var/lib/waydroid ]; then
+  /usr/lib/matryoshka/android-gl.sh || true
+  systemctl try-restart waydroid-container >/dev/null 2>&1 || true
+  i=0
+  while [ "$i" -lt 15 ]; do
+    [ -d /sys/class/net/waydroid0 ] && break
+    i=$((i + 1))
+    sleep 1
+  done
+  [ -d /sys/class/net/waydroid0 ] && python3 /usr/lib/matryoshka/waydroid_net.py apply || true
+fi
 FB=/usr/lib/matryoshka/fix-boot.sh; [ -x "$FB" ] || FB="$(dirname "$(readlink -f "$0")")/fix-boot.sh"; "$FB" || rollback
 findmnt --verify >/dev/null 2>&1 || { echo "проверка fstab не прошла"; rollback; }
 udevadm control --reload 2>/dev/null
@@ -159,16 +172,57 @@ if [ -n "$ISO" ]; then
   else echo "ВНИМАНИЕ: не удалось открыть образ, живая система на диск не скопирована; обновление системы при этом применено"; fi
 fi
 isoclean
-if ! update-grub >/tmp/matryoshka-grub.log 2>&1; then
-  echo "update-grub завершился с ошибкой:"; tail -n 15 /tmp/matryoshka-grub.log
-  if [ -x /etc/grub.d/43_matryoshka_live ]; then
-    chmod -x /etc/grub.d/43_matryoshka_live
-    if update-grub >>/tmp/matryoshka-grub.log 2>&1; then echo "ВНИМАНИЕ: меню загрузки обновлено без пункта живой системы (пришлите снимок этих строк)"
-    else chmod +x /etc/grub.d/43_matryoshka_live; tail -n 15 /tmp/matryoshka-grub.log; rollback; fi
-  else rollback; fi
+GRUBBAK=""
+WINBEFORE=0
+if [ -f /boot/grub/grub.cfg ]; then
+  GRUBBAK=/boot/grub/grub.cfg.matryoshka-before
+  cp -a /boot/grub/grub.cfg "$GRUBBAK"
+  WINBEFORE=$(grep -c -i windows /boot/grub/grub.cfg || true)
+fi
+if [ ! -f /boot/grub/fonts/unicode.pf2 ]; then
+  for f in /usr/share/grub/unicode.pf2 /boot/grub/unicode.pf2; do
+    if [ -f "$f" ]; then mkdir -p /boot/grub/fonts; cp -f "$f" /boot/grub/fonts/unicode.pf2; break; fi
+  done
+fi
+: >/tmp/matryoshka-grub.log
+GRUB_DONE=0
+update-grub >>/tmp/matryoshka-grub.log 2>&1 && GRUB_DONE=1
+if [ "$GRUB_DONE" = 0 ] && { [ -x /etc/grub.d/01_matryoshka_lang ] || [ -x /etc/grub.d/99_matryoshka_lang ]; }; then
+  echo "update-grub завершился с ошибкой:"; tail -n 20 /tmp/matryoshka-grub.log
+  [ -f /etc/grub.d/01_matryoshka_lang ] && chmod -x /etc/grub.d/01_matryoshka_lang
+  [ -f /etc/grub.d/99_matryoshka_lang ] && chmod -x /etc/grub.d/99_matryoshka_lang
+  echo "Повторяю сборку меню без переключателя языка"
+  update-grub >>/tmp/matryoshka-grub.log 2>&1 && GRUB_DONE=1
+  [ "$GRUB_DONE" = 1 ] && echo "ВНИМАНИЕ: меню обновлено без пункта English. Обновление системы при этом применено."
+fi
+if [ "$GRUB_DONE" = 0 ] && [ -x /etc/grub.d/43_matryoshka_live ]; then
+  echo "update-grub завершился с ошибкой:"; tail -n 20 /tmp/matryoshka-grub.log
+  chmod -x /etc/grub.d/43_matryoshka_live
+  echo "Повторяю сборку меню без пункта живой системы"
+  update-grub >>/tmp/matryoshka-grub.log 2>&1 && GRUB_DONE=1
+  [ "$GRUB_DONE" = 1 ] && echo "ВНИМАНИЕ: меню загрузки обновлено без пункта живой системы (пришлите снимок этих строк)"
+fi
+if [ "$GRUB_DONE" = 0 ]; then
+  echo "update-grub завершился с ошибкой:"; tail -n 20 /tmp/matryoshka-grub.log
+  [ -f /etc/grub.d/43_matryoshka_live ] && chmod +x /etc/grub.d/43_matryoshka_live
+  [ -f /etc/grub.d/01_matryoshka_lang ] && chmod +x /etc/grub.d/01_matryoshka_lang
+  [ -f /etc/grub.d/99_matryoshka_lang ] && chmod +x /etc/grub.d/99_matryoshka_lang
+  rollback
+fi
+WINAFTER=0
+[ -f /boot/grub/grub.cfg ] && WINAFTER=$(grep -c -i windows /boot/grub/grub.cfg || true)
+if [ "${WINBEFORE:-0}" -gt 0 ] && [ "${WINAFTER:-0}" -eq 0 ]; then
+  echo "В меню пропал пункт Windows. Возвращаю прежнее меню и откатываю обновление, чтобы не пришлось ставить Windows заново."
+  rollback
 fi
 grep -q "живая система" /boot/grub/grub.cfg && say "В меню загрузки есть пункт «Матрёшка — живая система»" || echo "ВНИМАНИЕ: пункта живой системы в меню нет (журнал /tmp/matryoshka-grub.log)"; grep -i "живая\|error\|ошибк" /tmp/matryoshka-grub.log | tail -n 5
+[ -x /etc/grub.d/01_matryoshka_lang ] || echo "ВНИМАНИЕ: нет /etc/grub.d/01_matryoshka_lang, русский текст меню может не включиться. Обновление из-за этого не откатываю."
+rm -f /var/lib/matryoshka/booting /var/lib/matryoshka/boot-reached
 cat $W/VERSION > /etc/matryoshka-version
 [ -x /usr/lib/matryoshka/apply-look.sh ] && /usr/lib/matryoshka/apply-look.sh || true
+python3 /usr/lib/matryoshka/kickoff_memory.py || true
+python3 /usr/lib/matryoshka/netmenu.py || true
+python3 /usr/lib/matryoshka/wallet_pam.py stop || true
+if [ -x /usr/lib/matryoshka/drop-vpn.sh ]; then /usr/lib/matryoshka/drop-vpn.sh || true; fi
 rm -rf $W
 echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО. Перезагрузите компьютер."

@@ -105,7 +105,13 @@ class Inst(QWidget):
         s = archiveinst.slug(self.pname)
         dp = "/usr/share/applications/matryoshka-archive-%s.desktop" % s
         prof = self.info.get("profile") or {}
-        if os.path.isfile(dp): archiveinst.register(dp, prof)
+        if os.path.isfile(dp):
+            archiveinst.register(dp, prof)
+            try:
+                import deskicons
+                deskicons.place(dp)
+            except Exception:
+                pass
         subprocess.Popen(["/usr/local/bin/" + s], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.o.setPlainText(text.strip() + "\n\nГОТОВО: значок в меню, команда в терминале: %s" % s)
     def lock(self, on):
@@ -189,6 +195,11 @@ class Inst(QWidget):
         dp = os.path.join(ad, "archive-%s.desktop" % name.replace(" ", "_"))
         open(dp, "w", encoding="utf-8").write(archiveinst.desktop_text(name, exe, icon, prof, os.path.dirname(exe)))
         archiveinst.register(dp, prof)
+        try:
+            import deskicons
+            deskicons.place(dp)
+        except Exception:
+            pass
         subprocess.Popen([exe], cwd=os.path.dirname(exe), start_new_session=True)
         extra = ("\nСсылки %s открываются в этой программе." % ", ".join(m.split("/")[-1] for m in prof["mime"] if m.startswith("x-scheme-handler/"))) if prof.get("mime") else ""
         self.o.setPlainText("Установлено: %s\nЗначок добавлен в меню.%s" % (exe, extra))

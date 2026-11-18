@@ -48,7 +48,7 @@ def settings():
                              "local_url": "http://127.0.0.1:11434", "local_model": "llama3.2",
                              "chat_url": "https://chat.qwen.ai/", "launcher": {"kind": "plasma", "target": ""}, "launcher_v": 3,
                              "extra_launcher": "off", "extra_launcher_apk": "", "waydroid_autostart": False, "startup_chooser": False,
-                             "hotkeys": "windows", "kwallet": True, "sound_enhance": True, "sound_preset": "Пространство-наушники", "install_scan": True})
+                             "hotkeys": "windows", "kwallet": True, "wallet_auto": True, "dos_file_bar": True, "sound_enhance": True, "sound_preset": "Пространство-наушники", "install_scan": True})
 
 def install_scan():
     return settings().get("install_scan", True) is not False
@@ -80,7 +80,7 @@ def run(args, **kw):
 
 ROOT_SH = "/usr/lib/matryoshka/root.sh"
 
-NOPASS = ("install-check", "drivers-check", "snap-list", "waydroid-share", "guest-mount", "sandbox-grant", "av-update", "av-start", "snap-create", "firstrun-done")
+NOPASS = ("install-check", "drivers-check", "snap-list", "waydroid-share", "guest-mount", "sandbox-grant", "av-update", "av-start", "av-pause", "waydroid-net", "snap-create", "firstrun-done", "wifi-save")
 
 def root_argv(*args):
     if args and args[0] in NOPASS and run(["sudo", "-n", "-l", ROOT_SH, *args], timeout=10).returncode == 0:

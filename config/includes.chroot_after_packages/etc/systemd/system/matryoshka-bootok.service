@@ -1,8 +1,8 @@
 [Unit]
 Description=Matryoshka boot success marker
-After=graphical.target
+After=display-manager.service sddm.service
 [Service]
 Type=oneshot
-ExecStart=/bin/rm -f /var/lib/matryoshka/booting
+ExecStart=/usr/lib/matryoshka/bootok.sh
 [Install]
 WantedBy=graphical.target

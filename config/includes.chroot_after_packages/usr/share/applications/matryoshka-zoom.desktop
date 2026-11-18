@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Zoom
+Name[ru]=Zoom
+Comment=Открыть ссылку Zoom из браузера
+Exec=/usr/lib/matryoshka/zoom-open %U
+Icon=camera-web
+Terminal=false
+NoDisplay=true
+MimeType=x-scheme-handler/zoommtg;x-scheme-handler/zoomus;x-scheme-handler/zoomphonecall;x-scheme-handler/zoomprc;
+X-KDE-Protocols=zoommtg;zoomus;zoomphonecall;zoomprc;
+StartupNotify=false

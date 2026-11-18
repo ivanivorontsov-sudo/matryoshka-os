@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/x-desktop;application/x-ms-dos-executable;application/vnd.microsoft.portable-executable;application/x-executable;application/vnd.appimage;application/x-bat;application/x-dos-com;
+Actions=clone;
+X-KDE-Priority=TopLevel
+
+[Desktop Action clone]
+Name=Клонировать программу
+Name[ru]=Клонировать программу
+Icon=edit-copy
+Exec=python3 /usr/lib/matryoshka/clone.py --file %f

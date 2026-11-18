@@ -1,0 +1,12 @@
+[Unit]
+Description=Меню Пуск помнит поиск минуту
+After=local-fs.target
+Before=display-manager.service sddm.service
+ConditionKernelCommandLine=!boot=live
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/lib/matryoshka/kickoff_memory.py
+ExecStart=/usr/bin/python3 /usr/lib/matryoshka/netmenu.py
+RemainAfterExit=yes
+[Install]
+WantedBy=graphical.target

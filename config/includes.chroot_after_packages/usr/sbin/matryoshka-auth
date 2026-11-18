@@ -81,9 +81,9 @@ login_stack() {
   [ "$fp" = 1 ] && [ -x "$EMPTY" ] && mod pam_exec.so && gate=1
   n=${#bio[@]}
   printf 'auth\t[success=%d default=ignore]\tpam_unix.so nullok\n' $((n + fp + gate + 1))
-  for ((i = 0; i < n; i++)); do printf 'auth\t[success=%d default=ignore]\t%s\n' $((n - i + fp + gate)) "${bio[$i]}"; done
-  [ "$gate" = 1 ] && printf 'auth\t[success=ignore default=1]\tpam_exec.so quiet expose_authtok %s\n' "$EMPTY"
-  [ "$fp" = 1 ] && printf 'auth\t[success=1 default=ignore]\tpam_fprintd.so %s\n' "$FP_LOGIN_ARGS"
+  [ "$gate" = 1 ] && printf 'auth\t[success=ignore default=%d]\tpam_exec.so quiet expose_authtok %s\n' $((fp + n)) "$EMPTY"
+  [ "$fp" = 1 ] && printf 'auth\t[success=%d default=ignore]\tpam_fprintd.so %s\n' $((n + 1)) "$FP_LOGIN_ARGS"
+  for ((i = 0; i < n; i++)); do printf 'auth\t[success=%d default=ignore]\t%s\n' $((n - i)) "${bio[$i]}"; done
   printf 'auth\trequisite\tpam_deny.so\n'
   printf 'auth\trequired\tpam_permit.so\n'
 }
@@ -140,7 +140,7 @@ apply_lock() {
   own kde-fingerprint
   v=$(vendor kde-smartcard)
   if [ "$(get FACE_LOCK "$(get FACE_LOGIN 0)")" = 1 ] && [ -f "$HOWDY" ] && mod pam_python.so && [ -n "$v" ]; then
-    sed -e '/^#\?auth[[:space:]].*pam_sss\.so/d' -e '/^#auth[[:space:]]/d' -e "s#^\(auth[[:space:]]\+requisite[[:space:]]\+pam_nologin\.so.*\)#\1\nauth\trequired\tpam_python.so $HOWDY#" "$v" | put kde-smartcard
+    sed -e '/^#\?auth[[:space:]].*pam_sss\.so/d' -e '/^#auth[[:space:]]/d' -e "s#^\(auth[[:space:]]\+requisite[[:space:]]\+pam_nologin\.so.*\)#\1\nauth\trequisite\tpam_exec.so quiet /usr/lib/matryoshka/face-lock-ok\nauth\trequired\tpam_python.so $HOWDY#" "$v" | put kde-smartcard
     own kde-smartcard
   elif owned kde-smartcard; then
     rm -f /etc/pam.d/kde-smartcard; disown_file kde-smartcard
@@ -210,6 +210,11 @@ apply_greeter() {
   if cmp -s "$GREETER_CONF.new" "$GREETER_CONF"; then rm -f "$GREETER_CONF.new"; else mv -f "$GREETER_CONF.new" "$GREETER_CONF"; chmod 644 "$GREETER_CONF"; fi
 }
 
+wallet_pam() {
+  [ -f /usr/lib/matryoshka/wallet_pam.py ] || return 0
+  python3 /usr/lib/matryoshka/wallet_pam.py apply || true
+}
+
 apply() {
   migrate
   finger_once
@@ -217,6 +222,7 @@ apply() {
   apply_lock
   apply_admin
   apply_greeter
+  wallet_pam
   return 0
 }
 

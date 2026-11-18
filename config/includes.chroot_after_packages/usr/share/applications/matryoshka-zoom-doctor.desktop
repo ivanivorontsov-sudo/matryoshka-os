@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Доктор Zoom
+Name[ru]=Доктор Zoom
+Comment=Проверить Zoom и починить запуск из браузера
+Comment[ru]=Проверить Zoom и починить запуск из браузера
+Exec=matryoshka-zoom-doctor
+Icon=camera-web
+Terminal=false
+Categories=Network;Utility;
+Keywords=zoom;зум;доктор;zoom doctor;
+StartupNotify=true

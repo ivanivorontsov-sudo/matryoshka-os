@@ -1,6 +1,7 @@
 import sys, os, re, json, subprocess, urllib.request
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QPushButton, QLabel, QCheckBox, QComboBox, QFileDialog, QMessageBox
 import common as C
+import vmram
 
 FREE = [("ubuntu", "Ubuntu", "24.04"), ("debian", "Debian", "13.1.0"), ("fedora", "Fedora", "42"), ("linuxmint", "Linux Mint", "22.2"), ("kali", "Kali Linux", "current"),
         ("alpine", "Alpine", "latest"), ("archlinux", "Arch Linux", "latest"), ("freebsd", "FreeBSD", "14.3"), ("android", "Android x86", "9.0"), ("bliss", "Bliss OS", "15"),
@@ -39,7 +40,28 @@ class Vms(QWidget):
         s = open(conf).read(); s = re.sub(r'^network=.*\n', "", s, flags=re.M)
         if not self.net.isChecked() and not re.search(r'^guest_os="windows', s, re.M): s += 'network="none"\n'
         open(conf, "w").write(s)
+    def fit_conf(self, conf):
+        try:
+            host = vmram.parse_ram("%dM" % (int(open("/proc/meminfo", encoding="utf-8").read().split("MemTotal:")[1].split()[0]) // 1024))
+        except (OSError, IndexError, ValueError):
+            host = 8192
+        avail = host
+        try:
+            avail = int(open("/proc/meminfo", encoding="utf-8").read().split("MemAvailable:")[1].split()[0]) // 1024
+        except (OSError, IndexError, ValueError):
+            pass
+        if vmram.should_pause_clam(host, avail):
+            C.root("av-pause", timeout=40)
+            try:
+                avail = int(open("/proc/meminfo", encoding="utf-8").read().split("MemAvailable:")[1].split()[0]) // 1024
+            except (OSError, IndexError, ValueError):
+                pass
+        text = open(conf, encoding="utf-8").read()
+        new, _mb = vmram.rewrite_ram(text, host, avail)
+        if new != text:
+            open(conf, "w", encoding="utf-8").write(new)
     def launch(self, conf):
+        self.fit_conf(conf)
         self.conf_net(conf)
         m = re.search(r'^disk_img="([^"]+)"', open(conf).read(), re.M)
         disk = os.path.join(DIR, m.group(1)) if m else ""

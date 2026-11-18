@@ -1,0 +1,603 @@
+#!/usr/bin/env python3
+"""Пароль Wi-Fi оставить в файле соединения, не перезапуская сеть.
+
+Перезагрузка соединения из диспетчера заставляла Wi-Fi авторизоваться по кругу.
+Подмена службы секретов на пустую команду оставляла ту же авторизацию без окна
+пароля: индикатор крутился, а спросить было некого. USB при этом работает, ему
+пароль точки доступа не нужен.
+
+Здесь файл только поправляется на месте. Соединение не перечитывается.
+Секрет не печатается и не попадает в аргументы команды.
+"""
+import os
+import subprocess
+import sys
+
+DIRS = ("/etc/NetworkManager/system-connections", "/run/NetworkManager/system-connections")
+PSK_MGMT = {"wpa-psk", "sae", "wpa-psk-sha256"}
+HIDDEN = {"", "--", "<hidden>"}
+
+
+def run(args, timeout=3):
+    env = dict(os.environ)
+    env["LC_ALL"] = "C"
+    return subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=env)
+
+
+def uuid_ok(value):
+    return bool(value) and all(c in "0123456789abcdefABCDEF-" for c in value)
+
+
+def split_kv(line):
+    text = line.strip()
+    if not text or text.startswith("#") or text.startswith(";") or text.startswith("["):
+        return None, None
+    if "=" not in text:
+        return None, None
+    key, _, val = text.partition("=")
+    return key.strip(), val.strip()
+
+
+def section_ranges(lines):
+    ranges = []
+    name = ""
+    start = 0
+    for index, line in enumerate(lines):
+        text = line.strip()
+        if len(text) > 2 and text.startswith("[") and text.endswith("]"):
+            ranges.append((name, start, index))
+            name = text[1:-1].strip()
+            start = index
+    ranges.append((name, start, len(lines)))
+    return ranges
+
+
+def fields(lines, start, end):
+    found = {}
+    for index in range(start, end):
+        key, val = split_kv(lines[index])
+        if key:
+            found[key] = (index, val)
+    return found
+
+
+def set_flag(lines, found, flag, value):
+    item = found.get(flag)
+    if not item or item[1] == value:
+        return False
+    ending = ""
+    if lines[item[0]].endswith("\r\n"):
+        ending = "\r\n"
+    elif lines[item[0]].endswith("\n"):
+        ending = "\n"
+    lines[item[0]] = "%s=%s%s" % (flag, value, ending)
+    return True
+
+
+def useful(value):
+    return value not in HIDDEN
+
+
+def ensure_autoconnect(text):
+    """Сохранённая сеть с паролем в файле поднимается сама, как профиль Windows."""
+    lines = text.splitlines(keepends=True)
+    for name, start, end in section_ranges(lines):
+        if name != "connection":
+            continue
+        found = fields(lines, start, end)
+        item = found.get("autoconnect")
+        if item and item[1].lower() in ("yes", "true", "1"):
+            return text, False
+        if item:
+            set_flag(lines, found, "autoconnect", "yes")
+            return "".join(lines), True
+        ending = "\n"
+        if end > start and lines[end - 1].endswith("\r\n"):
+            ending = "\r\n"
+        lines.insert(end, "autoconnect=yes%s" % ending)
+        return "".join(lines), True
+    return text, False
+
+
+def repair_text(text):
+    """Флаги секрета. Пароль, которого нет в файле, не подменяется пустым."""
+    lines = text.splitlines(keepends=True)
+    changed = False
+    vpn = None
+    secrets = None
+    for name, start, end in section_ranges(lines):
+        found = fields(lines, start, end)
+        if name == "wifi-security":
+            psk = found.get("psk", (None, ""))[1]
+            mgmt = found.get("key-mgmt", (None, ""))[1]
+            if useful(psk):
+                changed = set_flag(lines, found, "psk-flags", "0") or changed
+            elif mgmt in PSK_MGMT and found.get("psk-flags", (None, ""))[1] == "0" and not SYSTEM_MODE[0]:
+                changed = set_flag(lines, found, "psk-flags", "1") or changed
+        elif name == "802-1x":
+            for key, flag in (("password", "password-flags"), ("private-key-password", "private-key-password-flags")):
+                if useful(found.get(key, (None, ""))[1]):
+                    changed = set_flag(lines, found, flag, "0") or changed
+        elif name == "wireguard":
+            if useful(found.get("private-key", (None, ""))[1]):
+                changed = set_flag(lines, found, "private-key-flags", "0") or changed
+        elif name == "gsm":
+            if useful(found.get("password", (None, ""))[1]):
+                changed = set_flag(lines, found, "password-flags", "0") or changed
+        elif name == "vpn":
+            vpn = found
+        elif name == "vpn-secrets":
+            secrets = found
+    if vpn and secrets:
+        for key, (_, val) in secrets.items():
+            if key.endswith("-flags") or not useful(val):
+                continue
+            changed = set_flag(lines, vpn, key + "-flags", "0") or changed
+    return "".join(lines), changed
+
+
+def plant_psk(text, psk):
+    if not useful(psk) or any(c in psk for c in "\r\n\x00"):
+        return text, False
+    lines = text.splitlines(keepends=True)
+    target = None
+    for name, start, end in section_ranges(lines):
+        if name == "wifi-security":
+            target = (start, end)
+            break
+    if not target:
+        return text, False
+    start, end = target
+    found = fields(lines, start, end)
+    if useful(found.get("psk", (None, ""))[1]):
+        return text, False
+    ending = "\n"
+    if lines and lines[-1].endswith("\r\n"):
+        ending = "\r\n"
+    insert_at = end
+    lines.insert(insert_at, "psk=%s%s" % (psk, ending))
+    return "".join(lines), True
+
+
+def valid_psk(psk):
+    if not psk or any(c in psk for c in "\r\n\x00"):
+        return False
+    if len(psk) == 64 and all(c in "0123456789abcdefABCDEF" for c in psk):
+        return True
+    return 8 <= len(psk) <= 63
+
+
+def set_psk(text, psk):
+    """Пароль, введённый пользователем, заменяет старый в файле или добавляется."""
+    if not valid_psk(psk):
+        return text, False
+    lines = text.splitlines(keepends=True)
+    for name, start, end in section_ranges(lines):
+        if name != "wifi-security":
+            continue
+        found = fields(lines, start, end)
+        if found.get("key-mgmt", (None, ""))[1] not in PSK_MGMT:
+            return text, False
+        item = found.get("psk")
+        ending = "\n"
+        if lines and lines[-1].endswith("\r\n"):
+            ending = "\r\n"
+        if item:
+            if item[1] == psk:
+                return text, False
+            lines[item[0]] = "psk=%s%s" % (psk, ending)
+        else:
+            at = end
+            while at > start + 1 and not lines[at - 1].strip():
+                at -= 1
+            lines.insert(at, "psk=%s%s" % (psk, ending))
+        return "".join(lines), True
+    return text, False
+
+
+def read_pairs(stream, limit=65536):
+    """Строки «uuid<TAB>пароль» со стандартного входа. Пароль не печатается."""
+    try:
+        data = stream.read(limit)
+    except Exception:
+        return []
+    pairs = []
+    for line in data.splitlines():
+        uuid, sep, psk = line.partition("\t")
+        uuid = uuid.strip()
+        if sep and uuid_ok(uuid) and valid_psk(psk):
+            pairs.append((uuid, psk))
+    return pairs
+
+
+def store_pairs(pairs):
+    done = []
+    for uuid, psk in pairs:
+        path = filename_for(uuid)
+        if not path:
+            continue
+        old = read_text(path)
+        text, _ = set_psk(old, psk)
+        if text == old and wifi_with_password(old):
+            done.append(uuid)
+            continue
+        if text == old:
+            continue
+        text, _ = repair_text(text)
+        if wifi_with_password(text):
+            text, _ = ensure_autoconnect(text)
+            text, _ = share_saved(text)
+        try:
+            write_text(path, text)
+        except OSError:
+            continue
+        try:
+            run(["nmcli", "connection", "load", path], timeout=15)
+        except Exception:
+            pass
+        done.append(uuid)
+    return done
+
+
+SYSTEM_MODE = [False]
+
+
+def wallet_off_any():
+    """Хоть у одного пользователя переключатель «Отключить бумажник» включён."""
+    import json
+    import pwd
+    for user in pwd.getpwall():
+        if user.pw_uid < 1000 or user.pw_uid >= 60000:
+            continue
+        path = os.path.join(user.pw_dir, ".config", "matryoshka", "settings.json")
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except Exception:
+            continue
+        if isinstance(data, dict) and data.get("kwallet", True) is False:
+            return True
+    return False
+
+
+def system_owned(text):
+    """Бумажник выключен: пароль сети отдаётся системе (psk-flags=0), соединение общее.
+
+    Если пароля в файле ещё нет, NetworkManager спрашивает его у агента
+    (окно меню сетей или окно Матрёшки) и сам записывает ответ в файл
+    соединения сразу, с первого ввода. С psk-flags=1 ответ оставался у агента
+    без бумажника и в файл попадал только при следующем входе.
+    """
+    lines = text.splitlines(keepends=True)
+    changed = False
+    is_psk = False
+    for name, start, end in section_ranges(lines):
+        if name != "wifi-security":
+            continue
+        found = fields(lines, start, end)
+        if found.get("key-mgmt", (None, ""))[1] not in PSK_MGMT:
+            return text, False
+        is_psk = True
+        item = found.get("psk-flags")
+        if item:
+            if item[1] != "0":
+                changed = set_flag(lines, found, "psk-flags", "0") or changed
+        break
+    if not is_psk:
+        return text, False
+    out = []
+    in_conn = False
+    for line in lines:
+        t = line.strip()
+        if t.startswith("[") and t.endswith("]"):
+            in_conn = t == "[connection]"
+        elif in_conn and t.startswith("permissions="):
+            changed = True
+            continue
+        out.append(line)
+    return "".join(out), changed
+
+
+def make_system(paths):
+    for path in paths:
+        old = read_text(path)
+        if not old:
+            continue
+        text, changed = system_owned(old)
+        if not changed:
+            continue
+        try:
+            write_text(path, text)
+            run(["nmcli", "connection", "load", path], timeout=15)
+        except Exception:
+            pass
+
+
+def needs_agent(text):
+    lines = text.splitlines(keepends=True)
+    sections = {}
+    for name, start, end in section_ranges(lines):
+        sections[name] = {key: val for key, (_, val) in fields(lines, start, end).items()}
+    wifi = sections.get("wifi-security", {})
+    if wifi.get("key-mgmt", "") in PSK_MGMT:
+        psk = wifi.get("psk", "")
+        flags = wifi.get("psk-flags", "0" if useful(psk) else "1")
+        if not useful(psk) or flags not in ("0", ""):
+            return True
+    for name, pairs in (
+        ("802-1x", ("password-flags", "private-key-password-flags")),
+        ("wireguard", ("private-key-flags",)),
+        ("gsm", ("password-flags",)),
+    ):
+        section = sections.get(name, {})
+        for flag in pairs:
+            if flag in section and section[flag] not in ("0", "4"):
+                return True
+    vpn = sections.get("vpn", {})
+    for key, val in vpn.items():
+        if key.endswith("-flags") and val not in ("0", "4"):
+            return True
+    return False
+
+
+def list_files():
+    found = []
+    for folder in DIRS:
+        if not os.path.isdir(folder):
+            continue
+        for name in os.listdir(folder):
+            if name.endswith(".matryoshka-new"):
+                continue
+            path = os.path.join(folder, name)
+            if os.path.isfile(path):
+                found.append(path)
+    return found
+
+
+def filename_for(uuid):
+    needle = "uuid=%s" % uuid
+    for path in list_files():
+        try:
+            body = open(path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        if needle.lower() in body.lower():
+            return path
+    return ""
+
+
+def read_text(path):
+    try:
+        return open(path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return ""
+
+
+def write_text(path, text):
+    tmp = path + ".matryoshka-new"
+    with open(tmp, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def profile_uuid(text):
+    lines = text.splitlines(keepends=True)
+    for name, start, end in section_ranges(lines):
+        if name != "connection":
+            continue
+        return fields(lines, start, end).get("uuid", (None, ""))[1]
+    return ""
+
+
+def share_saved(text):
+    """Пароль уже в файле — соединение для всех пользователей, без агента секретов."""
+    if not wifi_with_password(text):
+        return text, False
+    lines = text.splitlines(keepends=True)
+    for name, start, end in section_ranges(lines):
+        if name != "connection":
+            continue
+        found = fields(lines, start, end)
+        item = found.get("permissions")
+        if not item:
+            return text, False
+        del lines[item[0]]
+        return "".join(lines), True
+    return text, False
+
+
+def wifi_with_password(text):
+    lines = text.splitlines(keepends=True)
+    for name, start, end in section_ranges(lines):
+        if name != "wifi-security":
+            continue
+        found = fields(lines, start, end)
+        if found.get("key-mgmt", (None, ""))[1] not in PSK_MGMT:
+            return False
+        return useful(found.get("psk", (None, ""))[1])
+    return False
+
+
+def repair_file(path, psk=""):
+    old = read_text(path)
+    if not old:
+        return False
+    text = old
+    if psk:
+        text, _ = plant_psk(text, psk)
+    text, _ = repair_text(text)
+    if wifi_with_password(text):
+        text, _ = ensure_autoconnect(text)
+        text, _ = share_saved(text)
+    if text == old:
+        return False
+    write_text(path, text)
+    return True
+
+
+def fetch_psk(uuid):
+    try:
+        out = run(["nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", uuid]).stdout
+    except Exception:
+        return ""
+    if "\n" in out.strip():
+        return ""
+    val = out.strip()
+    if not useful(val):
+        return ""
+    return val
+
+
+def active_wifi():
+    try:
+        out = run(["nmcli", "-t", "-f", "UUID,TYPE", "connection", "show", "--active"]).stdout
+    except Exception:
+        return []
+    found = []
+    for line in out.splitlines():
+        uuid, _, kind = line.partition(":")
+        if kind in ("802-11-wireless", "wifi") and uuid_ok(uuid):
+            found.append(uuid)
+    return found
+
+
+def saved_wifi():
+    try:
+        out = run(["nmcli", "-t", "-f", "UUID,TYPE,TIMESTAMP", "connection", "show"], timeout=8).stdout
+    except Exception:
+        return []
+    found = []
+    for line in out.splitlines():
+        parts = line.split(":")
+        if len(parts) < 3:
+            continue
+        uuid, kind, ts = parts[0], parts[1], parts[2]
+        if kind not in ("802-11-wireless", "wifi") or not uuid_ok(uuid):
+            continue
+        try:
+            stamp = int(ts)
+        except ValueError:
+            stamp = 0
+        found.append((stamp, uuid))
+    return [uuid for _stamp, uuid in sorted(found)]
+
+
+def wifi_is_up():
+    try:
+        listed = run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"], timeout=5).stdout
+    except Exception:
+        return True
+    saw = False
+    for line in listed.splitlines():
+        _dev, _, rest = line.partition(":")
+        kind, _, state = rest.partition(":")
+        if kind != "wifi":
+            continue
+        saw = True
+        code = state.strip().lower().split(" ", 1)[0]
+        if code in ("100", "connected") or state.strip().lower().startswith("connected"):
+            return True
+    return not saw
+
+
+def bring_ready(paths):
+    # В память NetworkManager попадает только файл, где пароль уже записан.
+    # Общий перезапуск всех соединений не делается: он заново запускал авторизацию.
+    ready = []
+    for path in paths:
+        body = read_text(path)
+        if not wifi_with_password(body) or needs_agent(body):
+            continue
+        try:
+            run(["nmcli", "connection", "load", path], timeout=15)
+        except Exception:
+            continue
+        uuid = profile_uuid(body)
+        if uuid_ok(uuid):
+            ready.append(uuid)
+    if not ready or wifi_is_up():
+        return
+    order = [item for item in saved_wifi() if item in ready]
+    target = order[-1] if order else ready[-1]
+    run(["nmcli", "-w", "20", "connection", "up", target], timeout=25)
+
+
+def any_needs_agent(paths):
+    for path in paths:
+        if needs_agent(read_text(path)):
+            return True
+    return False
+
+
+def main(argv):
+    if os.geteuid() != 0:
+        return 1
+    pin_only = "--pin" in argv
+    try:
+        SYSTEM_MODE[0] = wallet_off_any()
+    except Exception:
+        SYSTEM_MODE[0] = False
+    if "--system" in argv or SYSTEM_MODE[0]:
+        # Бумажник выключен: пароль сети хранит система (psk-flags=0), ответ
+        # из окна пароля NetworkManager записывает в файл с первого ввода.
+        SYSTEM_MODE[0] = True
+        make_system(list_files())
+        argv = [item for item in argv if item != "--system"]
+    if "--stdin" in argv:
+        # Пароли сетей, которые сеанс пользователя достал из бумажника или
+        # спросил своим окном. Записываются в файлы соединений (psk-flags=0).
+        store_pairs(read_pairs(sys.stdin))
+        argv = [item for item in argv if item != "--stdin"]
+    uuids = [item for item in argv[1:] if uuid_ok(item)]
+    if uuids:
+        paths = [filename_for(item) for item in uuids]
+        paths = [item for item in paths if item]
+    else:
+        paths = list_files()
+    for path in paths:
+        try:
+            repair_file(path)
+        except OSError:
+            pass
+    if pin_only:
+        return 0
+    # Пароль берётся и у неактивной сети: иначе он остаётся только в бумажнике,
+    # и после перезагрузки Wi-Fi ждёт кнопки «Подключиться».
+    for uuid in saved_wifi():
+        path = filename_for(uuid)
+        if not path:
+            continue
+        body = read_text(path)
+        if wifi_with_password(body) or not needs_agent(body):
+            continue
+        if "key-mgmt=wpa-psk" not in body and "key-mgmt=sae" not in body and "key-mgmt=wpa-psk-sha256" not in body:
+            continue
+        psk = fetch_psk(uuid)
+        if not psk:
+            continue
+        try:
+            repair_file(path, psk)
+        except OSError:
+            pass
+    paths = list_files()
+    try:
+        bring_ready(paths)
+    except Exception:
+        pass
+    if not paths:
+        return 2
+    # VPN и кабель здесь не держат Wi-Fi. Код 0 — пароль точки уже в файле,
+    # сеть может подняться без бумажника.
+    locked = False
+    for path in paths:
+        body = read_text(path)
+        if wifi_with_password(body):
+            continue
+        if needs_agent(body) and ("key-mgmt=wpa-psk" in body or "key-mgmt=sae" in body or "key-mgmt=wpa-psk-sha256" in body):
+            locked = True
+    return 2 if locked else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

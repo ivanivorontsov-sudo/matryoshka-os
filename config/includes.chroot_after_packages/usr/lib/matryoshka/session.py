@@ -17,13 +17,21 @@ def sinks():
 
 def restore_audio():
     data = audiodev.load_audio(AUDIO)
-    sink, vol = audiodev.restore_plan(data, sinks())
+    found = sinks()
+    sink = audiodev.choose_sink(data, found)
+    port = data.get("port") or ""
     if sink:
-        C.run(["pactl", "set-default-sink", sink], timeout=8)
-    if sink and vol:
-        C.run(["pactl", "set-sink-volume", sink, vol], timeout=8)
-    for n, port in audiodev.hw_routes(sinks()).items():
-        v = audiodev.saved_volume(data, n, port)
+        if pactl("get-default-sink").strip() != sink:
+            C.run(["pactl", "set-default-sink", sink], timeout=8)
+        for item in found:
+            if item["name"] == sink and port and item.get("port") != port:
+                C.run(["pactl", "set-sink-port", sink, port], timeout=8)
+                break
+        vol = audiodev.saved_volume(data, sink, port)
+        if vol:
+            C.run(["pactl", "set-sink-volume", sink, vol], timeout=8)
+    for n, active in audiodev.hw_routes(found).items():
+        v = audiodev.saved_volume(data, n, active)
         if v and n != sink:
             C.run(["pactl", "set-sink-volume", n, v], timeout=8)
 
@@ -149,6 +157,22 @@ def cards_present():
         return False
 
 AUDIO_FIX = {"times": []}
+LOCK = {"on": None}
+
+def nudge_wireplumber():
+    if audiodev.has_hw_sink(short_names("sinks")) or not cards_present():
+        return
+    now = time.time()
+    AUDIO_FIX["times"] = [t for t in AUDIO_FIX["times"] if now - t < 3600]
+    if len(AUDIO_FIX["times"]) >= 3 or (AUDIO_FIX["times"] and now - AUDIO_FIX["times"][-1] < 300):
+        return
+    AUDIO_FIX["times"].append(now)
+    C.run(["logger", "-t", "matryoshka-audio", "после смены сеанса нет устройств, перезапуск только WirePlumber"], timeout=5)
+    C.run(["systemctl", "--user", "restart", "wireplumber"], timeout=20)
+    time.sleep(1)
+    restore_audio()
+    fix_sink()
+    fix_source()
 
 def ensure_devices(wait=4):
     time.sleep(wait)
@@ -183,6 +207,24 @@ def fix_sink(user_pick=False):
         data["sink"] = want
     audiodev.save_audio(AUDIO, data)
 
+def note_lock():
+    sid = my_session()
+    if not sid:
+        return
+    on = (C.run(["loginctl", "show-session", sid, "-p", "LockedHint", "--value"], timeout=5).stdout or "").strip()
+    if on not in ("yes", "no") or LOCK["on"] == on:
+        return
+    LOCK["on"] = on
+    p = os.path.expanduser("~/.local/state/matryoshka/face-hold")
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    if on == "yes":
+        open(p, "w", encoding="utf-8").write("%s\n" % time.time())
+    else:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
 def watch_session():
     sid = my_session()
     if not sid:
@@ -191,6 +233,7 @@ def watch_session():
     while True:
         time.sleep(2)
         try:
+            note_lock()
             now = session_active(sid)
             if now == was:
                 continue
@@ -198,20 +241,20 @@ def watch_session():
             if not now:
                 other = other_active_session(sid)
                 pause_players(sid if other else None)
-                if not other:
-                    suspend_hw(True)
             else:
+                # unsuspend only. Suspending the hardware sink removes it from the other session.
                 suspend_hw(False)
-                ensure_devices()
+                time.sleep(1)
                 restore_audio()
                 fix_sink()
                 fix_source()
                 apply_profile(force=True)
+                nudge_wireplumber()
         except Exception:
             pass
 
 def watch_audio():
-    state = {"dirty": False, "fresh": False, "src": False, "route": None, "src_seen": {}, "boot": time.time(), "hold": {}}
+    state = {"dirty": False, "fresh": False, "src": False, "route": None, "src_seen": {}, "boot": time.time(), "hold": {}, "applied": 0, "user_pick": False}
     lock = threading.Lock()
     def settle(n, port, vol, first_vol):
         try:
@@ -253,7 +296,22 @@ def watch_audio():
                     all_sinks = sinks()
                 for n in [k for k, t in state["hold"].items() if now - t > 6]:
                     state["hold"].pop(n, None)
-                audiodev.remember(data, all_sinks, default, hold=tuple(state["hold"]))
+                age = now - state["boot"]
+                saved = data.get("sink") or ""
+                if src and age > 20 and saved and default and default != saved and now - state.get("applied", 0) > 3:
+                    state["user_pick"] = True
+                keep = age < 90 and bool(saved) and saved != default and not state.get("user_pick")
+                audiodev.remember(data, all_sinks, default, hold=tuple(state["hold"]), keep_choice=keep)
+                chosen = audiodev.choose_sink(data, all_sinks)
+                if chosen and chosen != default and not state.get("user_pick"):
+                    C.run(["pactl", "set-default-sink", chosen], timeout=8)
+                    port = data.get("port") or ""
+                    if port:
+                        for item in all_sinks:
+                            if item["name"] == chosen and item.get("port") != port:
+                                C.run(["pactl", "set-sink-port", chosen, port], timeout=8)
+                                break
+                    state["applied"] = time.time()
                 audiodev.save_audio(AUDIO, data)
                 if src:
                     srcs = short_names("sources")
@@ -364,6 +422,10 @@ def copyq():
     subprocess.Popen(["copyq", "--start-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     C.run(["copyq", "config", "activate_pastes", "true"], timeout=10)
     C.run(["copyq", "config", "close_on_unfocus", "true"], timeout=10)
+    # В пакете редактор по умолчанию — gedit. Его нет, поэтому «Ошибка команды редактора».
+    # kate --block ждёт закрытия файла и возвращает текст в буфер.
+    if shutil.which("kate"):
+        C.run(["copyq", "config", "editor", "kate --block %1"], timeout=10)
 
 def network_refresh():
     script = r"""
@@ -395,12 +457,487 @@ def firefox_icon():
         return
     open(p, "w", encoding="utf-8").write("[Desktop Entry]\nType=Application\nNoDisplay=true\nName=Firefox\nExec=firefox-esr %u\nIcon=firefox-esr\nStartupWMClass=firefox\n")
 
+def kwallet_text(on):
+    # Выключенное положение не запускает службу. Вход по пальцу пароль
+    # бумажника не знает, поэтому запущенная служба сразу показывает окно.
+    # Пароль уже работающей сети к этому моменту записан в файл соединения.
+    if not on:
+        return (
+            ("Enabled", "false"),
+            ("First Use", "false"),
+            ("Use One Wallet", "true"),
+            ("SecretServiceEnabled", "false"),
+            ("Prompt on Open", "false"),
+            ("Close When Idle", "false"),
+            ("Launch", "false"),
+            ("Leave Open", "false"),
+        )
+    return (
+        ("Enabled", "true"),
+        ("First Use", "false"),
+        ("Use One Wallet", "true"),
+        ("SecretServiceEnabled", "true"),
+        ("Prompt on Open", "false"),
+        ("Close When Idle", "false"),
+        ("Close on Screensaver", "false"),
+        ("Leave Open", "true"),
+        ("Launch", "true"),
+    )
+
+def kwallet_write(path, on):
+    import configparser
+    cp = configparser.ConfigParser(interpolation=None, strict=False)
+    cp.optionxform = str
+    if os.path.isfile(path):
+        cp.read(path, encoding="utf-8")
+    if not cp.has_section("Wallet"):
+        cp.add_section("Wallet")
+    for key, value in kwallet_text(on):
+        cp.set("Wallet", key, value)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as out:
+        cp.write(out, space_around_delimiters=False)
+    os.replace(tmp, path)
+
+BROWSER_FLAG_FILES = (
+    "vivaldi-flags.conf", "chromium-flags.conf", "chrome-flags.conf",
+    "yandex-browser-flags.conf", "brave-flags.conf",
+)
+
+
+def browser_flags(enabled):
+    # enabled=False — Вивальди берёт ключ peanuts из своего файла и бумажник
+    # не вызывает. enabled=True — строка убирается, ключ снова в бумажнике.
+    # Сами логины к этому моменту уже переложены, жёлтая кнопка не нужна.
+    d = os.path.expanduser("~/.config")
+    os.makedirs(d, exist_ok=True)
+    for name in BROWSER_FLAG_FILES:
+        path = os.path.join(d, name)
+        try:
+            old = open(path, encoding="utf-8").read() if os.path.isfile(path) else ""
+        except OSError:
+            continue
+        lines = [line for line in old.splitlines() if line.strip() != "--password-store=basic"]
+        if not enabled:
+            lines.append("--password-store=basic")
+        body = "\n".join([line for line in lines if line.strip()])
+        try:
+            if not body:
+                if os.path.isfile(path):
+                    os.remove(path)
+                continue
+            body += "\n"
+            if body == old:
+                continue
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as out:
+                out.write(body)
+            os.replace(tmp, path)
+        except OSError:
+            pass
+
+
+def block_wallet_bus():
+    # Иначе Вивальди или сеть снова поднимают kwalletd6 через D-Bus и окно
+    # пароля появляется само. Пароль Wi-Fi к этому моменту уже в файле.
+    d = os.path.expanduser("~/.local/share/dbus-1/services")
+    os.makedirs(d, exist_ok=True)
+    for name in ("org.kde.kwalletd6", "org.kde.kwalletd5", "org.freedesktop.secrets"):
+        path = os.path.join(d, name + ".service")
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as out:
+            out.write("[D-BUS Service]\nName=%s\nExec=/bin/true\nX-Matryoshka-KWallet=off\n" % name)
+        os.replace(tmp, path)
+    auto = os.path.expanduser("~/.config/autostart")
+    os.makedirs(auto, exist_ok=True)
+    desk = os.path.join(auto, "org.kde.kwalletd6.desktop")
+    with open(desk, "w", encoding="utf-8") as out:
+        out.write("[Desktop Entry]\nType=Application\nHidden=true\nX-Matryoshka-KWallet=off\nName=kwalletd\nExec=/bin/true\n")
+
+
+def stop_kwalletd():
+    subprocess.run(["killall", "-q", "kwalletd6", "kwalletd5"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+WIFI_PSK_MGMT = ("wpa-psk", "sae", "wpa-psk-sha256")
+
+
+def _nm_env():
+    env = dict(os.environ)
+    env["LC_ALL"] = "C"
+    env["LANG"] = "C"
+    return env
+
+
+def saved_wifi_rows():
+    listed = C.run(["nmcli", "-t", "-f", "UUID,TYPE,TIMESTAMP", "connection", "show"], timeout=8, env=_nm_env())
+    rows = []
+    for line in (listed.stdout or "").splitlines():
+        parts = line.split(":")
+        if len(parts) >= 3 and parts[1] in ("802-11-wireless", "wifi") and parts[0]:
+            rows.append((parts[0], parts[1], parts[2]))
+    return rows
+
+
+def wifi_profile(uuid):
+    """Тип защиты, флаг пароля и имя сети. Сам пароль здесь не читается."""
+    out = C.run(["nmcli", "-t", "-e", "no", "-g", "802-11-wireless-security.key-mgmt,802-11-wireless-security.psk-flags,802-11-wireless.ssid", "connection", "show", uuid], timeout=8, env=_nm_env())
+    lines = (out.stdout or "").splitlines()
+    if out.returncode != 0 or len(lines) < 3:
+        return "", "", ""
+    return lines[0].strip(), lines[1].strip(), lines[2].strip()
+
+
+def psk_in_file(flags):
+    # psk-flags 0 — пароль в файле соединения. 1 — у агента (бумажник),
+    # 2 — не сохранён. Строка nmcli бывает вида «0 (none)».
+    return (flags or "0").split(" ", 1)[0] in ("0", "")
+
+
+def psk_known(uuid, flags):
+    # Флаг 0 ещё не значит, что пароль есть: после перевода сети на
+    # системное хранение файл может быть без psk. Окно не вызывается.
+    if not psk_in_file(flags):
+        return False
+    out = C.run(["nmcli", "-s", "-t", "-e", "no", "-g", "802-11-wireless-security.psk", "connection", "show", uuid], timeout=12, env=_nm_env())
+    psk = (out.stdout or "").strip()
+    return out.returncode == 0 and bool(psk) and psk not in ("--", "<hidden>")
+
+
+def wifi_need_psk():
+    """Сохранённые сети WPA, пароль которых не лежит в файле соединения."""
+    found = []
+    for uuid, _kind, _ts in saved_wifi_rows():
+        mgmt, flags, ssid = wifi_profile(uuid)
+        if mgmt in WIFI_PSK_MGMT and not psk_in_file(flags):
+            found.append((uuid, ssid))
+    return found
+
+
+def harvest_psk():
+    """Пока бумажник доступен, пароли сетей берутся у агента секретов сеанса.
+
+    nmcli от root их не получает: пароль с psk-flags=1 хранит агент
+    пользователя (plasma-nm и KWallet). Окно пароля здесь не вызывается.
+    """
+    pairs = []
+    for uuid, _ssid in wifi_need_psk():
+        out = C.run(["nmcli", "-s", "-t", "-e", "no", "-g", "802-11-wireless-security.psk", "connection", "show", uuid], timeout=12, env=_nm_env())
+        psk = (out.stdout or "").rstrip("\n")
+        if out.returncode == 0 and psk and "\n" not in psk and psk not in ("--", "<hidden>"):
+            pairs.append((uuid, psk))
+    return pairs
+
+
+def store_psk(pairs):
+    if not pairs:
+        return False
+    data = "".join("%s\t%s\n" % (u, k) for u, k in pairs)
+    try:
+        result = subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save", "--stdin"], input=data, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def wifi_save():
+    # Пароль сохранённых сетей пишется в файл NetworkManager (psk-flags=0).
+    # Сначала пароли забираются у агента секретов этого сеанса, потом root
+    # переписывает файлы. sudo без пароля: отдельное правило, не окно бумажника.
+    # Код 0 — пароль сети уже в файле, Wi-Fi не ждёт хранилище ключей.
+    try:
+        # Закрытый бумажник nmcli -s попросил бы открыть окном пароля.
+        # Поэтому пароли берутся, только если бумажник уже открыт.
+        if wallet_unlocked():
+            store_psk(harvest_psk())
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+        ok = result.returncode == 0
+    except Exception:
+        ok = False
+    # После обычного прохода: он возвращает psk-flags=1 сети без пароля.
+    if C.settings().get("kwallet", True) is False:
+        # Бумажник выключен: пароли сетей хранит система. Тогда пароль,
+        # введённый в любом окне, NetworkManager пишет в файл сразу.
+        try:
+            subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save", "--system"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+        except Exception:
+            pass
+    return ok
+
+
+def ask_wifi_password(uuid, ssid):
+    # Бумажник выключен, а пароля сети в файле нет: без этого окна NetworkManager
+    # висит в «Ожидании авторизации». Окно своё, KWallet не нужен.
+    subprocess.Popen(["python3", "/usr/lib/matryoshka/wifi_ask.py", uuid, ssid or ""], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def wallet_cleanup():
+    # Пустая подмена службы секретов оставляла авторизацию Wi-Fi без ответа
+    # и без окна пароля. Файлы, поставленные раньше, убираются.
+    d = os.path.expanduser("~/.local/share/dbus-1/services")
+    if not os.path.isdir(d):
+        return
+    for name in os.listdir(d):
+        path = os.path.join(d, name)
+        try:
+            body = open(path, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        if "X-Matryoshka-KWallet=off" not in body:
+            continue
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def apply_wallet(on):
+    kwallet_write(os.path.expanduser("~/.config/kwalletrc"), on)
+    for key, value in kwallet_text(on):
+        C.kwrite("kwalletrc", "Wallet", key, value)
+    flag = "true" if on else "false"
+    for rc in ("kded5rc", "kded6rc"):
+        C.kwrite(rc, "Module-kwallet", "autoload", flag)
+        C.kwrite(rc, "Module-kwalletd", "autoload", flag)
+    if not on:
+        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "false"], timeout=8)
+        return
+    d = os.path.expanduser("~/.config/autostart")
+    for name in ("org.kde.kwalletd5.desktop", "org.kde.kwalletd6.desktop"):
+        path = os.path.join(d, name)
+        try:
+            if os.path.isfile(path) and "X-Matryoshka-KWallet=off" in open(path, encoding="utf-8", errors="replace").read():
+                os.remove(path)
+        except OSError:
+            pass
+    C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
+
+
+def wifi_system_default():
+    # Новые сети меню сетей сохраняет как системные: пароль ложится в файл
+    # соединения (psk-flags=0), а не в бумажник. Тогда вход по лицу или
+    # отпечатку, без пароля учётной записи, поднимает Wi-Fi без вопросов.
+    try:
+        C.kwrite("plasma-nm", "General", "SystemConnectionsByDefault", "true")
+    except Exception:
+        pass
+
+
 def kwallet(on):
-    C.kwrite("kwalletrc", "Wallet", "Enabled", "true" if on else "false")
-    C.kwrite("kwalletrc", "Wallet", "First Use", "false")
-    C.kwrite("kwalletrc", "Wallet", "Use One Wallet", "true")
-    C.kwrite("kwalletrc", "Wallet", "SecretServiceEnabled", "true" if on else "false")
-    C.kwrite("kwalletrc", "Wallet", "Prompt on Open", "false" if on else "true")
+    on = bool(on)
+    wifi_system_default()
+    # Пароль точки пишется в файл до того, как служба секретов исчезнет.
+    # USB и кабель эта команда не отключает.
+    wifi_save()
+    if not on:
+        ready = True
+        try:
+            import browser_key
+            ready = browser_key.migrate_to_basic()
+        except Exception:
+            ready = False
+        if not ready:
+            # Логины/куки Вивальди ещё на ключе бумажника, а ключа нет.
+            # Хранилище не глушится: иначе Вивальди пишет «Дешифровка
+            # прервана». Бумажник остаётся доступен только по запросу
+            # Вивальди; как только он открыт, ключ переносится и бумажник
+            # выключается окончательно. Данные не трогаются.
+            wallet_pending(True)
+            connect_saved_wifi()
+            return
+        wallet_pending_flag(False)
+        browser_flags(False)
+        apply_wallet(False)
+        block_wallet_bus()
+        stop_kwalletd()
+        connect_saved_wifi()
+        return
+    wallet_pending_flag(False)
+    wallet_cleanup()
+    browser_flags(True)
+    apply_wallet(on)
+    try:
+        import browser_key
+        browser_key.restore_to_wallet()
+    except Exception:
+        pass
+    connect_saved_wifi()
+
+
+def wallet_pending_flag(on):
+    path = os.path.expanduser("~/.config/matryoshka/settings.json")
+    try:
+        import json
+        cur = json.load(open(path, encoding="utf-8")) if os.path.isfile(path) else {}
+        if not isinstance(cur, dict):
+            cur = {}
+        if bool(cur.get("kwallet_pending")) == bool(on):
+            return
+        if on:
+            cur["kwallet_pending"] = True
+        else:
+            cur.pop("kwallet_pending", None)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as out:
+            json.dump(cur, out, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
+_PENDING_WATCH = []
+
+
+def wallet_pending(start_watch=True):
+    wallet_pending_flag(True)
+    try:
+        import browser_key
+        browser_key.backup_pending()
+    except Exception:
+        pass
+    wallet_cleanup()
+    browser_flags(True)
+    for key, value in kwallet_text(True):
+        C.kwrite("kwalletrc", "Wallet", key, value)
+    if not start_watch or _PENDING_WATCH:
+        return
+    _PENDING_WATCH.append(True)
+
+    def watch():
+        told = False
+        while True:
+            time.sleep(15)
+            try:
+                if C.load("settings", {}).get("kwallet", True) is not False:
+                    return
+            except Exception:
+                pass
+            try:
+                import browser_key
+                if wallet_unlocked():
+                    # current_key кладёт ключ в кеш 0600; перешифровка —
+                    # когда Вивальди закрыт.
+                    browser_key.current_key()
+                if browser_key.migrate_to_basic():
+                    kwallet(False)
+                    subprocess.run(["notify-send", "-a", "Матрёшка", "-i", "kwalletmanager", "Бумажник выключен", "Логины и куки Вивальди перенесены, бумажник больше не нужен."], timeout=10)
+                    return
+            except Exception:
+                pass
+            if not told:
+                told = True
+                try:
+                    subprocess.run(["notify-send", "-a", "Матрёшка", "-i", "kwalletmanager", "Перенос логинов Вивальди",
+                                    "Чтобы бумажник выключился без потери логинов, один раз введите пароль бумажника, "
+                                    "когда Вивальди его спросит (или войдите в систему по паролю), затем закройте Вивальди. "
+                                    "Кнопку «Продолжить с потерей данных» не нажимайте."], timeout=10)
+                except Exception:
+                    pass
+    threading.Thread(target=watch, daemon=True).start()
+
+
+def wallet_unlocked():
+    # status не запускает службу. isOpen у незапущенного бумажника не вызываем:
+    # иначе окно пароля появится само.
+    for dest in ("org.kde.kwalletd6", "org.kde.kwalletd5"):
+        if C.run(["busctl", "--user", "status", dest], timeout=5).returncode != 0:
+            continue
+        opened = C.run(["busctl", "--user", "call", dest, "/modules/kwalletd6" if dest.endswith("6") else "/modules/kwalletd5", "org.kde.KWallet", "isOpen", "s", "kdewallet"], timeout=5)
+        if opened.returncode == 0 and "true" in (opened.stdout or "").lower():
+            return True
+    return False
+
+
+def wifi_state_up(state):
+    # Коды NetworkManager: 100 — activated. Текст зависит от языка, поэтому
+    # сравнивается код, а nmcli ниже запускается с LC_ALL=C.
+    text = (state or "").strip().lower()
+    code = text.split(" ", 1)[0].strip("()")
+    return code in ("100", "connected") or text.startswith("connected")
+
+
+def wifi_should_connect(states):
+    if not states:
+        return False
+    return not any(wifi_state_up(item) for item in states)
+
+
+def newest_wifi_uuid(rows):
+    best, best_ts = "", -1
+    for uuid, kind, ts in rows:
+        if kind not in ("802-11-wireless", "wifi") or not uuid:
+            continue
+        try:
+            stamp = int(ts)
+        except (TypeError, ValueError):
+            stamp = 0
+        if stamp >= best_ts:
+            best, best_ts = uuid, stamp
+    return best
+
+
+def connect_saved_wifi():
+    # Активируется сохранённая сеть Wi-Fi. Это то же действие, что пункт
+    # «Подключиться»: ActivateConnection, без перечитывания всех соединений.
+    # USB и кабель не отключаются и здесь не упоминаются в команде.
+    env = dict(os.environ)
+    env["LC_ALL"] = "C"
+    env["LANG"] = "C"
+    shown = C.run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"], timeout=8, env=env)
+    wifi = []
+    for line in (shown.stdout or "").splitlines():
+        dev, _, rest = line.partition(":")
+        kind, _, state = rest.partition(":")
+        if kind != "wifi" or not dev or "/" in dev:
+            continue
+        wifi.append(state)
+    if not wifi_should_connect(wifi):
+        return
+    listed = C.run(["nmcli", "-t", "-f", "UUID,TYPE,TIMESTAMP", "connection", "show"], timeout=8, env=env)
+    rows = []
+    for line in (listed.stdout or "").splitlines():
+        parts = line.split(":")
+        if len(parts) < 3:
+            continue
+        rows.append((parts[0], parts[1], parts[2]))
+    best = newest_wifi_uuid(rows)
+    if not best:
+        return
+    if C.settings().get("kwallet", True) is False:
+        mgmt, flags, ssid = wifi_profile(best)
+        if mgmt in WIFI_PSK_MGMT and not psk_known(best, flags):
+            # Агента с паролем нет: подключение повисло бы на авторизации.
+            ask_wifi_password(best, ssid)
+            return
+    C.run(["nmcli", "-w", "25", "connection", "up", best], timeout=40, env=env)
+
+
+def wifi_after_unlock():
+    if C.settings().get("kwallet", True) is False:
+        return
+    def loop():
+        tries = 0
+        for _ in range(90):
+            time.sleep(2)
+            try:
+                if not wallet_unlocked():
+                    continue
+                wifi_save()
+                connect_saved_wifi()
+                tries += 1
+                # Первая попытка может прийти раньше, чем агент секретов увидит
+                # открытый бумажник. Дальше повтор ничего не рвёт: уже
+                # подключённый Wi-Fi функция не трогает.
+                if tries >= 3:
+                    return
+            except Exception:
+                pass
+    threading.Thread(target=loop, daemon=True).start()
 
 def chooser():
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox
@@ -542,7 +1079,20 @@ def icons_fix():
 KWIN_RULES = {
     "matryoshka-print-okular": {"Description": "Матрёшка: окно печати Okular поверх", "wmclass": "okular", "wmclassmatch": "2", "types": "32", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2", "acceptfocus": "true", "acceptfocusrule": "2"},
     "matryoshka-print-portal": {"Description": "Матрёшка: окно печати поверх", "wmclass": "xdg-desktop-portal-kde", "wmclassmatch": "2", "title": "Печать|Print", "titlematch": "3", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2"},
+    "matryoshka-dos-files": {"Description": "Матрёшка: окно файлов DOS поверх", "title": "Файлы DOS", "titlematch": "1", "above": "true", "aboverule": "2", "fsplevel": "0", "fsplevelrule": "2"},
+    # Только рамка, и только когда окно появляется (правило 3). Размер и полный
+    # экран не задаются: из-за них щелчок внутри Android двигал окно.
+    # Рамка — принудительно, иначе Waydroid рисует голую поверхность.
+    # Размер и центр задаются один раз при появлении (правило 3). Правило 2
+    # на размере двигало окно при каждом щелчке.
+    "matryoshka-waydroid": {"Description": "Матрёшка: у окна Android обычная рамка", "wmclass": "waydroid", "wmclassmatch": "2", "noborder": "false", "noborderrule": "2", "placement": "4", "placementrule": "3", "maximizehoriz": "true", "maximizehorizrule": "3", "maximizevert": "true", "maximizevertrule": "3"},
+    # winperc=100 уводил заголовок за край экрана, крестика не было. Полный экран
+    # здесь запрещён, рамка остаётся. Кнопку «развернуть» пользователь нажимает сам.
+    "matryoshka-dosbox": {"Description": "Матрёшка: DOS не закрывает экран без кнопок", "wmclass": "dosbox-x", "wmclassmatch": "2", "noborder": "false", "noborderrule": "2", "fullscreen": "false", "fullscreenrule": "2"},
 }
+# Секция Android переписывается целиком: в старой были maximize и fullscreen,
+# и щелчок то раскрывал окно, то уводил его в угол.
+KWIN_DROP = ("matryoshka-waydroid",)
 
 def kwin_rules():
     import configparser
@@ -559,15 +1109,23 @@ def kwin_rules():
         cp.add_section("General")
     rules = [x for x in cp.get("General", "rules", fallback="").split(",") if x]
     added = False
+    for name in list(cp.sections()):
+        wm = cp.get(name, "wmclass", fallback="")
+        if name in KWIN_DROP or "waydroid" in wm.lower():
+            cp.remove_section(name)
+            if name in rules:
+                rules.remove(name)
+            added = True
     for name, props in KWIN_RULES.items():
-        if name in rules:
-            continue
         if not cp.has_section(name):
             cp.add_section(name)
-            for k, v in props.items():
+        for k, v in props.items():
+            if cp.get(name, k, fallback=None) != v:
                 cp.set(name, k, v)
-        rules.append(name)
-        added = True
+                added = True
+        if name not in rules:
+            rules.append(name)
+            added = True
     if not added:
         return
     if os.path.isfile(f):
@@ -631,6 +1189,11 @@ def on_login():
     except Exception:
         pass
     try:
+        import deskicons
+        deskicons.trash_icon()
+    except Exception:
+        pass
+    try:
         import dosbox
         dosbox.refresh_launchers()
     except Exception:
@@ -653,6 +1216,11 @@ def on_login():
     except Exception:
         pass
     threading.Thread(target=icons_fix, daemon=True).start()
+    try:
+        import zoomdoctor
+        zoomdoctor.bind_handler()
+    except Exception:
+        pass
     try:
         kwin_rules()
     except Exception:
@@ -701,8 +1269,17 @@ def on_login():
         pass
     try:
         kwallet(bool(s.get("kwallet", True)))
+        wifi_after_unlock()
     except Exception:
         pass
+    def later_audio():
+        for delay in (8, 20):
+            time.sleep(delay)
+            try:
+                restore_audio()
+            except Exception:
+                pass
+    threading.Thread(target=later_audio, daemon=True).start()
     try:
         import hotkeys
         hotkeys.ensure_daemon()

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Код 0 — следующий модуль PAM пропускается.
+# Код 1 — pam_kwallet5 получает уже введённый пароль и открывает kwalletd6.
+# Пароль в этот файл не пишется.
+exec /usr/bin/python3 /usr/lib/matryoshka/wallet_pam.py

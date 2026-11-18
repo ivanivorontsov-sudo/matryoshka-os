@@ -1,0 +1,23 @@
+#!/bin/sh
+# Кнопка языка в самом конце меню, после Debian и Windows. Первым пунктом её ставить нельзя:
+# при задержке 0 секунд GRUB сам запускает первый пункт и меню перезагружается бесконечно.
+# В командах GRUB нельзя писать «||».
+cat <<'EOF'
+if [ "$matryoshka_lang" = "en" ]; then
+  menuentry "Русский" {
+    set matryoshka_lang=ru
+    set default=0
+    export matryoshka_lang
+    export default
+    configfile $prefix/grub.cfg
+  }
+else
+  menuentry "English" {
+    set matryoshka_lang=en
+    set default=0
+    export matryoshka_lang
+    export default
+    configfile $prefix/grub.cfg
+  }
+fi
+EOF

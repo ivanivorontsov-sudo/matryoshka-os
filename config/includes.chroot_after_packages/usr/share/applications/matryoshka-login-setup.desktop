@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Записать лицо и отпечаток
+Name[ru]=Записать лицо и отпечаток
+Comment=Запись лица и отпечатка для входа
+Exec=matryoshka-center users
+Icon=preferences-desktop-user
+NoDisplay=true
+Terminal=false
+MimeType=x-scheme-handler/matryoshka-login;

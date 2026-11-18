@@ -1,3 +1,6 @@
+# Пакеты VPN/прокси здесь не перечисляются: их один раз снимает drop_vpn.py
+# (метка /var/lib/matryoshka/vpn-cleaned), поставленное пользователем потом не трогается.
 file /etc/systemd/system/matryoshka-novpn.service
 file /etc/systemd/system/multi-user.target.wants/matryoshka-novpn.service
 file /usr/lib/matryoshka/novpn.sh
+file /etc/apt/preferences.d/matryoshka-no-vpn

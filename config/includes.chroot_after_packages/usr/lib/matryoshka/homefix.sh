@@ -1,6 +1,7 @@
 #!/bin/sh
 V=$(cat /etc/matryoshka-version 2>/dev/null)
 S=/var/lib/matryoshka/homefix-done
+[ -x /usr/lib/matryoshka/sudoers-fix.sh ] && /usr/lib/matryoshka/sudoers-fix.sh
 [ -n "$V" ] && [ "$(cat "$S" 2>/dev/null)" = "$V" ] && exit 0
 getent passwd | awk -F: '$3>=1000 && $3<60000 {print $1":"$3":"$4":"$6}' | while IFS=: read -r u uid gid h; do
   case "$h" in /home/?*) ;; *) continue ;; esac

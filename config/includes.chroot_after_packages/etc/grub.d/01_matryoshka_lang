@@ -1,0 +1,38 @@
+#!/bin/sh
+# Язык и синий шрифт меню GRUB. Пункта смены языка здесь нет:
+# он стоял первым, при нулевой задержке GRUB сам его выбирал и меню крутилось по кругу.
+# В командах GRUB нельзя писать «||»: grub-script-check считает это ошибкой и update-grub не ставит меню.
+# Шрифт подключается только если он уже лежит на диске: отсутствующий GRUB_FONT ломает grub-mkconfig.
+cat <<'EOF'
+if [ "$matryoshka_lang" = "en" ]; then
+  set lang=en
+else
+  set lang=ru_RU
+fi
+export lang
+if [ "$default" = "English" ]; then
+  set default=0
+fi
+if [ "$default" = "Русский" ]; then
+  set default=0
+fi
+if [ -f $prefix/fonts/unicode.pf2 ]; then
+  loadfont $prefix/fonts/unicode.pf2
+  set gfxmode=auto
+  insmod all_video
+  insmod gfxterm
+  terminal_output gfxterm
+else
+  if [ -f $prefix/unicode.pf2 ]; then
+    loadfont $prefix/unicode.pf2
+    set gfxmode=auto
+    insmod all_video
+    insmod gfxterm
+    terminal_output gfxterm
+  fi
+fi
+set color_normal=light-gray/blue
+set color_highlight=white/blue
+set menu_color_normal=light-gray/blue
+set menu_color_highlight=white/blue
+EOF

@@ -1,0 +1,22 @@
+#!/bin/sh
+# Сеть поднялась. Энергосбережение Wi-Fi на Debian 13 часто остаётся включённым,
+# хотя в настройке NetworkManager уже стоит wifi.powersave=2: до драйвера это не доходит.
+# Команда iw выключает его на самом интерфейсе. На проверке Debian 13 это убирало
+# повторы пакетов и поднимало скорость. Если в настройке снова 3, пользователь
+# включил экономию сам, и здесь её не перебиваем.
+IFACE=${DEVICE_IFACE:-$1}
+ACTION=${2:-}
+[ "$ACTION" = "up" ] || exit 0
+[ -n "$IFACE" ] || exit 0
+[ -d "/sys/class/net/$IFACE/phy80211" ] || exit 0
+CONF=/etc/NetworkManager/conf.d/60-matryoshka-powersave.conf
+if [ -f "$CONF" ] && grep -q 'wifi.powersave=3' "$CONF"; then
+  exit 0
+fi
+# Очередь на уже поднятом Wi-Fi не подменяем. Замена корня на fq в прошлом
+# архиве обрывала пересланные пакеты Android, хотя страницы самого компьютера открывались.
+# Новым интерфейсам очередь fq задаёт sysctl net.core.default_qdisc.
+if command -v iw >/dev/null 2>&1; then
+  iw dev "$IFACE" set power_save off || true
+fi
+exit 0

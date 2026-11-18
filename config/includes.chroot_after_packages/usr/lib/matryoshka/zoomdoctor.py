@@ -19,11 +19,11 @@ import archiveinst
 HOME = os.path.expanduser("~")
 LIBS = {"libEGL.so.1": "libegl1", "libGL.so.1": "libgl1", "libGLX.so.0": "libglx0", "libICE.so.6": "libice6", "libOpenGL.so.0": "libopengl0", "libSM.so.6": "libsm6", "libX11-xcb.so.1": "libx11-xcb1", "libX11.so.6": "libx11-6", "libXcomposite.so.1": "libxcomposite1", "libXdamage.so.1": "libxdamage1", "libXext.so.6": "libxext6", "libXfixes.so.3": "libxfixes3", "libXrandr.so.2": "libxrandr2", "libXtst.so.6": "libxtst6", "libasound.so.2": "libasound2t64", "libatk-1.0.so.0": "libatk1.0-0t64", "libatk-bridge-2.0.so.0": "libatk-bridge2.0-0t64", "libatomic.so.1": "libatomic1", "libatspi.so.0": "libatspi2.0-0t64", "libcairo-gobject.so.2": "libcairo-gobject2", "libcairo.so.2": "libcairo2", "libcups.so.2": "libcups2t64", "libdbus-1.so.3": "libdbus-1-3", "libdrm.so.2": "libdrm2", "libexpat.so.1": "libexpat1", "libfontconfig.so.1": "libfontconfig1", "libfreetype.so.6": "libfreetype6", "libgbm.so.1": "libgbm1", "libgcc_s.so.1": "libgcc-s1", "libgdk-3.so.0": "libgtk-3-0t64", "libgdk_pixbuf-2.0.so.0": "libgdk-pixbuf-2.0-0", "libgio-2.0.so.0": "libglib2.0-0t64", "libglib-2.0.so.0": "libglib2.0-0t64", "libgmodule-2.0.so.0": "libglib2.0-0t64", "libgobject-2.0.so.0": "libglib2.0-0t64", "libgomp.so.1": "libgomp1", "libgssapi_krb5.so.2": "libgssapi-krb5-2", "libgthread-2.0.so.0": "libglib2.0-0t64", "libgtk-3.so.0": "libgtk-3-0t64", "libnspr4.so": "libnspr4", "libnss3.so": "libnss3", "libnssutil3.so": "libnss3", "libpango-1.0.so.0": "libpango-1.0-0", "libpangocairo-1.0.so.0": "libpangocairo-1.0-0", "libsmime3.so": "libnss3", "libstdc++.so.6": "libstdc++6", "libudev.so.1": "libudev1", "libuuid.so.1": "libuuid1", "libwayland-client.so.0": "libwayland-client0", "libwayland-cursor.so.0": "libwayland-cursor0", "libwayland-egl.so.1": "libwayland-egl1", "libxcb-cursor.so.0": "libxcb-cursor0", "libxcb-glx.so.0": "libxcb-glx0", "libxcb-icccm.so.4": "libxcb-icccm4", "libxcb-image.so.0": "libxcb-image0", "libxcb-keysyms.so.1": "libxcb-keysyms1", "libxcb-randr.so.0": "libxcb-randr0", "libxcb-render-util.so.0": "libxcb-render-util0", "libxcb-render.so.0": "libxcb-render0", "libxcb-shape.so.0": "libxcb-shape0", "libxcb-shm.so.0": "libxcb-shm0", "libxcb-sync.so.1": "libxcb-sync1", "libxcb-util.so.1": "libxcb-util1", "libxcb-xfixes.so.0": "libxcb-xfixes0", "libxcb-xkb.so.1": "libxcb-xkb1", "libxcb-xtest.so.0": "libxcb-xtest0", "libxcb.so.1": "libxcb1", "libxkbcommon-x11.so.0": "libxkbcommon-x11-0", "libxkbcommon.so.0": "libxkbcommon0", "libz.so.1": "zlib1g", "libzstd.so.1": "libzstd1"}
 HOSTS = ["zoom.us", "us04web.zoom.us", "us05web.zoom.us", "us06web.zoom.us", "zoom.com", "st1.zoom.us"]
-SCHEMES = ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-handler/zoomphonecall", "x-scheme-handler/tel", "x-scheme-handler/callto"]
+SCHEMES = ["x-scheme-handler/zoommtg", "x-scheme-handler/zoomus", "x-scheme-handler/zoomphonecall", "x-scheme-handler/zoomprc", "x-scheme-handler/tel", "x-scheme-handler/callto"]
 PROXY_VARS = ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "no_proxy", "NO_PROXY"]
 
 CODES = {
-    "100000400": "Сервер Zoom не пустил клиент в конференцию (MEETING_STATUS_FAILED). Если та же встреча открывается в браузере, сеть и Россия тут ни при чём: виноват сам клиент. Частые причины: повреждённый профиль ~/.zoom и ~/.config/zoomus.conf, устаревший клиент, запуск под Wayland без xcb. Доктор с --code 100000400 --fix переносит профиль в резервную копию, чинит ярлык (QT_QPA_PLATFORM=xcb) и проверяет версию. Ещё причины на стороне встречи: организатор не начал её, вход только для вошедших в аккаунт Zoom, ссылка без pwd=. Проверка клиента: matryoshka zoom-doctor --test.",
+    "100000400": "Клиент не дошёл до сервера Zoom. У Windows этот же код называется Meeting join failed. На Linux тем же кодом кончается вход, если токен Google не дошёл до уже открытого клиента. Страница «Запустить Zoom» открывает zoomprc://. ZoomLauncher 7.2.5 эту схему не знает (в нём есть только zoommtg:// и zoomus://) и отвечает успехом, не передав токен. Ссылку zoomprc:// принимает сам клиент zoom. Встречу zoommtg:// по-прежнему отдаёт ZoomLauncher.",
     "100000403": "Нет доступа к службе Zoom: сеть, фильтр провайдера, брандмауэр или устаревший клиент.",
     "5003": "Нет соединения с серверами Zoom: сеть, DNS или брандмауэр.",
     "5004": "Нет соединения с серверами Zoom: сеть, DNS или брандмауэр.",
@@ -53,7 +53,7 @@ class Report:
     def __init__(self):
         self.items = []
         self.fixes = set()
-        self.root = {"pkgs": set(), "hosts": False, "ufw": False, "snitch": [], "ntp": False, "chown": False}
+        self.root = {"pkgs": set(), "hosts": False, "ufw": False, "snitch": [], "ntp": False, "chown": False, "userns": False}
 
     def add(self, level, text, fix=None):
         self.items.append((level, text))
@@ -340,6 +340,31 @@ def check_conf(r):
         if empty:
             r.add("warn", f"В ~/.zoom/data есть пустые базы ({len(empty)} шт.): возможен сбой профиля. Поможет --reset-cache (данные сохраняются в копию).", "cache")
 
+def check_login(r):
+    # 100000400 на Linux — это не «плохой код встречи». Клиент так пишет, когда
+    # окно входа не смогло дойти до zoom.us.
+    try:
+        restricted = open("/proc/sys/kernel/apparmor_restrict_unprivileged_userns", encoding="ascii").read().strip()
+    except OSError:
+        restricted = ""
+    if restricted == "1":
+        r.add("bad", "Ядро не пускает песочницу окна входа Zoom. Клиент из-за этого пишет 100000400, хотя сеть при этом живая.", "root")
+        r.root["userns"] = True
+    elif restricted == "0":
+        r.add("ok", "Песочница окна входа Zoom разрешена")
+    try:
+        import common
+        auto = common.settings().get("wallet_auto", True) is not False
+        if auto:
+            r.add("ok", "Пароль с экрана входа pam_kwallet5 передаёт /usr/bin/kwalletd6. Хранилище ключей остаётся включённым: им Вивальди открывает логины. Отпечаток пароль не передаёт.")
+        elif common.settings().get("kwallet", True) is False:
+            r.add("warn", "Автоматический ввод пароля бумажника при входе выключен. Хранилище ключей при этом не гасится: без него Вивальди пишет «Дешифровка прервана».")
+        else:
+            r.add("warn", "Бумажник включён. Вход пальцем его не открывает, поэтому Вивальди или сеть могут спросить пароль хранилища ключей. Это ключ уже сохранённых логинов. Стирать их нельзя.")
+    except Exception:
+        pass
+
+
 def check_display(r):
     sess = os.environ.get("XDG_SESSION_TYPE", "")
     qpa = os.environ.get("QT_QPA_PLATFORM", "")
@@ -392,13 +417,101 @@ def check_audio(r):
     if run(["pactl", "info"]).returncode != 0:
         r.add("warn", "Звуковой сервер не отвечает: Zoom может зависать при подключении к звуку")
 
+SCHEME_NAMES = ("zoommtg", "zoomus", "zoomphonecall", "zoomprc")
+BROWSER_DIRS = ("vivaldi", "chromium", "google-chrome", "yandex-browser")
+
+def unblock_protocols(home=None, running=False):
+    home = home or HOME
+    if running:
+        return []
+    changed = []
+    for name in BROWSER_DIRS:
+        root = os.path.join(home, ".config", name)
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _dirs, files in os.walk(root):
+            if "Preferences" not in files:
+                continue
+            base = os.path.basename(dirpath)
+            if base != "Default" and not base.startswith("Profile"):
+                continue
+            path = os.path.join(dirpath, "Preferences")
+            try:
+                data = json.load(open(path, encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            ph = data.get("protocol_handler")
+            if not isinstance(ph, dict):
+                ph = {}
+                data["protocol_handler"] = ph
+            ex = ph.get("excluded_schemes")
+            if not isinstance(ex, dict):
+                ex = {}
+                ph["excluded_schemes"] = ex
+            dirty = False
+            for scheme in SCHEME_NAMES:
+                if ex.get(scheme) is not False:
+                    ex[scheme] = False
+                    dirty = True
+            if not dirty:
+                continue
+            tmp = path + ".matryoshka-new"
+            with open(tmp, "w", encoding="utf-8") as out:
+                json.dump(data, out, ensure_ascii=False)
+            os.replace(tmp, path)
+            changed.append(path)
+    for path in glob.glob(os.path.join(home, ".mozilla", "firefox", "*", "handlers.json")):
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        schemes = data.get("schemes")
+        if not isinstance(schemes, dict):
+            schemes = {}
+            data["schemes"] = schemes
+        dirty = False
+        for scheme in SCHEME_NAMES:
+            cur = schemes.get(scheme)
+            if not isinstance(cur, dict) or cur.get("action") != 4:
+                schemes[scheme] = {"action": 4, "ask": False}
+                dirty = True
+        if not dirty:
+            continue
+        tmp = path + ".matryoshka-new"
+        with open(tmp, "w", encoding="utf-8") as out:
+            json.dump(data, out, ensure_ascii=False)
+        os.replace(tmp, path)
+        changed.append(path)
+    return changed
+
+def browser_running():
+    if not shutil.which("pgrep"):
+        return False
+    for name in ("vivaldi-bin", "chrome", "chromium", "firefox", "firefox-esr"):
+        if run(["pgrep", "-u", str(os.getuid()), "-x", name]).returncode == 0:
+            return True
+    return False
+
+def zoom_schemes():
+    return [s for s in SCHEMES if "/zoom" in s]
+
+
+def bind_handler():
+    for scheme in zoom_schemes():
+        run(["xdg-mime", "default", "matryoshka-zoom.desktop", scheme])
+    return unblock_protocols(running=browser_running())
+
 def fix_handler():
     fixed = archiveinst.repair_zoom(HOME)
     for d in installs():
         if d.startswith(("/opt/", "/usr/")):
             for desk in ["Zoom.desktop", "zoom.desktop"] + [os.path.basename(x) for x in glob.glob("/usr/share/applications/matryoshka-archive-zoom*.desktop")]:
                 if os.path.isfile("/usr/share/applications/" + desk):
-                    for s in SCHEMES[:3]:
+                    for s in zoom_schemes():
                         run(["xdg-mime", "default", desk, s])
                     fixed.append(desk)
                     break
@@ -410,6 +523,76 @@ def fix_exec():
             p = os.path.join(d, n)
             if os.path.isfile(p) and os.access(p, os.W_OK):
                 os.chmod(p, os.stat(p).st_mode | 0o111)
+
+DOWNLOADS = {
+    "latest-deb": ("https://zoom.us/client/latest/zoom_amd64.deb", "zoom_amd64.deb"),
+    "latest-tar": ("https://zoom.us/client/latest/zoom_x86_64.tar.xz", "zoom_x86_64.tar.xz"),
+    "7.2.5": ("https://zoom.us/client/7.2.5.6661/zoom_amd64.deb", "zoom_7.2.5.6661_amd64.deb"),
+    "7.0.5": ("https://zoom.us/client/7.0.5.3034/zoom_amd64.deb", "zoom_7.0.5.3034_amd64.deb"),
+    "6.6.11": ("https://zoom.us/client/6.6.11.6052/zoom_amd64.deb", "zoom_6.6.11.6052_amd64.deb"),
+}
+
+def download_dir():
+    for name in ("Загрузки", "Downloads"):
+        path = os.path.join(HOME, name)
+        if os.path.isdir(path):
+            return path
+    return HOME
+
+def download_zoom(kind):
+    spec = DOWNLOADS.get(kind)
+    if not spec:
+        print("Нет такого варианта. Доступны:", ", ".join(DOWNLOADS))
+        return 2
+    url, name = spec
+    dest = os.path.join(download_dir(), name)
+    urls = [url]
+    if kind not in ("latest-deb", "latest-tar"):
+        urls.append("https://repo.zoom.us/repo/deb/pool/main/z/zoom/" + name)
+    for one in urls:
+        if run(["curl", "-fL", "--retry", "3", "-o", dest, one], timeout=900).returncode == 0 and os.path.isfile(dest) and os.path.getsize(dest) > 1000000:
+            print("Скачано:", dest)
+            print("deb ставится так: sudo apt install --reinstall", dest)
+            print("tar.xz ставится так: matryoshka zoom-doctor --update  (только если архив уже лежит как установка в домашней папке)")
+            return 0
+        print("Не скачалось:", one)
+    return 1
+
+def clear_runtime_cache():
+    removed = []
+    cache = os.path.join(HOME, ".cache", "zoom")
+    if os.path.isdir(cache):
+        shutil.rmtree(cache)
+        removed.append(cache)
+    root = os.path.join(HOME, ".zoom")
+    if os.path.isdir(root):
+        for folder, dirs, _names in os.walk(root):
+            for name in list(dirs):
+                if name in ("GPUCache", "Code Cache", "Cache", "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache"):
+                    path = os.path.join(folder, name)
+                    shutil.rmtree(path, ignore_errors=True)
+                    removed.append(path)
+                    dirs.remove(name)
+    return removed
+
+def disable_gpu():
+    d = os.path.join(HOME, ".config", "matryoshka")
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, "zoom-no-gpu"), "w", encoding="utf-8").write("1\n")
+    if conf_broken():
+        return "zoomus.conf повреждён, его не менял. Видеоускорение выключено флагом запуска."
+    conf_set("enableHardwareAcc", "false")
+    return "Видеоускорение Zoom выключено (enableHardwareAcc=false и запуск с --disable-gpu)."
+
+def print_repairs():
+    print("Варианты починки и загрузки:")
+    print("  --cache          официальный кэш: ~/.cache/zoom и GPUCache. Вход в аккаунт остаётся.")
+    print("  --gpu            без видеоускорения. Помогает, когда клиент падает на входе в конференцию.")
+    print("  --reset-cache    весь профиль ~/.zoom переносится в копию. Это полная очистка с сайта Zoom.")
+    print("  --download ИМЯ   скачать установщик. Имена: " + ", ".join(DOWNLOADS))
+    print("  --web ССЫЛКА     открыть эту встречу в браузере.")
+    print("  --update         обновить установку tar.xz в домашней папке до latest.")
+    print("  --test           открыть тестовую встречу zoom.us/test.")
 
 def reset_cache():
     z = os.path.join(HOME, ".zoom")
@@ -487,6 +670,8 @@ def root_args(r):
         a.append("ntp")
     if r.root["chown"]:
         a.append("chown")
+    if r.root.get("userns"):
+        a.append("userns")
     for d in r.root["snitch"]:
         a.append("snitch=" + d)
     return a
@@ -502,15 +687,167 @@ def diagnose():
     check_profile(r)
     check_conf(r)
     check_display(r)
+    check_login(r)
     check_audio(r)
     check_logs(r)
     return r
 
+def report_lines(r):
+    mark = {"ok": "В порядке.", "warn": "Внимание.", "bad": "Ошибка.", "info": "Справка."}
+    return ["%s %s" % (mark[level], text) for level, text in r.items]
+
+def fix_lines(r, reset=False):
+    lines = []
+    bound = bind_handler()
+    lines.append("Кнопка «Запустить Zoom» в браузере открывает клиент. " + (("Снята блокировка протокола: " + ", ".join(bound)) if bound else "Если браузер был открыт, закройте его полностью и нажмите кнопку ещё раз."))
+    if "handler" in r.fixes:
+        lines.append("Ярлык и ссылки zoommtg:// перепривязаны: " + (", ".join(fix_handler()) or "без изменений"))
+    if "exec" in r.fixes:
+        fix_exec()
+        lines.append("Права на запуск файлов Zoom восстановлены.")
+    if "conf" in r.fixes:
+        p = zconf()
+        bak = p + ".broken-" + time.strftime("%Y%m%d-%H%M%S")
+        shutil.move(p, bak)
+        lines.append("Повреждённый zoomus.conf перенесён в %s (Zoom создаст новый)" % bak)
+    if "wayland" in r.fixes and os.environ.get("XDG_SESSION_TYPE") == "wayland" and not conf_broken():
+        conf_set("enableWaylandShare", "true")
+        if (conf_get("xwayland") or "").lower() == "false":
+            conf_set("xwayland", "true")
+        lines.append("zoomus.conf: включены enableWaylandShare и xwayland")
+    if "cache" in r.fixes and not reset:
+        lines.append("Если ошибка останется, нажмите «Сбросить профиль». Вход в Zoom придётся выполнить заново.")
+    ra = root_args(r)
+    if ra:
+        lines.append("Нужны права администратора для: " + " ".join(ra))
+        p = run(["pkexec", "/usr/lib/matryoshka/root.sh", "zoom-fix"] + ra, timeout=900)
+        lines.append((p.stdout or p.stderr or "").strip() or "Права администратора не получены, эта часть не сделана.")
+    return lines
+
+def capture(fn):
+    import io
+    buf = io.StringIO()
+    old = sys.stdout
+    sys.stdout = buf
+    try:
+        code = fn()
+    finally:
+        sys.stdout = old
+    text = buf.getvalue().strip()
+    if text:
+        return text
+    return "Готово." if code == 0 else "Не получилось."
+
+def gui_requested(args):
+    return not args or args == ["--gui"]
+
+def gui():
+    from PyQt6.QtCore import QThread, pyqtSignal
+    from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QLineEdit
+    app = QApplication.instance() or QApplication(sys.argv)
+    try:
+        import wheelguard
+        wheelguard.install(app)
+    except Exception:
+        pass
+    w = QWidget()
+    w.setWindowTitle("Доктор Zoom")
+    w.resize(840, 640)
+    lay = QVBoxLayout(w)
+    lay.addWidget(QLabel("Проверка и починка Zoom. Это обычное окно программы, не командная строка."))
+    out = QTextBrowser()
+    out.setPlainText("Нажмите «Проверить».")
+    lay.addWidget(out, 1)
+    link = QLineEdit()
+    link.setPlaceholderText("Ссылка на встречу: https://zoom.us/j/… или zoommtg://…")
+    lay.addWidget(link)
+    buttons = []
+    holder = {"job": None}
+
+    class Job(QThread):
+        finished_text = pyqtSignal(str)
+
+        def __init__(self, fn):
+            super().__init__(w)
+            self.fn = fn
+
+        def run(self):
+            try:
+                self.finished_text.emit(self.fn())
+            except Exception as e:
+                self.finished_text.emit("Не получилось: %s" % e)
+
+    def start(fn):
+        if holder["job"] is not None:
+            return
+        for b in buttons:
+            b.setEnabled(False)
+        out.setPlainText("Выполняю…")
+        job = Job(fn)
+        holder["job"] = job
+
+        def done(text):
+            out.setPlainText(text)
+            for b in buttons:
+                b.setEnabled(True)
+            holder["job"] = None
+
+        job.finished_text.connect(done)
+        job.start()
+
+    def add(row, title, fn):
+        b = QPushButton(title)
+        buttons.append(b)
+        row.addWidget(b)
+        b.clicked.connect(lambda _checked=False, fn=fn: start(fn))
+
+    def text_check():
+        r = diagnose()
+        lines = report_lines(r)
+        lines.append("")
+        lines.append("Есть что исправить. Кнопка «Исправить» сделает это." if r.fixes else "Критических неисправностей не найдено.")
+        return "\n".join(lines)
+
+    def text_fix():
+        r = diagnose()
+        lines = report_lines(r) + ["", "Исправление:"] + fix_lines(r)
+        lines += ["", "Повторная проверка:"]
+        lines += report_lines(diagnose())
+        return "\n".join(lines)
+
+    def text_web():
+        u = web_url(link.text())
+        if not u:
+            return "Вставьте ссылку на встречу."
+        subprocess.Popen(["xdg-open", u], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return "Открываю встречу в браузере: " + re.sub(r"pwd=.*", "pwd=…", u)
+
+    row = QHBoxLayout()
+    row2 = QHBoxLayout()
+    add(row, "Проверить", text_check)
+    add(row, "Исправить", text_fix)
+    add(row, "Очистить кэш", lambda: "Кэш Zoom очищен: " + (", ".join(clear_runtime_cache()) or "уже пусто. Вход в аккаунт не трогал."))
+    add(row, "Без видеоускорения", disable_gpu)
+    add(row2, "Сбросить профиль", lambda: "Профиль Zoom перенесён в %s. Вход в Zoom нужно выполнить заново." % (reset_cache() or "(нечего переносить)"))
+    add(row2, "Тестовая встреча", lambda: capture(run_test))
+    add(row2, "Обновить из архива", lambda: capture(update_zoom))
+    add(row2, "Скачать установщик", lambda: capture(lambda: download_zoom("latest-deb")))
+    add(row2, "Открыть в браузере", text_web)
+    lay.addLayout(row)
+    lay.addLayout(row2)
+    w.show()
+    return app.exec()
+
 def main():
     args = sys.argv[1:]
     if os.geteuid() == 0:
-        print("Запускайте без sudo, от своего пользователя: matryoshka zoom-doctor [--fix] [--reset-cache] [--test] [--update] [--code N]")
+        print("Запускайте без sudo, от своего пользователя: matryoshka zoom-doctor [--fix] [--cache] [--gpu] [--download ИМЯ] [--reset-cache] [--test] [--update] [--web ССЫЛКА] [--code N]")
         return 2
+    if gui_requested(args) and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return gui()
+    if "--downloads" in args:
+        print_repairs()
+        return 0
     if "--code" in args:
         i = args.index("--code")
         c = re.sub(r"\D", "", args[i + 1] if i + 1 < len(args) else "")
@@ -527,48 +864,32 @@ def main():
         return 0
     if "--test" in args:
         return run_test()
+    if "--download" in args:
+        i = args.index("--download")
+        kind = args[i + 1] if i + 1 < len(args) else ""
+        return download_zoom(kind)
     if "--update" in args:
         return update_zoom()
     r = diagnose()
     r.show()
     if "--json" in args:
         print(json.dumps({"items": r.items, "root": root_args(r)}, ensure_ascii=False))
-    if "--fix" in args and "--code" in args and "100000400" in " ".join(args) and "--reset-cache" not in args:
-        args.append("--reset-cache")
-        zc = zconf()
-        if os.path.isfile(zc):
-            bak = zc + ".before-reset-" + time.strftime("%Y%m%d-%H%M%S")
-            shutil.move(zc, bak)
-            print("zoomus.conf перенесён в", bak)
+    if "--cache" in args:
+        gone = clear_runtime_cache()
+        print("Кэш Zoom очищен:", ", ".join(gone) if gone else "уже пусто. Вход в аккаунт не трогал.")
+    if "--gpu" in args:
+        print(disable_gpu())
     if "--reset-cache" in args:
         d = reset_cache()
         print("Кэш и данные Zoom перенесены в", d if d else "(нечего переносить)")
     if "--fix" not in args:
         if r.fixes:
             print("\nЧтобы исправить найденное: matryoshka zoom-doctor --fix")
-        print("Если Zoom всё равно пишет ошибку с кодом, пришлите код. Запасной путь: войти в конференцию из браузера: matryoshka zoom-doctor --web 'ссылка на встречу'")
+        print("Если Zoom всё равно пишет ошибку с кодом, пришлите код.")
+        print_repairs()
         return 1 if any(l == "bad" for l, _ in r.items) else 0
-    if "handler" in r.fixes:
-        print("Ярлык и ссылки zoommtg:// перепривязаны:", ", ".join(fix_handler()) or "без изменений")
-    if "exec" in r.fixes:
-        fix_exec()
-    if "conf" in r.fixes:
-        p = zconf()
-        bak = p + ".broken-" + time.strftime("%Y%m%d-%H%M%S")
-        shutil.move(p, bak)
-        print("Повреждённый zoomus.conf перенесён в", bak, "(Zoom создаст новый)")
-    if "wayland" in r.fixes and os.environ.get("XDG_SESSION_TYPE") == "wayland" and not conf_broken():
-        conf_set("enableWaylandShare", "true")
-        if (conf_get("xwayland") or "").lower() == "false":
-            conf_set("xwayland", "true")
-        print("zoomus.conf: включены enableWaylandShare и xwayland (копия: zoomus.conf.matryoshka.bak)")
-    if "cache" in r.fixes and "--reset-cache" not in args:
-        print("Для сброса профиля Zoom: matryoshka zoom-doctor --fix --reset-cache")
-    ra = root_args(r)
-    if ra:
-        print("Нужны права администратора для:", " ".join(ra))
-        p = run(["pkexec", "/usr/lib/matryoshka/root.sh", "zoom-fix"] + ra, timeout=900)
-        print(p.stdout.strip() or p.stderr.strip())
+    for line in fix_lines(r, reset="--reset-cache" in args):
+        print(line)
     print("\nПовторная проверка:")
     r2 = diagnose()
     r2.show()
