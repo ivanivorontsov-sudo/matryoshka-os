@@ -34,6 +34,20 @@ if grep -q 'gpg --batch --gen-key' /usr/lib/live/build/lb_chroot_archives 2>/dev
   sudo sed -i 's#mkdir -p chroot/root/.gnupg#mkdir -p chroot/root/.gnupg\n\t\t\t\t\techo allow-loopback-pinentry > chroot/root/.gnupg/gpg-agent.conf#' /usr/lib/live/build/lb_chroot_archives
 fi
 sudo sed -i 's#deb file:/root/packages ./#deb [trusted=yes] file:/root/packages ./#' /usr/lib/live/build/lb_chroot_archives
+# gpg 2.4 не пишет %secring и не смотрит --secret-keyring. Локальный репозиторий и так trusted=yes, срыв подписи не должен оборвать образ.
+if ! grep -q 'Release.gpg /root/packages/Release" || true' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
+  sudo sed -i 's#/root/packages/Release.gpg /root/packages/Release"#/root/packages/Release.gpg /root/packages/Release" || true#' /usr/lib/live/build/lb_chroot_archives
+fi
+# live-build из Ubuntu 24.04 копирует только config/includes.chroot и config/hooks/*.chroot.
+if [ ! -e config/includes.chroot ]; then
+  ln -s includes.chroot_after_packages config/includes.chroot
+fi
+mkdir -p config/hooks
+for h in config/hooks/live/*.hook.chroot; do
+  [ -f "$h" ] || continue
+  b=config/hooks/$(basename "$h" .hook.chroot).chroot
+  [ -e "$b" ] || ln -s "live/$(basename "$h")" "$b"
+done
 sudo python3 - << 'PY'
 from pathlib import Path
 p = Path("/usr/lib/live/build/lb_chroot_linux-image")
