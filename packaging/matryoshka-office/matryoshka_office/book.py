@@ -269,6 +269,40 @@ class Book:
             return value if got is None else got
         return value
 
+    def ref_values(self, ref):
+        """Значения диапазона «'Лист'!$A$1:$B$3» (с учётом пересчитанных формул) построчно в один список."""
+        import re as _re
+        from openpyxl.utils.cell import range_boundaries
+        m = _re.match(r"^\(?\s*(?:'((?:[^']|'')+)'|([^!]+))!(.+?)\s*\)?$", ref.strip())
+        if m:
+            sheet = (m.group(1) or "").replace("''", "'") or m.group(2)
+            area = m.group(3)
+        else:
+            sheet, area = None, ref
+        if area and area.upper() in {n.upper() for n in self.wb.defined_names}:
+            dn = self.wb.defined_names[area]
+            return self.ref_values(dn.attr_text)
+        ws = self.sheet(sheet) if sheet else self.wb.active
+        c1, r1, c2, r2 = range_boundaries(area.replace("$", ""))
+        out = []
+        for r in range(r1, r2 + 1):
+            for c in range(c1, c2 + 1):
+                out.append(self.display(ws.cell(r, c).coordinate, ws.title))
+        return out
+
+    def charts(self, sheet=None):
+        """Диаграммы листа: [(Chart, якорь {col,row,col_off,row_off,width,height в пунктах}), ...]."""
+        from . import charts as ch
+        ws = self.sheet(sheet)
+        out = []
+        for c in ws._charts:
+            try:
+                model = ch.from_openpyxl(c, self.ref_values)
+            except Exception:
+                continue
+            out.append((model, _anchor_of(c)))
+        return out
+
     def structure(self):
         sheets = []
         for name in self.wb.sheetnames:
@@ -299,6 +333,29 @@ class Book:
             })
         return {"kind": "book", "sheets": sheets, "macros": [m.get("name") for m in self.macros.get("scripts", [])],
                 "vba": _has(self.raw, "xl/vbaProject.bin") or part_bytes(self.save_bytes(), "xl/vbaProject.bin") is not None}
+
+
+def _anchor_of(obj):
+    """Положение объекта листа: левый верхний угол (столбец, строка, смещения) и размер в пунктах."""
+    EMU = 12700.0
+    a = getattr(obj, "anchor", None)
+    info = {"col": 4, "row": 1, "col_off": 0.0, "row_off": 0.0, "width": getattr(obj, "width", 15) * 28.35,
+            "height": getattr(obj, "height", 7.5) * 28.35, "to": None}
+    if isinstance(a, str):
+        from openpyxl.utils.cell import coordinate_from_string, column_index_from_string
+        col, row = coordinate_from_string(a)
+        info.update(col=column_index_from_string(col) - 1, row=row - 1)
+        return info
+    frm = getattr(a, "_from", None)
+    if frm is not None:
+        info.update(col=frm.col, row=frm.row, col_off=frm.colOff / EMU, row_off=frm.rowOff / EMU)
+    to = getattr(a, "to", None)
+    if to is not None:
+        info["to"] = (to.col, to.row, to.colOff / EMU, to.rowOff / EMU)
+    ext = getattr(a, "ext", None)
+    if ext is not None and getattr(ext, "width", None):
+        info.update(width=ext.width / EMU, height=ext.height / EMU)
+    return info
 
 
 def _coerce(value):
