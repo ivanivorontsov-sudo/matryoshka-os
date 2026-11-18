@@ -351,10 +351,12 @@ def set_style(p, style_id):
     ordered_child(ppr(p), "pStyle").set(w("val"), style_id)
 
 
-def set_indent(p, left_pt=None, first_pt=None):
+def set_indent(p, left_pt=None, first_pt=None, right_pt=None):
     ind = ordered_child(ppr(p), "ind")
     if left_pt is not None:
         ind.set(w("left"), str(int(left_pt * 20)))
+    if right_pt is not None:
+        ind.set(w("right"), str(int(right_pt * 20)))
     if first_pt is not None:
         for k in ("firstLine", "hanging"):
             if ind.get(w(k)) is not None:
@@ -365,11 +367,14 @@ def set_indent(p, left_pt=None, first_pt=None):
             ind.set(w("hanging"), str(int(-first_pt * 20)))
 
 
-def set_line_spacing(p, multiple=None, before_pt=None, after_pt=None):
+def set_line_spacing(p, multiple=None, before_pt=None, after_pt=None, exact_pt=None):
     sp = ordered_child(ppr(p), "spacing")
     if multiple is not None:
-        sp.set(w("line"), str(int(multiple * 240)))
+        sp.set(w("line"), str(int(float(multiple) * 240)))
         sp.set(w("lineRule"), "auto")
+    if exact_pt is not None:
+        sp.set(w("line"), str(int(float(exact_pt) * 20)))
+        sp.set(w("lineRule"), "exact")
     if before_pt is not None:
         sp.set(w("before"), str(int(before_pt * 20)))
     if after_pt is not None:

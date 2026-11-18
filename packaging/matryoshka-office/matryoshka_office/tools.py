@@ -42,6 +42,19 @@ TOOLS = {
     "find_replace": "найти и заменить: {find, replace, match_case?}",
     "set_list": "список абзаца: {paragraph, kind} — bullet, decimal или none",
     "insert_image": "картинка в абзац: {paragraph, path, width_mm?}",
+    "insert_equation": "формула (линейная запись как LaTeX: \\frac{a}{b}, x^{2}, \\sqrt{x}, \\sum_{i=1}^{n}): {paragraph, source, display?}",
+    "set_equation": "заменить формулу номер index: {index, source}",
+    "set_header_row": "повторять первую строку таблицы на каждой странице: {table, on?}",
+    "set_row_cant_split": "не разрывать строку таблицы между страницами: {table, row, on?}",
+    "set_page_numbers": "номера страниц: {section?, template?, align?, where?, start?, fmt?} — template вроде «Страница {PAGE} из {NUMPAGES}», where header/footer, fmt decimal/upperRoman/lowerRoman",
+    "set_first_page_different": "особый колонтитул первой страницы: {section?, on?}",
+    "set_section_break": "тип разрыва раздела: {section, kind} — nextPage, continuous, evenPage, oddPage, nextColumn",
+    "float_image": "обтекание картинки текстом: {image_index?, wrap?, align?, width_mm?} — wrap square/tight/topAndBottom/behind/front",
+    "format_text": "оформить часть абзаца по подстроке: {paragraph, find, bold?, italic?, underline?, strike?, color?, highlight?, size?, font?, vert?}",
+    "set_indent": "отступы абзаца в пунктах: {paragraph, left?, right?, first_line?, hanging?}",
+    "set_line_spacing": "межстрочный интервал: {paragraph, multiple?} или {paragraph, exact_pt?}",
+    "insert_merge_field": "поле слияния в конец абзаца: {paragraph, name}",
+    "mail_merge": "слияние с xlsx/csv: {data, output?, per_file?, name_field?} — без output возвращает число записей и поля",
     "set_sheet_cell": "ячейка листа: {addr, value, sheet?}",
     "set_formula": "формула Excel: {addr, formula, sheet?}",
     "set_range": "прямоугольник значений: {addr, rows, sheet?}",
@@ -520,7 +533,89 @@ def _replace_part(doc, a):
     return "часть %s изменена" % part
 
 
+def _kw(name, *ints):
+    def run(doc, a):
+        _need(doc, "letter")
+        kw = dict(a)
+        for key in ints:
+            if key in kw and kw[key] is not None:
+                kw[key] = int(kw[key])
+        return getattr(doc, name)(**kw)
+    return run
+
+
+def _para(doc, a):
+    from . import wedit
+    _need(doc, "letter")
+    paras = doc.paragraphs()
+    idx = int(a.get("paragraph", a.get("index", 0)))
+    if not 0 <= idx < len(paras):
+        raise ValueError("нет абзаца %d" % idx)
+    return wedit, paras[idx]
+
+
+def _format_text(doc, a):
+    wedit, p = _para(doc, a)
+    text = wedit.para_text(p)
+    find = a.get("find") or text
+    pos = text.find(find)
+    if pos < 0:
+        raise ValueError("в абзаце нет «%s»" % find)
+    props = {k: a[k] for k in ("bold", "italic", "underline", "strike", "color", "highlight", "size", "vert") if k in a}
+    if a.get("font") or a.get("name"):
+        props["name"] = a.get("font") or a.get("name")
+    wedit.format_range(p, pos, pos + len(find), **props)
+    doc.touch("word/document.xml")
+    return "оформлено «%s»" % find
+
+
+def _indent(doc, a):
+    wedit, p = _para(doc, a)
+    first = a.get("first_line")
+    if a.get("hanging") is not None:
+        first = -float(a["hanging"])
+    wedit.set_indent(p, left_pt=a.get("left"), first_pt=first, right_pt=a.get("right"))
+    doc.touch("word/document.xml")
+    return "отступы заданы"
+
+
+def _line_spacing(doc, a):
+    wedit, p = _para(doc, a)
+    wedit.set_line_spacing(p, multiple=a.get("multiple"), exact_pt=a.get("exact_pt"))
+    doc.touch("word/document.xml")
+    return "интервал задан"
+
+
+def _mail_merge(doc, a):
+    from . import mailmerge
+    _need(doc, "letter")
+    recs = mailmerge.load_records(a["data"])
+    if not a.get("output"):
+        return "записей %d, поля: %s" % (len(recs), ", ".join(recs[0].keys()) if recs else "—")
+    raw = doc.save_bytes()
+    if a.get("per_file"):
+        files = mailmerge.merge_files(raw, recs, a["output"], a.get("name_field"))
+        return "создано файлов: %d" % len(files)
+    out = mailmerge.merge_all(raw, recs)
+    with open(a["output"], "wb") as fh:
+        fh.write(out.save_bytes())
+    return "письма для %d записей сохранены в %s" % (len(recs), a["output"])
+
+
 _DISPATCH = {
+    "insert_equation": _kw("insert_equation", "paragraph"),
+    "set_equation": _kw("set_equation", "index"),
+    "set_header_row": _kw("set_header_row", "table"),
+    "set_row_cant_split": _kw("set_row_cant_split", "table", "row"),
+    "set_page_numbers": _kw("set_page_numbers", "section", "start"),
+    "set_first_page_different": _kw("set_first_page_different", "section"),
+    "set_section_break": _kw("set_section_break", "section"),
+    "float_image": _kw("float_image", "image_index"),
+    "format_text": _format_text,
+    "set_indent": _indent,
+    "set_line_spacing": _line_spacing,
+    "insert_merge_field": _kw("insert_merge_field", "paragraph"),
+    "mail_merge": _mail_merge,
     "structure": _structure,
     "set_paragraph_text": _set_paragraph_text,
     "insert_paragraph": _insert_paragraph,
