@@ -103,7 +103,14 @@ def deck_from_odp(raw):
     return deck
 
 
-def export_pdf(doc, path):
+def export_pdf(doc, path, markup=False):
+    if doc.kind == "letter":
+        try:
+            from . import layout, render
+            pages, engine = layout.layout(doc, show_markup=markup)
+            return render.export_pdf(pages, path, engine, markup=markup)
+        except ImportError:
+            pass
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.pdfgen import canvas

@@ -511,9 +511,15 @@ class MainWindow(QMainWindow):
         self._menu()
         self._tools()
         kind = session.doc.kind
-        self.view = {"letter": LetterView, "book": BookView, "deck": DeckView}[kind](self)
+        if kind == "letter":
+            from .letterui import LetterArea
+            self.view = LetterArea(self)
+        else:
+            self.view = {"book": BookView, "deck": DeckView}[kind](self)
         self.setCentralWidget(self.view)
         self.dock = AiDock(self)
+        self.dock.setMinimumWidth(300)
+        self.dock.setMaximumWidth(380)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage("Матрёшка Офис · без телеметрии · файл не отправляется никуда, пока вы сами не спросите нейросеть")
@@ -531,7 +537,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(bar)
         kind = self.session.doc.kind
         if kind == "letter":
-            actions = [("Заголовок", self._heading), ("Таблица", self._table), ("Объединить", self._merge), ("Колонтитул", self._header), ("Оглавление", self._toc), ("Ссылка", self._link)]
+            actions = [("Объединить ячейки", self._merge), ("Ссылка", self._link), ("Печать…", self._print)]
         elif kind == "book":
             actions = [("Лист", self._sheet), ("Диаграмма", self._chart), ("Фильтр", self._filter), ("Сводная", self._pivot), ("Пересчитать", self._calc)]
         else:
@@ -568,6 +574,30 @@ class MainWindow(QMainWindow):
         if path:
             export_pdf(target(self.session.doc), path)
             self.statusBar().showMessage("PDF: " + path)
+
+    def _print(self):
+        try:
+            from PyQt6.QtPrintSupport import QPrintDialog, QPrinter
+        except ImportError:
+            self.statusBar().showMessage("Модуль печати Qt не установлен")
+            return
+        from . import layout, render
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        if QPrintDialog(printer, self).exec() != QDialog.DialogCode.Accepted:
+            return
+        pages, engine = layout.layout(target(self.session.doc), show_markup=False)
+        from PyQt6.QtGui import QPainter
+        painter = QPainter(printer)
+        for k, page in enumerate(pages):
+            if k:
+                printer.newPage()
+            rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+            scale = min(rect.width() / page.width, rect.height() / page.height)
+            painter.save()
+            painter.scale(scale, scale)
+            render.paint_page(painter, page, render.Options(markup=False), engine)
+            painter.restore()
+        painter.end()
 
     def _heading(self):
         doc = target(self.session.doc)
@@ -723,6 +753,14 @@ def launch(argv=None):
     shot = None
     if "--screenshot" in argv:
         shot = argv[argv.index("--screenshot") + 1]
+
+        window.setFixedSize(1440, 900)
+        if "--page" in argv and hasattr(window.view, "canvas"):
+            QTimer.singleShot(300, lambda: window.view.pages.verticalScrollBar().setValue(
+                int(window.view.canvas.rects[min(int(argv[argv.index("--page") + 1]), len(window.view.canvas.rects) - 1)].top()) - 10
+                if window.view.canvas.rects else 0))
+        if "--zoom" in argv and hasattr(window.view, "canvas"):
+            window.view.canvas.set_zoom(float(argv[argv.index("--zoom") + 1]))
 
         def grab():
             window.grab().save(shot)

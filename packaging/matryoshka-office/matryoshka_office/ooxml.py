@@ -137,7 +137,50 @@ def make_run(text, font=None):
     return r
 
 
-def apply_font(rpr, name=None, size=None, bold=None, italic=None, underline=None, color=None):
+RPR_ORDER = ["rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps", "strike", "dstrike", "outline",
+             "shadow", "emboss", "imprint", "noProof", "snapToGrid", "vanish", "webHidden", "color", "spacing",
+             "w", "kern", "position", "sz", "szCs", "highlight", "u", "effect", "bdr", "shd", "fitText",
+             "vertAlign", "rtl", "cs", "em", "lang", "eastAsianLayout", "specVanish", "oMath", "rPrChange"]
+
+
+def sort_rpr(rpr):
+    """Порядок дочерних элементов w:rPr по схеме, иначе Word ругается на файл."""
+    kids = list(rpr)
+    def rank(el):
+        local = el.tag.split("}")[-1] if isinstance(el.tag, str) else ""
+        return RPR_ORDER.index(local) if local in RPR_ORDER else len(RPR_ORDER)
+    kids.sort(key=rank)
+    for el in kids:
+        rpr.append(el)
+
+
+def apply_font(rpr, name=None, size=None, bold=None, italic=None, underline=None, color=None,
+               highlight=None, strike=None, vert=None):
+    _apply_font(rpr, name, size, bold, italic, underline, color)
+    if strike is not None:
+        _toggle(rpr, "strike", strike)
+    if highlight is not None:
+        node = rpr.find(w("highlight"))
+        if highlight in ("", "none", False):
+            if node is not None:
+                rpr.remove(node)
+        else:
+            if node is None:
+                node = etree.SubElement(rpr, w("highlight"))
+            node.set(w("val"), highlight)
+    if vert is not None:
+        node = rpr.find(w("vertAlign"))
+        if vert in ("", "baseline", None, False):
+            if node is not None:
+                rpr.remove(node)
+        else:
+            if node is None:
+                node = etree.SubElement(rpr, w("vertAlign"))
+            node.set(w("val"), vert)
+    sort_rpr(rpr)
+
+
+def _apply_font(rpr, name=None, size=None, bold=None, italic=None, underline=None, color=None):
     if name:
         fonts = rpr.find(w("rFonts"))
         if fonts is None:

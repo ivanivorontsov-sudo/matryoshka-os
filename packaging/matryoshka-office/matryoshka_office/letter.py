@@ -952,7 +952,8 @@ class Letter:
             key = "{%s}embed" % ooxml.R
             if key in el.attrib:
                 el.set(key, rid)
-        self._p(int(paragraph)).append(drawing)
+        run = etree.SubElement(self._p(int(paragraph)), ooxml.w("r"))
+        run.append(drawing)
         self.touch("word/document.xml")
         return "изображение вставлено"
 
@@ -1000,6 +1001,7 @@ class Letter:
             "comments": self.comments(),
             "revisions": self.revisions(),
             "images": self.images(),
+            "equations": self.equations(),
             "macros": _macro_names(self.opc),
             "vba": self.opc.get("word/vbaProject.bin") is not None,
         }
@@ -1057,6 +1059,207 @@ class Letter:
             if el.tag == ooxml.w("bookmarkStart") and el.get(ooxml.w("name")) == name + "_end":
                 end = el.getparent()
         return start, end
+
+    # --- формулы, колонтитулы с номерами, шапка таблицы, обтекание, поля слияния ---
+    def insert_equation(self, paragraph, source, display=True):
+        """Формула OMML из линейной записи (подмножество LaTeX)."""
+        from .equations import to_omml
+        math = to_omml(source, display=display)
+        paras = self.paragraphs()
+        if display:
+            p = etree.Element(ooxml.w("p"))
+            p.append(math)
+            if paragraph is None or int(paragraph) >= len(paras):
+                sect = self.body().find(ooxml.w("sectPr"))
+                (sect.addprevious(p) if sect is not None else self.body().append(p))
+            else:
+                paras[int(paragraph)].addnext(p)
+        else:
+            self._p(int(paragraph)).append(math)
+        self.touch("word/document.xml")
+        return "формула вставлена"
+
+    def equations(self):
+        from .equations import M, to_linear
+        out = []
+        for i, p in enumerate(self.paragraphs()):
+            for math in p.iter("{%s}oMath" % M):
+                out.append({"paragraph": i, "linear": to_linear(math)})
+        return out
+
+    def set_equation(self, index, source):
+        from .equations import M, to_omml
+        maths = [m for p in self.paragraphs() for m in p.iter("{%s}oMath" % M)]
+        old = maths[int(index)]
+        new = to_omml(source)
+        old.getparent().replace(old, new)
+        self.touch("word/document.xml")
+        return "формула %s изменена" % index
+
+    def set_header_row(self, table, on=True):
+        """Строка-заголовок таблицы повторяется на каждой странице."""
+        tbl = self._tbl(int(table))
+        tr = tbl.find(ooxml.w("tr"))
+        trpr = tr.find(ooxml.w("trPr"))
+        if trpr is None:
+            trpr = etree.Element(ooxml.w("trPr"))
+            tcs = tr.find(ooxml.w("tblPrEx"))
+            (tcs.addnext(trpr) if tcs is not None else tr.insert(0, trpr))
+        node = trpr.find(ooxml.w("tblHeader"))
+        if on and node is None:
+            etree.SubElement(trpr, ooxml.w("tblHeader"))
+        elif not on and node is not None:
+            trpr.remove(node)
+        self.touch("word/document.xml")
+        return "шапка таблицы %s: %s" % (table, "повторяется" if on else "не повторяется")
+
+    def set_row_cant_split(self, table, row, on=True):
+        tbl = self._tbl(int(table))
+        tr = [x for x in tbl if x.tag == ooxml.w("tr")][int(row)]
+        trpr = tr.find(ooxml.w("trPr"))
+        if trpr is None:
+            trpr = etree.Element(ooxml.w("trPr"))
+            tr.insert(0, trpr)
+        node = trpr.find(ooxml.w("cantSplit"))
+        if on and node is None:
+            trpr.insert(0, etree.Element(ooxml.w("cantSplit")))
+        elif not on and node is not None:
+            trpr.remove(node)
+        self.touch("word/document.xml")
+        return "перенос строки запрещён" if on else "перенос строки разрешён"
+
+    def set_page_numbers(self, section=0, template="{PAGE}", align="center", where="footer", start=None, fmt=None):
+        """Колонтитул с полями: {PAGE} — номер страницы, {NUMPAGES} — всего страниц."""
+        self._set_hf(where, "", section)
+        part = self._hf_part(where, section)
+        root = self.xml(part)
+        p = root.find(ooxml.w("p"))
+        ppr = p.find(ooxml.w("pPr"))
+        jc = etree.SubElement(ppr, ooxml.w("jc"))
+        jc.set(ooxml.w("val"), {"центр": "center", "право": "right", "лево": "left"}.get(align, align))
+        import re as _re
+        for piece in _re.split(r"(\{PAGE\}|\{NUMPAGES\}|\{SECTIONPAGES\})", template):
+            if not piece:
+                continue
+            if piece.startswith("{") and piece.endswith("}"):
+                fld = etree.SubElement(p, ooxml.w("fldSimple"))
+                fld.set(ooxml.w("instr"), " %s " % piece[1:-1])
+                r = etree.SubElement(fld, ooxml.w("r"))
+                t = etree.SubElement(r, ooxml.w("t"))
+                t.text = "1"
+            else:
+                p.append(ooxml.make_run(piece))
+        self.touch(part)
+        sect = self.sections()[int(section)]
+        if start is not None or fmt:
+            nt = sect.find(ooxml.w("pgNumType"))
+            if nt is None:
+                nt = etree.Element(ooxml.w("pgNumType"))
+                after = sect.find(ooxml.w("pgMar"))
+                (after.addnext(nt) if after is not None else sect.append(nt))
+            if start is not None:
+                nt.set(ooxml.w("start"), str(int(start)))
+            if fmt:
+                nt.set(ooxml.w("fmt"), fmt)
+            self.touch("word/document.xml")
+        return "номера страниц: %s" % template
+
+    def _hf_part(self, kind, section):
+        sect = self.sections()[int(section)]
+        tag = "headerReference" if kind == "header" else "footerReference"
+        for el in sect.findall(ooxml.w(tag)):
+            if el.get(ooxml.w("type"), "default") == "default":
+                rid = el.get("{%s}id" % ooxml.R)
+                for rel in self.xml("word/_rels/document.xml.rels"):
+                    if rel.get("Id") == rid:
+                        return "word/" + rel.get("Target").lstrip("/")
+        return None
+
+    def set_first_page_different(self, section=0, on=True):
+        sect = self.sections()[int(section)]
+        node = sect.find(ooxml.w("titlePg"))
+        if on and node is None:
+            etree.SubElement(sect, ooxml.w("titlePg"))
+        elif not on and node is not None:
+            sect.remove(node)
+        self.touch("word/document.xml")
+        return "особый колонтитул первой страницы: %s" % ("да" if on else "нет")
+
+    def set_section_break(self, section, kind="nextPage"):
+        """Тип разрыва: nextPage, continuous, evenPage, oddPage, nextColumn."""
+        sect = self.sections()[int(section)]
+        node = sect.find(ooxml.w("type"))
+        if node is None:
+            node = etree.Element(ooxml.w("type"))
+            refs = [c for c in sect if c.tag in (ooxml.w("headerReference"), ooxml.w("footerReference"), ooxml.w("footnotePr"), ooxml.w("endnotePr"))]
+            (refs[-1].addnext(node) if refs else sect.insert(0, node))
+        node.set(ooxml.w("val"), kind)
+        self.touch("word/document.xml")
+        return "раздел %s: разрыв %s" % (section, kind)
+
+    def float_image(self, image_index=0, wrap="square", align="right", width_mm=None):
+        """Рисунок из строки становится плавающим с обтеканием (square, topAndBottom, behind, front)."""
+        WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        inlines = list(self.body().iter("{%s}inline" % WP))
+        inline = inlines[int(image_index)]
+        anchor = etree.Element("{%s}anchor" % WP, nsmap={"wp": WP})
+        for k, v in (("distT", "0"), ("distB", "0"), ("distL", "114300"), ("distR", "114300"), ("simplePos", "0"),
+                     ("relativeHeight", "251659264"), ("behindDoc", "1" if wrap == "behind" else "0"), ("locked", "0"),
+                     ("layoutInCell", "1"), ("allowOverlap", "1")):
+            anchor.set(k, v)
+        sp = etree.SubElement(anchor, "{%s}simplePos" % WP)
+        sp.set("x", "0")
+        sp.set("y", "0")
+        ph = etree.SubElement(anchor, "{%s}positionH" % WP)
+        ph.set("relativeFrom", "margin")
+        etree.SubElement(ph, "{%s}align" % WP).text = align
+        pv = etree.SubElement(anchor, "{%s}positionV" % WP)
+        pv.set("relativeFrom", "paragraph")
+        etree.SubElement(pv, "{%s}posOffset" % WP).text = "0"
+        ext = inline.find("{%s}extent" % WP)
+        if width_mm is not None and ext is not None:
+            cx, cy = int(ext.get("cx")), int(ext.get("cy"))
+            ncx = int(float(width_mm) * 36000)
+            ext.set("cx", str(ncx))
+            ext.set("cy", str(int(cy * ncx / max(1, cx))))
+            for e2 in inline.iter("{%s}ext" % ooxml.A):
+                e2.set("cx", str(ncx))
+                e2.set("cy", str(int(cy * ncx / max(1, cx))))
+        anchor.append(ext)
+        etree.SubElement(anchor, "{%s}effectExtent" % WP).attrib.update({"l": "0", "t": "0", "r": "0", "b": "0"})
+        tag = {"square": "wrapSquare", "tight": "wrapTight", "topAndBottom": "wrapTopAndBottom",
+               "topandbottom": "wrapTopAndBottom", "behind": "wrapNone", "front": "wrapNone", "none": "wrapNone"}.get(wrap, "wrapSquare")
+        wr = etree.SubElement(anchor, "{%s}%s" % (WP, tag))
+        if tag in ("wrapSquare", "wrapTight"):
+            wr.set("wrapText", "bothSides")
+        for child in list(inline):
+            if child.tag in ("{%s}docPr" % WP, "{%s}cNvGraphicFramePr" % WP, "{%s}graphic" % ooxml.A):
+                anchor.append(child)
+        inline.getparent().replace(inline, anchor)
+        self.touch("word/document.xml")
+        return "рисунок %s: обтекание %s" % (image_index, wrap)
+
+    def insert_merge_field(self, paragraph, name):
+        """Поле слияния «name» (MERGEFIELD) в конец абзаца."""
+        p = self._p(int(paragraph))
+        for kind, text in (("begin", None), ("instr", " MERGEFIELD %s \\* MERGEFORMAT " % name), ("separate", None), ("result", "«%s»" % name), ("end", None)):
+            r = etree.SubElement(p, ooxml.w("r"))
+            if kind == "instr":
+                it = etree.SubElement(r, ooxml.w("instrText"))
+                it.set("{%s}space" % ooxml.XML, "preserve")
+                it.text = text
+            elif kind == "result":
+                t = etree.SubElement(r, ooxml.w("t"))
+                t.text = text
+            else:
+                fc = etree.SubElement(r, ooxml.w("fldChar"))
+                fc.set(ooxml.w("fldCharType"), kind)
+        self.touch("word/document.xml")
+        return "поле слияния «%s»" % name
+
+    def merge_fields(self):
+        from .mailmerge import field_names
+        return field_names(self)
 
 
 def _style_id(p):
@@ -1203,6 +1406,10 @@ def _ensure_list_num(numbering, fmt):
     lvl_text.set(ooxml.w("val"), "•" if want == "bullet" else "%1.")
     jc = etree.SubElement(lvl, ooxml.w("lvlJc"))
     jc.set(ooxml.w("val"), "left")
+    lvl_ppr = etree.SubElement(lvl, ooxml.w("pPr"))
+    ind = etree.SubElement(lvl_ppr, ooxml.w("ind"))
+    ind.set(ooxml.w("left"), "720")
+    ind.set(ooxml.w("hanging"), "360")
     first_num = numbering.find(ooxml.w("num"))
     if first_num is not None:
         first_num.addprevious(abstract)
