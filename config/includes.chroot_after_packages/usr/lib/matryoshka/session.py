@@ -430,14 +430,38 @@ def firefox_icon():
         return
     open(p, "w", encoding="utf-8").write("[Desktop Entry]\nType=Application\nNoDisplay=true\nName=Firefox\nExec=firefox-esr %u\nIcon=firefox-esr\nStartupWMClass=firefox\n")
 
+def kwallet_text(on):
+    en = "true" if on else "false"
+    return (
+        ("Enabled", en),
+        ("First Use", "false"),
+        ("Use One Wallet", "true"),
+        ("SecretServiceEnabled", en),
+        ("Prompt on Open", "false"),
+        ("Close When Idle", "false" if on else "true"),
+        ("Launch", en),
+    )
+
+def kwallet_write(path, on):
+    import configparser
+    cp = configparser.ConfigParser(interpolation=None, strict=False)
+    cp.optionxform = str
+    if os.path.isfile(path):
+        cp.read(path, encoding="utf-8")
+    if not cp.has_section("Wallet"):
+        cp.add_section("Wallet")
+    for key, value in kwallet_text(on):
+        cp.set("Wallet", key, value)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as out:
+        cp.write(out, space_around_delimiters=False)
+    os.replace(tmp, path)
+
 def kwallet(on):
-    C.kwrite("kwalletrc", "Wallet", "Enabled", "true" if on else "false")
-    C.kwrite("kwalletrc", "Wallet", "First Use", "false")
-    C.kwrite("kwalletrc", "Wallet", "Use One Wallet", "true")
-    C.kwrite("kwalletrc", "Wallet", "SecretServiceEnabled", "true" if on else "false")
-    C.kwrite("kwalletrc", "Wallet", "Prompt on Open", "false")
-    C.kwrite("kwalletrc", "Wallet", "Close When Idle", "false" if on else "true")
-    C.kwrite("kwalletrc", "Wallet", "Launch", "true" if on else "false")
+    kwallet_write(os.path.expanduser("~/.config/kwalletrc"), on)
+    for key, value in kwallet_text(on):
+        C.kwrite("kwalletrc", "Wallet", key, value)
     for rc in ("kded5rc", "kded6rc"):
         C.kwrite(rc, "Module-kwallet", "autoload", "true" if on else "false")
         C.kwrite(rc, "Module-kwalletd", "autoload", "true" if on else "false")
@@ -454,8 +478,14 @@ def kwallet(on):
         else:
             open(p, "w", encoding="utf-8").write("[Desktop Entry]\nType=Application\nName=KWallet\nHidden=true\nX-Matryoshka-KWallet=off\n")
     if not on:
-        C.run(["killall", "-q", "kwalletd6"], timeout=5)
-        C.run(["killall", "-q", "kwalletd5"], timeout=5)
+        for dest, path, iface in (("org.kde.kded6", "/kded", "org.kde.kded6"), ("org.kde.kded5", "/kded", "org.kde.kded5")):
+            C.run(["busctl", "--user", "call", dest, path, iface, "unloadModule", "s", "kwallet"], timeout=8)
+            C.run(["busctl", "--user", "call", dest, path, iface, "setModuleAutoloading", "sb", "kwallet", "false"], timeout=8)
+        for name in ("kwalletd6", "kwalletd5", "ksecretd"):
+            C.run(["killall", "-q", name], timeout=5)
+    else:
+        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "setModuleAutoloading", "sb", "kwallet", "true"], timeout=8)
+        C.run(["busctl", "--user", "call", "org.kde.kded6", "/kded", "org.kde.kded6", "loadModule", "s", "kwallet"], timeout=8)
 
 def chooser():
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox
@@ -597,10 +627,12 @@ def icons_fix():
 KWIN_RULES = {
     "matryoshka-print-okular": {"Description": "Матрёшка: окно печати Okular поверх", "wmclass": "okular", "wmclassmatch": "2", "types": "32", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2", "acceptfocus": "true", "acceptfocusrule": "2"},
     "matryoshka-print-portal": {"Description": "Матрёшка: окно печати поверх", "wmclass": "xdg-desktop-portal-kde", "wmclassmatch": "2", "title": "Печать|Print", "titlematch": "3", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2"},
-    # Правило 2 (Force) срабатывает на каждый щелчок и уносит окно в левый верхний угол.
-    # Правило 3 (Apply) задаёт рамку один раз при появлении окна и дальше его не трогает.
-    "matryoshka-waydroid": {"Description": "Матрёшка: окно Android с рамкой", "wmclass": "(?i).*waydroid.*", "wmclassmatch": "3", "noborder": "false", "noborderrule": "3", "fullscreen": "false", "fullscreenrule": "3", "maximizevert": "false", "maximizevertrule": "3", "maximizehoriz": "false", "maximizehorizrule": "3", "closeable": "true", "closeablerule": "2"},
+    "matryoshka-dos-files": {"Description": "Матрёшка: окно файлов DOS поверх", "title": "Файлы DOS", "titlematch": "1", "above": "true", "aboverule": "2", "fsplevel": "0", "fsplevelrule": "2"},
 }
+# Старое правило Android заново задавало размер на каждый щелчок: окно прыгало
+# из правого нижнего угла на весь экран и в левый верхний. Plasma рисует
+# обычные кнопки сама, правило больше не нужно.
+KWIN_DROP = ("matryoshka-waydroid",)
 
 def kwin_rules():
     import configparser
@@ -617,6 +649,13 @@ def kwin_rules():
         cp.add_section("General")
     rules = [x for x in cp.get("General", "rules", fallback="").split(",") if x]
     added = False
+    for name in list(cp.sections()):
+        wm = cp.get(name, "wmclass", fallback="")
+        if name in KWIN_DROP or "waydroid" in wm.lower():
+            cp.remove_section(name)
+            if name in rules:
+                rules.remove(name)
+            added = True
     for name, props in KWIN_RULES.items():
         if not cp.has_section(name):
             cp.add_section(name)

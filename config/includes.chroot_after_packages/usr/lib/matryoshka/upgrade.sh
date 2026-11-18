@@ -208,5 +208,6 @@ grep -q "живая система" /boot/grub/grub.cfg && say "В меню за
 rm -f /var/lib/matryoshka/booting /var/lib/matryoshka/boot-reached
 cat $W/VERSION > /etc/matryoshka-version
 [ -x /usr/lib/matryoshka/apply-look.sh ] && /usr/lib/matryoshka/apply-look.sh || true
+python3 /usr/lib/matryoshka/kickoff_memory.py || true
 rm -rf $W
 echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО. Перезагрузите компьютер."

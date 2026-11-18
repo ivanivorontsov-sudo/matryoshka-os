@@ -42,7 +42,7 @@ showmenu=true
 outputswitch=auto
 lins=25
 cols=80
-winperc=90
+winperc=100
 [dosbox]
 machine=svga_s3
 memsize=64
@@ -334,6 +334,13 @@ def ensure_user_lang(home=None):
     os.replace(tmp, f)
     return True
 
+def show_file_bar():
+    try:
+        import common as C
+        return C.settings().get("dos_file_bar", True) is not False
+    except Exception:
+        return True
+
 def file_bar(program, pid=0):
     try:
         from PyQt6.QtCore import Qt, QTimer
@@ -342,13 +349,13 @@ def file_bar(program, pid=0):
         return 0
     app = QApplication.instance() or QApplication([])
     w = QWidget()
-    w.setWindowTitle("DOS")
-    w.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowCloseButtonHint)
+    w.setWindowTitle("Файлы DOS")
+    w.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
     h = QHBoxLayout(w)
     b = QPushButton("Добавить файл")
     b.clicked.connect(lambda: add_file(program))
     h.addWidget(b)
-    def close():
+    def close_dos():
         if pid:
             try:
                 os.kill(pid, 15)
@@ -356,13 +363,16 @@ def file_bar(program, pid=0):
                 pass
         app.quit()
     c = QPushButton("Закрыть DOS")
-    c.clicked.connect(close)
+    c.clicked.connect(close_dos)
     h.addWidget(c)
-    w.resize(420, 64)
+    x = QPushButton("Закрыть это окно")
+    x.clicked.connect(app.quit)
+    h.addWidget(x)
+    w.resize(640, 64)
     screen = app.primaryScreen()
     if screen:
         g = screen.availableGeometry()
-        w.move(g.x() + max(0, (g.width() - 420) // 2), g.y())
+        w.move(g.x() + max(0, (g.width() - 640) // 2), g.y())
     if pid:
         timer = QTimer()
         def tick():
@@ -371,6 +381,7 @@ def file_bar(program, pid=0):
         timer.timeout.connect(tick)
         timer.start(2000)
     w.show()
+    w.raise_()
     return app.exec()
 
 def launch(program=None, home=None, timeout=None):
@@ -408,7 +419,7 @@ def launch(program=None, home=None, timeout=None):
     ensure_user_lang(home)
     env = dict(os.environ, LANG=os.environ.get("LANG") or "ru_RU.UTF-8")
     proc = subprocess.Popen(command(conf), env=env)
-    if name:
+    if name and show_file_bar():
         subprocess.Popen([sys.executable, os.path.abspath(__file__), "--bar", program, str(proc.pid)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         code = proc.wait(timeout=timeout)

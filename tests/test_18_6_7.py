@@ -347,14 +347,11 @@ class Boot(unittest.TestCase):
         self.assertIn("policy_control", w)
         self.assertIn('mtu", "1500"', w)
         rules = read(LIB, "session.py")
-        self.assertIn('(?i).*waydroid.*', rules)
-        self.assertIn('"fullscreen": "false"', rules)
-        self.assertIn('"fullscreenrule": "3"', rules)
-        self.assertIn('"noborder": "false"', rules)
-        self.assertIn('"noborderrule": "3"', rules)
-        self.assertIn('"maximizehorizrule": "3"', rules)
-        self.assertIn('"maximizevert": "false"', rules)
-        self.assertNotIn('"fullscreenrule": "2"', rules)
+        self.assertNotIn('(?i).*waydroid.*', rules)
+        self.assertNotIn('"fullscreenrule"', rules)
+        self.assertIn("matryoshka-waydroid", rules)
+        self.assertIn("KWIN_DROP", rules)
+        self.assertIn("Файлы DOS", rules)
         self.assertIn('C.root("waydroid-net"', w)
         calls = []
         seen = set()
@@ -426,8 +423,8 @@ class Boot(unittest.TestCase):
         import dosbox
         text = dosbox.session_text("/p", "FESTA.EXE", "/d", "/h", "/s", "/pr")
         self.assertNotIn("ptsize=", text)
-        self.assertNotIn("winperc=100", text)
-        self.assertIn("winperc=90", text)
+        self.assertNotIn("winperc=90", text)
+        self.assertIn("winperc=100", text)
         self.assertIn("maximize=false", text)
         self.assertIn("fullscreen=false", text)
         self.assertIn("output=ttf", text)
@@ -439,6 +436,8 @@ class Boot(unittest.TestCase):
         self.assertIn("Закрыть DOS", read(LIB, "dosbox.py"))
         run_text = read(LIB, "run.py")
         self.assertIn("MOZ_DISABLE_LAUNCHER_PROCESS", run_text)
+        self.assertNotIn("MOZ_DISABLE_CONTENT_SANDBOX", run_text)
+        self.assertIn("browser.tabs.inTitlebar", run_text)
         self.assertIn("Graphics", run_text)
         self.assertIn("--disable-dev-shm-usage", run_text)
         import run as runmod
@@ -596,6 +595,56 @@ class Clone(unittest.TestCase):
             self.assertIn("dosbox.py", open(made["desktop"], encoding="utf-8").read())
             clone.remove(made["id"], home)
             self.assertFalse(os.path.exists(os.path.join(home, "DOS", "Копии", made["id"])))
+
+    def test_kickoff_keeps_search_for_a_minute(self):
+        import kickoff_memory
+        self.assertTrue(kickoff_memory.kept(1_000, 61_000))
+        self.assertFalse(kickoff_memory.kept(1_000, 61_001))
+        plasma = os.path.join(ROOT, "chroot", "usr", "share", "plasma", "plasmoids")
+        self.assertTrue(os.path.isdir(plasma), plasma)
+        with tempfile.TemporaryDirectory() as tmp:
+            for rel, _fn in kickoff_memory.FILES:
+                src = os.path.join(plasma, rel)
+                dst = os.path.join(tmp, rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copy(src, dst)
+            changed, missed = kickoff_memory.patch_tree(tmp)
+            self.assertFalse(missed, missed)
+            self.assertGreaterEqual(len(changed), 6)
+            header = open(os.path.join(tmp, "org.kde.plasma.kickoff/contents/ui/Header.qml"), encoding="utf-8").read()
+            footer = open(os.path.join(tmp, "org.kde.plasma.kickoff/contents/ui/Footer.qml"), encoding="utf-8").read()
+            self.assertIn("matryoshkaSearch", header)
+            self.assertNotIn("searchField.clear()\n", header.split("if (Date.now() - kickoff.matryoshkaMenuClosedAt > 60000)")[0].split("function onExpandedChanged")[-1])
+            self.assertIn("60000", header)
+            self.assertIn("matryoshkaTab", footer)
+            self.assertNotIn("tabBar.currentIndex = 0\n", footer.split("60000")[0])
+            again, missed2 = kickoff_memory.patch_tree(tmp)
+            self.assertEqual(again, [])
+            self.assertFalse(missed2, missed2)
+        hook = read(ROOT, "config", "hooks", "live", "0600-matryoshka.hook.chroot")
+        self.assertIn("matryoshka-kickoff-memory.service", hook)
+        unit = read(INC, "etc", "systemd", "system", "matryoshka-kickoff-memory.service")
+        self.assertIn("kickoff_memory.py", unit)
+        self.assertIn("Before=display-manager.service", unit)
+
+    def test_wallet_switch_writes_disabled(self):
+        import session
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "kwalletrc")
+            open(path, "w", encoding="utf-8").write("[Wallet]\nEnabled=true\nClose When Idle=false\n[Other]\nKeep=yes\n")
+            session.kwallet_write(path, False)
+            text = open(path, encoding="utf-8").read()
+            self.assertIn("Enabled=false", text)
+            self.assertIn("Launch=false", text)
+            self.assertIn("SecretServiceEnabled=false", text)
+            self.assertIn("[Other]", text)
+            self.assertIn("Keep=yes", text)
+            session.kwallet_write(path, True)
+            self.assertIn("Enabled=true", open(path, encoding="utf-8").read())
+        center = read(LIB, "center.py")
+        self.assertIn("Отключить бумажник", center)
+        self.assertIn("dos_file_bar", center)
+        self.assertIn("dos_file_bar", read(LIB, "common.py"))
 
 
 if __name__ == "__main__":

@@ -79,15 +79,15 @@ def launch_scan(kind, enabled, disabled):
         return False
     return True
 
+# Процесс-запускатель под Wine обрывается. Песочницу не выключаем: иначе Firefox
+# рисует полосу «песочница отключена, конфигурация не поддерживается».
 BROWSER_ENV = {
     "MOZ_DISABLE_LAUNCHER_PROCESS": "1",
-    "MOZ_DISABLE_CONTENT_SANDBOX": "1",
-    "MOZ_DISABLE_GPU_SANDBOX": "1",
-    "MOZ_DISABLE_RDD_SANDBOX": "1",
-    "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX": "1",
-    "MOZ_DISABLE_GMP_SANDBOX": "1",
-    "MOZ_DISABLE_UTILITY_SANDBOX": "1",
 }
+FIREFOX_PREFS = (
+    'user_pref("browser.tabs.inTitlebar", false);\n'
+    'user_pref("browser.tabs.drawInTitlebar", false);\n'
+)
 CHROME_FLAGS = ["--no-sandbox", "--disable-gpu-sandbox", "--disable-gpu", "--disable-dev-shm-usage", "--disable-software-rasterizer"]
 CHROME_NAMES = ("chrome", "chromium", "vivaldi", "msedge", "opera", "brave", "yandex", "electron", "code", "discord", "slack", "teams")
 
@@ -108,6 +108,44 @@ def wine_x11(env):
     if rc == 0 and os.path.isdir(prefix):
         open(mark, "w").close()
     return rc
+
+def firefox_profiles(prefix):
+    base = os.path.join(prefix, "drive_c", "users")
+    found = []
+    if not os.path.isdir(base):
+        return found
+    for dirpath, dirnames, _files in os.walk(base):
+        if os.path.basename(dirpath) == "Profiles" and "Firefox" in dirpath:
+            found.extend(os.path.join(dirpath, name) for name in dirnames if os.path.isdir(os.path.join(dirpath, name)))
+            dirnames[:] = []
+        elif dirpath.count(os.sep) - base.count(os.sep) > 8:
+            dirnames[:] = []
+    return found
+
+def firefox_window(path, prefix):
+    # У Firefox для Windows вкладки живут в заголовке. Wine рисует свой заголовок
+    # поверх, получается каша, и полосы вкладок не видно.
+    try:
+        dist = os.path.join(os.path.dirname(os.path.abspath(path)), "distribution")
+        os.makedirs(dist, exist_ok=True)
+        policy = os.path.join(dist, "policies.json")
+        text = '{"policies":{"Preferences":{"browser.tabs.inTitlebar":{"Value":false,"Status":"default"},"browser.tabs.drawInTitlebar":{"Value":false,"Status":"default"}}}}\n'
+        if not os.path.isfile(policy) or open(policy, encoding="utf-8", errors="replace").read() != text:
+            open(policy, "w", encoding="utf-8").write(text)
+    except OSError:
+        pass
+    for prof in firefox_profiles(prefix):
+        user_js = os.path.join(prof, "user.js")
+        try:
+            old = open(user_js, encoding="utf-8", errors="replace").read() if os.path.isfile(user_js) else ""
+        except OSError:
+            old = ""
+        extra = "".join(line for line in FIREFOX_PREFS.splitlines(True) if line.strip() not in old)
+        if extra:
+            try:
+                open(user_js, "a", encoding="utf-8").write(extra)
+            except OSError:
+                pass
 
 def wine_argv(path, electron=False):
     b = os.path.basename(path).lower()
@@ -157,6 +195,8 @@ def main(path):
             open(os.path.expanduser("~/.wine/.matryoshka-win10"), "w").close() if os.path.isdir(os.path.expanduser("~/.wine")) else None
         wine_x11(env)
         b = os.path.basename(path).lower()
+        if b.startswith("firefox") and "setup" not in b and "install" not in b:
+            firefox_window(path, env.get("WINEPREFIX") or os.path.expanduser("~/.wine"))
         if ("chrome" in b or "chromium" in b) and any(x in b for x in ("setup", "install")):
             if shutil.which("chromium"): return subprocess.call(["chromium"])
             if subprocess.call(["kdialog", "--yesno", "Установщик Chrome для Windows под Wine не работает (ошибка 0x124fb).\nУстановить обычный Chromium для Linux (около 100 МБ, нужен интернет)?"]) == 0:

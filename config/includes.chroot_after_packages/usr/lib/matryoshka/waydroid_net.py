@@ -1,9 +1,11 @@
+import array
 import ctypes
 import fcntl
 import os
 import pwd
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -70,11 +72,32 @@ def drop_mss(run, iface=IFACE):
                 break
 
 
+def iptables_bins():
+    found = []
+    for name in ("iptables", "iptables-legacy"):
+        if shutil.which(name) and name not in found:
+            found.append(name)
+    return found or ["iptables"]
+
+
 def drop_checksum(run, subnet=SUBNET):
-    for rule in checksum_deletes(subnet):
-        for _ in range(8):
-            if run(rule).returncode != 0:
-                break
+    # Waydroid пишет правила в iptables-legacy, а iptables может быть nft.
+    # Снимаем пересчёт сумм в обоих наборах. Правило DHCP (порт 68) не трогаем:
+    # его ставит официальный скрипт Waydroid, без него контейнер не получает адрес.
+    for binary in iptables_bins():
+        for rule in checksum_deletes(subnet):
+            cmd = [binary, *rule[1:]]
+            for _ in range(8):
+                if run(cmd).returncode != 0:
+                    break
+        listed = run([binary, "-t", "mangle", "-S", "POSTROUTING"])
+        for line in (getattr(listed, "stdout", "") or "").splitlines():
+            if "CHECKSUM" not in line or "--dport 68" in line:
+                continue
+            parts = line.split()
+            if parts and parts[0] == "-A":
+                parts[0] = "-D"
+                run([binary, "-t", "mangle", *parts])
 
 
 def links(iface=IFACE):
@@ -87,10 +110,31 @@ def links(iface=IFACE):
     return found
 
 
+def ethtool_off(iface):
+    # struct ifreq: имя 16 байт и указатель на {cmd, data}. Ноль в data выключает функцию.
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    except OSError:
+        return False
+    try:
+        ok = False
+        for cmd in OFFLOAD_OFF:
+            buf = array.array("B", struct.pack("II", cmd, 0))
+            ifr = struct.pack("16sP", iface.encode()[:15], buf.buffer_info()[0]).ljust(40, b"\0")
+            try:
+                fcntl.ioctl(sock.fileno(), SIOCETHTOOL, ifr)
+                ok = True
+            except OSError:
+                pass
+        return ok
+    finally:
+        sock.close()
+
+
 def offload_off(iface, require_sysfs=True):
     if require_sysfs and not os.path.exists("/sys/class/net/" + iface):
         return False
-    ok = False
+    ok = ethtool_off(iface)
     et = shutil.which("ethtool")
     if et:
         cmd = [et, "-K", iface]
@@ -98,6 +142,8 @@ def offload_off(iface, require_sysfs=True):
             cmd.extend([name, "off"])
         if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
             ok = True
+    if ok:
+        return True
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     except OSError:

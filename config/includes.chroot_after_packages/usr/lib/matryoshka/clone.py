@@ -219,7 +219,7 @@ def _ignore_prefix(folder, names):
 
 def wine_script(prefix, exe, argv):
     return "\n".join(["#!/bin/sh", "export WINEPREFIX=%s" % shlex.quote(prefix),
-                      "export MOZ_DISABLE_LAUNCHER_PROCESS=1", "export MOZ_DISABLE_CONTENT_SANDBOX=1",
+                      "export MOZ_DISABLE_LAUNCHER_PROCESS=1",
                       'if [ ! -e "$WINEPREFIX/.matryoshka-x11" ]; then',
                       "  wine reg add 'HKCU\\Software\\Wine\\Drivers' /v Graphics /d x11 /f && touch \"$WINEPREFIX/.matryoshka-x11\"",
                       "fi", "cd %s || exit 1" % shlex.quote(os.path.dirname(exe) or "."),

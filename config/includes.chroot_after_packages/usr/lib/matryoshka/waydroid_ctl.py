@@ -41,11 +41,10 @@ def window_is_trap(text):
     return False
 
 def prepare():
-    # Значок приложения не проходит через этот модуль. Свойство читается при старте контейнера,
-    # поэтому старый полный экран снимается один раз, до запуска приложения.
+    # Перезапуск контейнера на каждый значок гасит окно и через несколько секунд
+    # открывает его заново. Размер меняется только если он ещё не задан.
     before = cfg_text()
-    props()
-    if window_is_trap(before):
+    if props() and window_is_trap(before):
         run(["systemctl", "restart", "waydroid-container"], timeout=90)
         run(["waydroid", "session", "start"], timeout=40)
         for _ in range(20):
@@ -55,9 +54,16 @@ def prepare():
     return 0
 
 def props():
-    # Одно окно 1280×800: рамку, свернуть и закрыть рисует Plasma. Весь экран без кнопок оставлять нельзя.
+    # Одно окно 1280×800: рамку, свернуть, развернуть и закрыть рисует Plasma.
+    # Отдельной полоски кнопок нет. Весь экран без кнопок оставлять нельзя.
+    text = cfg_text().replace(" ", "")
+    changed = False
     for k, v in (("persist.waydroid.multi_windows", "false"), ("persist.waydroid.width", "1280"), ("persist.waydroid.height", "800"), ("persist.waydroid.suspend", "false")):
+        if ("%s=%s" % (k, v)) in text:
+            continue
         run(["waydroid", "prop", "set", k, v], timeout=30)
+        changed = True
+    return changed
 
 
 def guest_fix():
@@ -215,15 +221,9 @@ if __name__ == "__main__":
     import sys
     a = sys.argv[1:]
     if a and a[0] == "desktop":
-        rc = desktop(a[1] if len(a) > 1 else "")
-        if rc == 0 and "--no-ui" not in a:
-            sys.exit(controller())
-        sys.exit(rc)
+        sys.exit(desktop(a[1] if len(a) > 1 else ""))
     if not a or a[0] == "show":
-        rc = show()
-        if rc == 0 and "--no-ui" not in a:
-            sys.exit(controller())
-        sys.exit(rc)
+        sys.exit(show())
     if a[0] == "ensure":
         sys.exit(0 if ensure() else 1)
     if a[0] == "install" and len(a) > 1:

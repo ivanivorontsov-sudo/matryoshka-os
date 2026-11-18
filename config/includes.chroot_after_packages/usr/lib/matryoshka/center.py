@@ -10,7 +10,7 @@ def btn(t, f):
 class Center(QWidget):
     def __init__(self):
         super().__init__(); self.setWindowTitle("Центр Матрёшки"); self.resize(980, 640)
-        self.s = C.settings(); t = C.THEMES.get(self.s["theme"], C.THEMES["matryoshka"])
+        self.s = C.settings(); self._wallet_boxes = []; t = C.THEMES.get(self.s["theme"], C.THEMES["matryoshka"])
         self.setStyleSheet("QListWidget{font-size:12pt;padding:8px} QListWidget::item{padding:10px;border-radius:10px} QListWidget::item:selected{background:%s;color:%s} QPushButton{padding:8px 14px}" % (t["accent"], t["bg"]))
         h = QHBoxLayout(self); self.nav = QListWidget(); self.nav.setFixedWidth(230); self.stack = QStackedWidget()
         h.addWidget(self.nav); h.addWidget(self.stack, 1)
@@ -72,11 +72,7 @@ class Center(QWidget):
             self.s["clipboard"] = ck.currentData(); self.s["clipboard_v"] = 1; self.save()
             clipkeys.apply(ck.currentData(), force=True)
         ck.activated.connect(lambda _: ckset()); f.addRow("Копировать и вставить", ck)
-        kw = QCheckBox("Разблокировать KWallet при входе и подставлять пароли"); kw.setChecked(bool(self.s.get("kwallet", True)))
-        def kwset(x):
-            self.s["kwallet"] = x; self.save()
-            import session; session.kwallet(x)
-        kw.toggled.connect(kwset); v.addWidget(kw)
+        v.addWidget(self.wallet_box("Разблокировать KWallet при входе и подставлять пароли", False))
         v.addWidget(QLabel("<h3>Звук</h3>Обработка EasyEffects включается отдельно для наушников и для динамиков и переключается сама при смене выхода.", wordWrap=True))
         se = QCheckBox("Обработка звука (EasyEffects)"); se.setChecked(bool(self.s.get("sound_enhance", True))); v.addWidget(se)
         sf = QFormLayout(); v.addLayout(sf)
@@ -134,17 +130,36 @@ class Center(QWidget):
         v.addWidget(btn("Сохранить дополнительный лаунчер", exok))
         v.addWidget(btn("Автозапуск всех программ", lambda: subprocess.Popen(["matryoshka-autostart"])))
         v.addWidget(btn("Android в обычном окне", lambda: subprocess.Popen(["python3", "/usr/lib/matryoshka/waydroid_ctl.py", "show"])))
+        db = QCheckBox("При запуске DOS показывать окно «Добавить файл»")
+        db.blockSignals(True); db.setChecked(self.s.get("dos_file_bar", True) is not False); db.blockSignals(False)
+        db.toggled.connect(lambda x: (self.s.update(dos_file_bar=bool(x)), self.save()))
+        v.addWidget(db)
+    def wallet_box(self, title, disable):
+        box = QCheckBox(title)
+        box.blockSignals(True)
+        box.setChecked((not self.s.get("kwallet", True)) if disable else bool(self.s.get("kwallet", True)))
+        box.blockSignals(False)
+        def on(checked):
+            enabled = (not checked) if disable else bool(checked)
+            self.s["kwallet"] = enabled
+            self.save()
+            import session
+            session.kwallet(enabled)
+            for other, other_disable in self._wallet_boxes:
+                if other is box:
+                    continue
+                other.blockSignals(True)
+                other.setChecked((not enabled) if other_disable else enabled)
+                other.blockSignals(False)
+        box.toggled.connect(on)
+        self._wallet_boxes.append((box, disable))
+        return box
     def p_net(self, v):
         v.addWidget(QLabel("<h2>Сеть</h2>По умолчанию сеть выключена: система ничего никуда не отправляет. Включайте, только когда нужно.", wordWrap=True))
+        v.addWidget(self.wallet_box("Отключить бумажник", True))
         st = QLabel(); v.addWidget(st)
         def upd(): st.setText("<h3>Сейчас: %s</h3>" % ("включена" if C.net_on() else "выключена"))
         v.addWidget(btn("Включить / выключить одним нажатием", lambda: (C.net_set(not C.net_on()), upd()))); upd()
-        kn = QCheckBox("Полностью отключить бумажник сети (KWallet). Пароль бумажника больше не спрашивается; пароли Wi-Fi храните «для всех пользователей».")
-        kn.setChecked(not bool(self.s.get("kwallet", True)))
-        def knet(x):
-            self.s["kwallet"] = not bool(x); self.save()
-            import session; session.kwallet(not bool(x))
-        kn.toggled.connect(knet); v.addWidget(kn)
         cb = QCheckBox("При включении сети обновлять базы антивируса и искать драйверы"); cb.setChecked(not os.path.exists("/var/lib/matryoshka/no-av-update"))
         cb.toggled.connect(lambda x: C.root("av-autoupdate", "on" if x else "off")); v.addWidget(cb)
         v.addWidget(QLabel("<h3>Скорость и задержки</h3>Уже включено: BBR + fq, TCP Fast Open, увеличенные буферы, кэш DNS.", wordWrap=True))
@@ -421,11 +436,7 @@ class Center(QWidget):
         def lo_set(x):
             kw("Leave Open", "true" if x else "false"); kw("Close When Idle", "false" if x else "true"); kw("Close on Screensaver", "false")
         lo.toggled.connect(lo_set); v.addWidget(lo)
-        wd = QCheckBox("Отключить бумажник сети полностью (KWallet не запускается, пароль не спрашивается; пароли Wi-Fi храните «для всех пользователей»)"); wd.setChecked(not self.s.get("kwallet", True))
-        def wd_set(x):
-            self.s["kwallet"] = not x; self.save()
-            import session; session.kwallet(not x)
-        wd.toggled.connect(wd_set); v.addWidget(wd)
+        v.addWidget(self.wallet_box("Отключить бумажник сети полностью (KWallet не запускается, пароль не спрашивается; пароли Wi-Fi храните «для всех пользователей»)", True))
         v.addWidget(QLabel("<h3>Драйвер Goodix GXFP5130 (экспериментальный)</h3>Для Huawei MateBook D16 2024 и похожих. Выключен по умолчанию. При первом включении в сканер записывается ключ шифрования, как это делает Windows. При включённом Secure Boot модуль не загрузится.", wordWrap=True))
         def gx(m):
             if not os.path.exists("/usr/sbin/matryoshka-gxfp"): o.setPlainText("Пакет matryoshka-gxfp не установлен."); return
