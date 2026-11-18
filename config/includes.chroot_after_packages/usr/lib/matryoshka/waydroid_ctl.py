@@ -25,8 +25,14 @@ def screen():
 
 def props():
     w, h = screen()
-    for k, v in (("persist.waydroid.multi_windows", "true"), ("persist.waydroid.width", str(w)), ("persist.waydroid.height", str(h)), ("persist.waydroid.suspend", "false")):
+    # Одно окно, а не россыпь без рамок. Высота меньше экрана, чтобы сверху осталась полоса с крестиком.
+    for k, v in (("persist.waydroid.multi_windows", "false"), ("persist.waydroid.width", str(w)), ("persist.waydroid.height", str(max(600, h - 80))), ("persist.waydroid.suspend", "false")):
         run(["waydroid", "prop", "set", k, v], timeout=30)
+
+
+def shrink_inside():
+    ensure_net()
+    run(["waydroid", "shell", "ip", "link", "set", "eth0", "mtu", "1280"], timeout=20)
 
 
 def ensure_net():
@@ -49,6 +55,8 @@ def ensure(wait=90):
             if running():
                 break
             time.sleep(2)
+    if running():
+        shrink_inside()
     return running()
 
 def show():
@@ -65,6 +73,7 @@ def show():
         time.sleep(2)
     if not running():
         return 1
+    shrink_inside()
     subprocess.Popen(["waydroid", "show-full-ui"], start_new_session=True)
     return 0
 
@@ -96,9 +105,9 @@ def controller():
     if not app.desktopFileName(): app.setDesktopFileName("matryoshka-android")
     w = QWidget()
     w.setWindowTitle("Android")
-    w.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowSystemMenuHint | Qt.WindowType.WindowMinimizeButtonHint | Qt.WindowType.WindowMaximizeButtonHint | Qt.WindowType.WindowCloseButtonHint)
+    w.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowSystemMenuHint | Qt.WindowType.WindowMinimizeButtonHint | Qt.WindowType.WindowMaximizeButtonHint | Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.WindowStaysOnTopHint)
     h = QHBoxLayout(w)
-    h.addWidget(QLabel("Android работает в обычном окне. Закрытие этого окна гасит только экран, установка APK после этого работает."))
+    h.addWidget(QLabel("Закрыть Android можно крестиком этого окна. Окно Android тоже должно быть с рамкой."))
     bmin = QPushButton("Свернуть")
     bmin.clicked.connect(lambda: minimize())
     bclose = QPushButton("Закрыть окно")
@@ -109,6 +118,10 @@ def controller():
     h.addWidget(bmin)
     h.addWidget(bclose)
     w.resize(720, 90)
+    screen = app.primaryScreen()
+    if screen:
+        g = screen.availableGeometry()
+        w.move(g.x() + max(0, (g.width() - 720) // 2), g.y())
     def key(e):
         if e.key() == Qt.Key.Key_Escape:
             minimize()

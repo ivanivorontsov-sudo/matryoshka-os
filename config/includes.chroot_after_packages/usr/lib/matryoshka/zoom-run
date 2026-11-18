@@ -10,6 +10,23 @@ LIB="$DIR"
 [ -d "$DIR/Qt/lib" ] && LIB="$LIB:$DIR/Qt/lib"
 [ -d "$DIR/cef" ] && LIB="$LIB:$DIR/cef"
 export LD_LIBRARY_PATH="$LIB"
+# Вход через Google открывает обычный браузер. Если он унаследует библиотеки Zoom, окно есть, а страницы пустые.
+CLEAN="$HOME/.cache/matryoshka/zoom-bin"
+mkdir -p "$CLEAN"
+for b in xdg-open gio kde-open5 kde-open; do
+  real=""
+  for cand in /usr/bin/$b /usr/local/bin/$b; do
+    [ -x "$cand" ] && real=$cand && break
+  done
+  [ -n "$real" ] || continue
+  cat > "$CLEAN/$b" << EOF
+#!/bin/sh
+unset LD_LIBRARY_PATH LD_PRELOAD QT_PLUGIN_PATH QML2_IMPORT_PATH QML_IMPORT_PATH QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE QT_QPA_PLATFORM OPENSSL_CONF OPENSSL_MODULES OPENSSL_ENGINES GTK_MODULES
+exec $real "\$@"
+EOF
+  chmod 755 "$CLEAN/$b"
+done
+export PATH="$CLEAN:$PATH"
 [ -z "$SSL_CERT_FILE" ] && [ -f /etc/ssl/certs/ca-certificates.crt ] && export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 [ -z "$SSL_CERT_DIR" ] && [ -d /etc/ssl/certs ] && export SSL_CERT_DIR=/etc/ssl/certs
 L="$HOME/.zoom/logs"
