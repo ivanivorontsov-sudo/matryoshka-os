@@ -628,10 +628,15 @@ KWIN_RULES = {
     "matryoshka-print-okular": {"Description": "Матрёшка: окно печати Okular поверх", "wmclass": "okular", "wmclassmatch": "2", "types": "32", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2", "acceptfocus": "true", "acceptfocusrule": "2"},
     "matryoshka-print-portal": {"Description": "Матрёшка: окно печати поверх", "wmclass": "xdg-desktop-portal-kde", "wmclassmatch": "2", "title": "Печать|Print", "titlematch": "3", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2"},
     "matryoshka-dos-files": {"Description": "Матрёшка: окно файлов DOS поверх", "title": "Файлы DOS", "titlematch": "1", "above": "true", "aboverule": "2", "fsplevel": "0", "fsplevelrule": "2"},
+    # Только рамка, и только когда окно появляется (правило 3). Размер и полный
+    # экран не задаются: из-за них щелчок внутри Android двигал окно.
+    "matryoshka-waydroid": {"Description": "Матрёшка: у окна Android обычная рамка", "wmclass": "waydroid", "wmclassmatch": "2", "noborder": "false", "noborderrule": "3"},
+    # winperc=100 уводил заголовок за край экрана, крестика не было. Полный экран
+    # здесь запрещён, рамка остаётся. Кнопку «развернуть» пользователь нажимает сам.
+    "matryoshka-dosbox": {"Description": "Матрёшка: DOS не закрывает экран без кнопок", "wmclass": "dosbox-x", "wmclassmatch": "2", "noborder": "false", "noborderrule": "2", "fullscreen": "false", "fullscreenrule": "2"},
 }
-# Старое правило Android заново задавало размер на каждый щелчок: окно прыгало
-# из правого нижнего угла на весь экран и в левый верхний. Plasma рисует
-# обычные кнопки сама, правило больше не нужно.
+# Секция Android переписывается целиком: в старой были maximize и fullscreen,
+# и щелчок то раскрывал окно, то уводил его в угол.
 KWIN_DROP = ("matryoshka-waydroid",)
 
 def kwin_rules():

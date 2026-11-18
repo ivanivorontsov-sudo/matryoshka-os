@@ -12,13 +12,34 @@ def status():
 def running():
     return "RUNNING" in status()
 
+def parse_xrandr(text):
+    for line in (text or "").splitlines():
+        if "*" not in line:
+            continue
+        token = line.split()[0] if line.split() else ""
+        if "x" not in token:
+            continue
+        w, h = token.split("x", 1)
+        if w.isdigit() and h.isdigit():
+            # Снизу место для рамки и панели: иначе окно закрывает кнопки, как полноэкранная ловушка.
+            return max(960, int(w)), max(600, int(h) - 96)
+    return None
+
+
 def screen():
+    try:
+        out = subprocess.run(["xrandr", "--current"], capture_output=True, text=True, timeout=3)
+        found = parse_xrandr(out.stdout)
+        if found:
+            return found
+    except Exception:
+        pass
     try:
         from PyQt6.QtWidgets import QApplication
         app = QApplication.instance()
         if app and app.primaryScreen():
             g = app.primaryScreen().availableGeometry()
-            return max(960, g.width() - 80), max(600, g.height() - 120)
+            return max(960, g.width()), max(600, g.height() - 48)
     except Exception:
         pass
     return 1280, 800
@@ -36,15 +57,23 @@ def window_is_trap(text):
     t = text.replace(" ", "")
     if "multi_windows=true" in t:
         return True
-    if "persist.waydroid.width=" in t and "persist.waydroid.width=1280" not in t:
+    # Пустая ширина — окно без размера. Число пикселей, даже не 1280, это обычное окно.
+    if "persist.waydroid.width=" in t and "persist.waydroid.width=\n" not in t and not t.endswith("persist.waydroid.width="):
+        return False
+    if "persist.waydroid.width=" in t:
         return True
     return False
 
+def size_differs(text):
+    w, h = screen()
+    t = (text or "").replace(" ", "")
+    return ("persist.waydroid.width=%s" % w) not in t or ("persist.waydroid.height=%s" % h) not in t
+
 def prepare():
-    # Перезапуск контейнера на каждый значок гасит окно и через несколько секунд
-    # открывает его заново. Размер меняется только если он ещё не задан.
+    # Перезапуск на каждый значок гасит окно. Он нужен один раз, когда размер
+    # ещё пустой или не совпадает с экраном. Повторный запуск размер не трогает.
     before = cfg_text()
-    if props() and window_is_trap(before):
+    if props() and (window_is_trap(before) or size_differs(before)):
         run(["systemctl", "restart", "waydroid-container"], timeout=90)
         run(["waydroid", "session", "start"], timeout=40)
         for _ in range(20):
@@ -54,11 +83,12 @@ def prepare():
     return 0
 
 def props():
-    # Одно окно 1280×800: рамку, свернуть, развернуть и закрыть рисует Plasma.
-    # Отдельной полоски кнопок нет. Весь экран без кнопок оставлять нельзя.
+    # Одно окно на площадь экрана, но ниже панели: рамку рисует Plasma.
+    # Отдельной полоски кнопок нет. Кнопки свернуть, развернуть и закрыть — у рамки.
     text = cfg_text().replace(" ", "")
+    w, h = screen()
     changed = False
-    for k, v in (("persist.waydroid.multi_windows", "false"), ("persist.waydroid.width", "1280"), ("persist.waydroid.height", "800"), ("persist.waydroid.suspend", "false")):
+    for k, v in (("persist.waydroid.multi_windows", "false"), ("persist.waydroid.width", str(w)), ("persist.waydroid.height", str(h)), ("persist.waydroid.suspend", "false")):
         if ("%s=%s" % (k, v)) in text:
             continue
         run(["waydroid", "prop", "set", k, v], timeout=30)

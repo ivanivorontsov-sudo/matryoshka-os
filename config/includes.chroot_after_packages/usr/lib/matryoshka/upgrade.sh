@@ -209,5 +209,6 @@ rm -f /var/lib/matryoshka/booting /var/lib/matryoshka/boot-reached
 cat $W/VERSION > /etc/matryoshka-version
 [ -x /usr/lib/matryoshka/apply-look.sh ] && /usr/lib/matryoshka/apply-look.sh || true
 python3 /usr/lib/matryoshka/kickoff_memory.py || true
+python3 /usr/lib/matryoshka/netmenu.py || true
 rm -rf $W
 echo "ОБНОВЛЕНИЕ ПРИМЕНЕНО. Перезагрузите компьютер."

@@ -12,6 +12,13 @@ import time
 
 SUBNET = "192.168.240.0/24"
 IFACE = "waydroid0"
+# У компьютера ТТЛ 65: точка телефона уменьшает его до 64, и оператор видит сам телефон.
+# Android — Linux, у него ТТЛ 64, не 128 (128 — это Windows). Пересылка уменьшает его
+# до 63, телефон — до 62, и раздача режет скорость. На выход ставится те же 65.
+HOST_TTL = "65"
+# Внутри контейнера на один больше: если цель TTL в iptables недоступна,
+# пересылка сама уменьшит 66 до 65. При рабочей цели выход всё равно становится 65.
+GUEST_TTL = "66"
 # Официальный lxc.net.0.mtu у Waydroid — 1500. Короткий MTU 1280 и TCPMSS 1200
 # скорость не подняли: пакеты режет не телефон, а виртуальный кабель veth.
 # У veth по умолчанию включены контрольные суммы и TSO, пересланные пакеты
@@ -78,6 +85,57 @@ def iptables_bins():
         if shutil.which(name) and name not in found:
             found.append(name)
     return found or ["iptables"]
+
+
+def ttl_commands(binary, subnet=SUBNET, ttl=HOST_TTL):
+    # Источник ещё адрес моста: NAT стоит после mangle POSTROUTING.
+    args = ["-s", subnet, "!", "-d", subnet, "-j", "TTL", "--ttl-set", ttl]
+    return [binary, "-t", "mangle", "-C", "POSTROUTING", *args], [binary, "-t", "mangle", "-A", "POSTROUTING", *args]
+
+
+def hop_commands(binary, iface=IFACE, ttl=HOST_TTL):
+    # -i в POSTROUTING нельзя. Уменьшение предела прыжков уже сделано до FORWARD.
+    args = ["-i", iface, "-j", "HL", "--hl-set", ttl]
+    return [binary, "-t", "mangle", "-C", "FORWARD", *args], [binary, "-t", "mangle", "-A", "FORWARD", *args]
+
+
+def apply_mark(run, check, add):
+    if run(check).returncode == 0:
+        return True
+    run(add)
+    return run(check).returncode == 0
+
+
+def apply_ttl(run):
+    ok = False
+    for binary in iptables_bins():
+        ok = apply_mark(run, *ttl_commands(binary)) or ok
+    for name in ("ip6tables", "ip6tables-legacy"):
+        if shutil.which(name):
+            apply_mark(run, *hop_commands(name))
+    return ok
+
+
+def guest_sysctl(pid, rel, value):
+    # /proc/sys снаружи — это сеть компьютера. Писать ТТЛ можно только в proc контейнера,
+    # иначе 65 всей системы станет другим числом.
+    if not str(pid).isdigit():
+        return False
+    path = "/proc/%s/root/proc/sys/%s" % (pid, rel)
+    if not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "w", encoding="ascii") as out:
+            out.write(str(value).strip() + "\n")
+    except OSError:
+        return False
+    return True
+
+
+def guest_ttl(pid, ttl=GUEST_TTL):
+    v4 = guest_sysctl(pid, "net/ipv4/ip_default_ttl", ttl)
+    v6 = guest_sysctl(pid, "net/ipv6/conf/all/hop_limit", ttl)
+    return v4 or v6
 
 
 def drop_checksum(run, subnet=SUBNET):
@@ -333,6 +391,7 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
         pid = container_pid(run)
         if pid:
             guest_offload(pid)
+            guest_ttl(pid)
         current, dns_pid = dnsmasq_state()
         upstream = upstream_dns()
         if needs_dns(read_text("/etc/resolv.conf"), upstream, current):
@@ -345,7 +404,9 @@ def apply(run=None, have_iptables=None, have_sysctl=None):
     for check, add in rules():
         if run(check).returncode != 0:
             run(add)
-    print("сеть Android: пересылка только для %s, NAT %s, MTU %s, без пересчёта сумм" % (IFACE, SUBNET, MTU))
+    ttl_ok = apply_ttl(run)
+    ttl_note = "ТТЛ %s как у системы" % HOST_TTL if ttl_ok else "ТТЛ не записался"
+    print("сеть Android: пересылка только для %s, NAT %s, MTU %s, %s, без пересчёта сумм" % (IFACE, SUBNET, MTU, ttl_note))
     return 0
 
 

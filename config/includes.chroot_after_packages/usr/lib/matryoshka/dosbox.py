@@ -42,7 +42,9 @@ showmenu=true
 outputswitch=auto
 lins=25
 cols=80
-winperc=100
+# 100 прячет заголовок за край экрана: закрыть можно было только чужим значком.
+# 92 оставляет рамку и панель. Кнопка «развернуть» доводит окно до рабочей области.
+winperc=92
 [dosbox]
 machine=svga_s3
 memsize=64
@@ -382,6 +384,12 @@ def file_bar(program, pid=0):
         timer.start(2000)
     w.show()
     w.raise_()
+    w.activateWindow()
+    # DOS рисуется следом и накрывает полоску. Поднимать её всё время, пока DOS жив,
+    # но не забирать фокус повторно: иначе в DOS нельзя вводить текст.
+    stay = QTimer(w)
+    stay.timeout.connect(w.raise_)
+    stay.start(800)
     return app.exec()
 
 def launch(program=None, home=None, timeout=None):
