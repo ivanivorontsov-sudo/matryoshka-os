@@ -1,4 +1,4 @@
-import json, os, random, shutil, stat, subprocess, sys, tempfile, unittest
+import io, json, os, random, shutil, stat, subprocess, sys, tempfile, unittest
 from unittest import mock
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -228,7 +228,9 @@ class Desktop(unittest.TestCase):
         self.assertNotIn("suspend_hw(True)", body)
         self.assertNotIn("ensure_devices", body)
         self.assertIn("nudge_wireplumber()", body)
-        self.assertNotIn("Hidden=true", s)
+        self.assertNotIn("Hidden=true", body)
+        self.assertEqual(s.count("Hidden=true"), 1)
+        self.assertIn("org.kde.kwalletd6.desktop", s)
         self.assertNotIn('loadModule", "s", "kwallet"', s)
         self.assertIn("face-hold", s)
 
@@ -794,7 +796,7 @@ class Clone(unittest.TestCase):
             self.assertIn("ponyatny", bundle)
             self.assertIn("matryoshka-voice/", bundle)
             self.assertIn("X-Matryoshka-KWallet=off", session_src)
-            self.assertIn("wifi-save", read(INC, "etc", "sudoers.d", "matryoshka-wifi-save"))
+            self.assertIn("wifi-save --stdin", read(INC, "etc", "sudoers.d", "matryoshka-wifi-save"))
             self.assertIn("[Other]", text)
             self.assertIn("Keep=yes", text)
             self.assertIn("password-store=basic", read(LIB, "session.py"))
@@ -835,9 +837,22 @@ class Clone(unittest.TestCase):
             self.assertFalse(session.wifi_should_connect(["connected"]))
             self.assertFalse(session.wifi_should_connect([]))
             self.assertEqual(session.newest_wifi_uuid([("a", "802-11-wireless", "1"), ("b", "802-11-wireless", "5"), ("c", "ethernet", "9")]), "b")
+            self.assertFalse(session.psk_in_file("1 (agent-owned)"))
+            self.assertTrue(session.psk_in_file("0 (none)"))
+            connect = session_src.split("def connect_saved_wifi", 1)[1].split("\ndef ", 1)[0]
+            self.assertLess(connect.index("ask_wifi_password"), connect.index('connection", "up"'))
+            self.assertIn("Пароль Wi-Fi", read(LIB, "wifi_ask.py"))
+            import wifi_secret
+            pairs = wifi_secret.read_pairs(io.StringIO("abc\tcorrectpass\n"))
+            self.assertEqual(pairs, [("abc", "correctpass")])
+            planted, changed = wifi_secret.set_psk("[wifi-security]\nkey-mgmt=wpa-psk\npsk-flags=1\n", "correctpass")
+            self.assertTrue(changed)
+            self.assertIn("psk=correctpass\n", planted)
+            repaired, _changed = wifi_secret.repair_text(planted)
+            self.assertIn("psk-flags=0\n", repaired)
+            self.assertFalse(wifi_secret.needs_agent(repaired))
             self.assertNotIn("connection reload", read(LIB, "session.py"))
             self.assertNotIn("nmcli connection reload", read(LIB, "session.py"))
-            import wifi_secret
             src = "[connection]\nuuid=abc\npermissions=user:ivan:;\n[wifi]\nssid=my:net\n[wifi-security]\nkey-mgmt=wpa-psk\npsk=a#b\npsk-flags=1\n"
             once, changed = wifi_secret.repair_text(src)
             self.assertTrue(changed)
