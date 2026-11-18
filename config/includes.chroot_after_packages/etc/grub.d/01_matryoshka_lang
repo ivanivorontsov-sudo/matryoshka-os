@@ -1,0 +1,39 @@
+#!/bin/sh
+# Язык меню загрузки. Строки Linux и Windows собирает штатный os-prober, этот файл их не заменяет.
+# Шрифт подключается только если он уже лежит на диске: отсутствующий GRUB_FONT ломает grub-mkconfig.
+cat <<'EOF'
+if [ "$matryoshka_lang" = "en" ]; then
+  set lang=en
+else
+  set lang=ru_RU
+fi
+export lang
+if [ -f $prefix/fonts/unicode.pf2 ]; then
+  loadfont $prefix/fonts/unicode.pf2
+elif [ -f $prefix/unicode.pf2 ]; then
+  loadfont $prefix/unicode.pf2
+fi
+set gfxmode=auto
+insmod all_video
+insmod gfxterm
+if [ -f $prefix/fonts/unicode.pf2 ] || [ -f $prefix/unicode.pf2 ]; then
+  terminal_output gfxterm
+fi
+set color_normal=light-gray/blue
+set color_highlight=white/blue
+set menu_color_normal=light-gray/blue
+set menu_color_highlight=white/blue
+if [ "$matryoshka_lang" = "en" ]; then
+  menuentry "Русский" {
+    set matryoshka_lang=ru
+    export matryoshka_lang
+    configfile $prefix/grub.cfg
+  }
+else
+  menuentry "English" {
+    set matryoshka_lang=en
+    export matryoshka_lang
+    configfile $prefix/grub.cfg
+  }
+fi
+EOF

@@ -28,6 +28,9 @@ def engine_ping():
     return C.run(["clamdscan", "--ping", "1"], timeout=15).returncode == 0
 
 
+_ENG = {"at": 0.0, "up": False}
+
+
 def engine_ready(wait=180, log=None):
     import time
     if engine_ping():
@@ -48,27 +51,58 @@ def engine_ready(wait=180, log=None):
     return engine_ping()
 
 
-def scan(path, fallback=True, clamd_timeout=300, wait=180):
-    res = {"file": path, "clam": [], "yara": [], "activator": False}
+def engine_cached(wait):
+    import time
+    now = time.time()
+    if _ENG["up"] and now - _ENG["at"] < 60:
+        return True
+    if not _ENG["up"] and _ENG["at"] and now - _ENG["at"] < 20:
+        return False
+    up = engine_ready(wait)
+    _ENG["at"] = time.time()
+    _ENG["up"] = bool(up)
+    return _ENG["up"]
+
+
+def scan(path, fallback=True, clamd_timeout=40, wait=20, quick=False):
+    res = {"file": path, "clam": [], "yara": [], "threat": [], "activator": False}
+    try:
+        import avoff
+        if avoff.disabled():
+            res.update(own=False, confirmed=[], heuristic=[], by_name=False, malicious=False, clam_ok=True, skipped="disabled", size=os.path.getsize(path))
+            return res
+    except Exception:
+        pass
     if own_release(path):
         res.update(own=True, confirmed=[], heuristic=[], by_name=False, malicious=False, size=os.path.getsize(path))
         return res
+    try:
+        import threatscan
+        res["threat"] = threatscan.scan_file(path)
+    except Exception:
+        res["threat"] = []
     r = subprocess.CompletedProcess([], 2, "", "")
     res["clam_ok"] = False
-    for attempt in range(2):
-        if not engine_ready(wait if attempt == 0 else 60):
-            break
-        r = C.run(["clamdscan", "--fdpass", "--no-summary", path], timeout=clamd_timeout)
-        res["clam_ok"] = r.returncode in (0, 1) and "ERROR" not in r.stdout
-        if res["clam_ok"]:
-            break
-    res["engine"] = "clamd" if res["clam_ok"] else ""
-    if not res["clam_ok"] and fallback:
-        r = C.run(["clamscan", "--no-summary", "-d", "/var/lib/clamav", path], timeout=600)
-        res["clam_ok"] = r.returncode in (0, 1)
-        res["engine"] = "clamscan" if res["clam_ok"] else ""
+    use_clam = not (quick and not engine_ping())
+    if not use_clam:
+        res["engine"] = "fast"
+    else:
+        limit = 8 if quick else wait
+        tout = 20 if quick else clamd_timeout
+        for attempt in range(1 if quick else 2):
+            if not engine_cached(limit if attempt == 0 else min(15, limit)):
+                break
+            r = C.run(["clamdscan", "--fdpass", "--no-summary", path], timeout=tout)
+            res["clam_ok"] = r.returncode in (0, 1) and "ERROR" not in r.stdout
+            if res["clam_ok"]:
+                break
+        res["engine"] = "clamd" if res["clam_ok"] else ""
+        if not res["clam_ok"] and fallback and not quick:
+            r = C.run(["clamscan", "--no-summary", "--max-filesize=80M", "--max-scansize=80M", "-d", "/var/lib/clamav", path], timeout=45)
+            res["clam_ok"] = r.returncode in (0, 1)
+            res["engine"] = "clamscan" if res["clam_ok"] else ""
     res["clam"] = [l.split(": ", 1)[1].replace(" FOUND", "") for l in r.stdout.splitlines() if l.endswith("FOUND")]
-    y = C.run(["yara", "-w", "-r", RULES, path], timeout=120)
+    y = C.run(["yara", "-w", "-r", RULES, path], timeout=20)
     res["yara"] = sorted({l.split()[0] for l in y.stdout.splitlines() if l.strip()})
     hack = [x for x in res["clam"] + res["yara"] if re.search(r"hacktool|kms|activat|crack|keygen", x, re.I)]
     body = False
@@ -80,8 +114,8 @@ def scan(path, fallback=True, clamd_timeout=300, wait=180):
     except Exception:
         body = False
     res["activator"] = bool(ACT.search(os.path.basename(path))) or bool(hack) or body
-    real = [x for x in res["clam"] + res["yara"] if x not in hack]
-    res["confirmed"] = [x for x in res["clam"] if x not in hack and not re.match(r"(Heuristics|PUA)\.", x)]
+    real = [x for x in res["clam"] + res["yara"] + res.get("threat", []) if x not in hack]
+    res["confirmed"] = [x for x in res["clam"] + res.get("threat", []) if x not in hack and not re.match(r"(Heuristics|PUA)\.", x)]
     res["heuristic"] = [x for x in real if x not in res["confirmed"]]
     res["by_name"] = bool(ACT.search(os.path.basename(path))) and not hack
     res["malicious"] = bool(real)
@@ -172,6 +206,12 @@ def dialog(res):
     d.exec()
 
 def guard():
+    try:
+        import avoff
+        if avoff.disabled():
+            return
+    except Exception:
+        pass
     if os.path.exists("/run/matryoshka-sandbox") or "matryoshka.sandbox" in C.cmdline(): return
     dirs = [p for p in (os.path.join(C.HOME, x) for x in ("Загрузки", "Downloads", "Рабочий стол", "Desktop")) if os.path.isdir(p)]
     dirs += ["/media", "/run/media"]

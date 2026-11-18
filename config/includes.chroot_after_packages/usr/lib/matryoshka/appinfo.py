@@ -222,8 +222,14 @@ def outcome(name, x, gone):
 
 def busy(parent, text, fn):
     import threading
-    from PyQt6.QtCore import Qt, QEventLoop, QTimer
-    from PyQt6.QtWidgets import QApplication, QProgressDialog
+    try:
+        from PyQt6.QtCore import Qt, QEventLoop, QTimer
+        from PyQt6.QtWidgets import QApplication, QProgressDialog
+    except ImportError:
+        try:
+            return fn()
+        except Exception as e:
+            return subprocess.CompletedProcess([], 127, "", str(e))
     box = {}
     def work():
         try:

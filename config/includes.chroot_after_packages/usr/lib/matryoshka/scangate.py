@@ -74,22 +74,30 @@ def clamd_up():
     r = subprocess.run(["systemctl", "is-active", "clamav-daemon.service"], capture_output=True, text=True)
     return r.stdout.strip() == "active"
 
-def check(path, quiet=False, wait=180, clamd_timeout=300):
+def check(path, quiet=False, wait=20, clamd_timeout=40, quick=False):
     import av
+    try:
+        import avoff
+        if avoff.disabled():
+            return {"malicious": False, "activator": False, "clam_ok": True, "cached": True, "skipped": "disabled"}
+    except Exception:
+        pass
     if os.path.exists("/run/matryoshka-sandbox") or trusted(path) or not os.path.isfile(path):
         return {"malicious": False, "activator": False, "clam_ok": True, "cached": True}
     hit = lookup(path)
     if hit and not hit.get("bad") and hit.get("clam_ok"):
         return {"malicious": False, "activator": False, "clam_ok": True, "cached": True}
     touch_stamp()
-    if not quiet and not clamd_up():
-        notify("Проверка антивирусом", "Запускаю ClamAV для проверки «%s»… Первый раз после включения это занимает до минуты." % os.path.basename(path))
-    res = av.scan(path, fallback=True, clamd_timeout=clamd_timeout, wait=wait)
+    if quick:
+        wait, clamd_timeout = min(wait, 8), min(clamd_timeout, 20)
+    elif not quiet and not clamd_up():
+        notify("Проверка антивирусом", "Проверяю «%s». Если движок уже запущен, это несколько секунд." % os.path.basename(path))
+    res = av.scan(path, fallback=not quick, clamd_timeout=clamd_timeout, wait=wait, quick=quick)
     res.setdefault("clam_ok", True)
     if res.get("engine") == "clamscan" and not quiet:
         notify("Проверка антивирусом", "Служба ClamAV не запустилась, «%s» проверен напрямую." % os.path.basename(path))
-    if not res["clam_ok"] and not quiet:
-        notify("Антивирус недоступен", "«%s» запускается без проверки ClamAV: движок не запустился. Проверьте антивирус в Центре Матрёшки." % os.path.basename(path))
+    if not res["clam_ok"] and not quiet and not (quick and res.get("engine") == "fast"):
+        notify("Антивирус недоступен", "«%s» проверен быстрыми правилами, движок ClamAV не запустился. Проверьте антивирус в Центре Матрёшки." % os.path.basename(path))
     remember(path, res)
     return res
 

@@ -166,6 +166,14 @@ class Cloud(QWidget):
         else:
             self.msg("Gofile работает без ключа.")
 
+def click_action(mounted, ready):
+    if mounted:
+        return "open"
+    if ready:
+        return "mount"
+    return "settings"
+
+
 def configured():
     try:
         return "infinite" in rc("listremotes").stdout.replace(":", " ").split()
@@ -200,9 +208,24 @@ def tray():
         a_mount.setEnabled(ok)
         ic.setToolTip("Бесконечная память: " + st.text().lower())
     def openf():
-        if not os.path.ismount(MNT) and configured():
-            mount()
-        subprocess.Popen(["xdg-open", MNT if os.path.isdir(MNT) else C.HOME])
+        action = click_action(os.path.ismount(MNT), configured())
+        if action == "mount":
+            err = mount()
+            if os.path.ismount(MNT):
+                action = "open"
+            elif err and err.strip():
+                ic.showMessage("Бесконечная память", err.strip()[-300:])
+                settings()
+                return
+            else:
+                ic.showMessage("Бесконечная память", "Папка не подключена. Откройте настройки и нажмите «Применить и подключить».")
+                settings()
+                return
+        if action == "settings":
+            ic.showMessage("Бесконечная память", "Облака ещё не настроены. Это не домашняя папка.")
+            settings()
+            return
+        subprocess.Popen(["xdg-open", MNT])
     def toggle():
         if os.path.ismount(MNT):
             r = subprocess.run(["fusermount3", "-u", MNT], capture_output=True, text=True)

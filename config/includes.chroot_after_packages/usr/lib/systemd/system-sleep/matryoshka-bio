@@ -1,0 +1,22 @@
+#!/bin/sh
+# After the lid stays closed, the camera and the fingerprint reader come back dead
+# and the lock screen waits on them. Reset both, and hold face scan for five minutes
+# so the scanner is offered first and the screen does not freeze on the camera.
+case "$1" in
+  pre)
+    date +%s > /run/matryoshka-suspend-at 2>/dev/null || true
+    ;;
+  post)
+    date +%s > /run/matryoshka-face-hold 2>/dev/null || true
+    chmod 644 /run/matryoshka-face-hold 2>/dev/null || true
+    pkill -f '/lib/security/howdy/' 2>/dev/null || true
+    if ! pgrep -f 'fprintd-verify' >/dev/null 2>&1; then
+      systemctl try-restart fprintd.service >/dev/null 2>&1 || true
+    fi
+    if [ -e /etc/matryoshka/gxfp-on ] && [ -x /usr/sbin/matryoshka-gxfp ]; then
+      ( sleep 2; /usr/sbin/matryoshka-gxfp reset-idle 3 >/dev/null 2>&1 ) &
+    fi
+    date +%s > /run/matryoshka-resumed-at 2>/dev/null || true
+    ;;
+esac
+exit 0

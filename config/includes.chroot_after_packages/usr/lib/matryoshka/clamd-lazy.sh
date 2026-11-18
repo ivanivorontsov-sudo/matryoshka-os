@@ -1,9 +1,10 @@
 #!/bin/sh
 IDLE=1800
-KEEP_KB=7000000
-big() { [ -f /var/lib/matryoshka/clamd-always ] || [ "$(awk '/^MemTotal:/{print $2}' /proc/meminfo)" -ge "$KEEP_KB" ]; }
+KEEP_KB=10485760
+big() { [ -f /etc/matryoshka/av-disabled ] && return 1; [ -f /var/lib/matryoshka/clamd-always ] || [ "$(awk '/^MemTotal:/{print $2}' /proc/meminfo)" -ge "$KEEP_KB" ]; }
 case "$1" in
   boot)
+    [ -f /etc/matryoshka/av-disabled ] && exit 0
     systemctl list-unit-files clamav-daemon.socket >/dev/null 2>&1 || exit 0
     systemctl disable clamav-daemon.service >/dev/null 2>&1
     systemctl enable clamav-daemon.socket >/dev/null 2>&1

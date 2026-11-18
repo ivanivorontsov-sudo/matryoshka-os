@@ -1,17 +1,17 @@
 [Desktop Entry]
 Type=Application
-Name=Face Login
-Name[ru]=Вход по лицу (Howdy)
-GenericName=Face
-GenericName[ru]=Лицо
-Comment=Record a face for the lock screen
-Comment[ru]=Записать, проверить и удалить лицо, вход по лицу на экране входа и блокировки
+Name=Распознавание лица
+Name[ru]=Распознавание лица
+GenericName=Пользователи — распознавание лица
+GenericName[ru]=Пользователи — распознавание лица
+Comment=Записать лицо и включить вход по лицу
+Comment[ru]=Записать, проверить и удалить лицо. Пункт рядом с пользователями.
 Icon=preferences-desktop-user
-Exec=matryoshka-face-gui
+Exec=matryoshka-center users
 Categories=Qt;KDE;Settings;X-KDE-settings-system;
 X-KDE-ServiceTypes=SystemSettingsExternalApp
-X-KDE-Weight=60
+X-KDE-Weight=51
 X-KDE-System-Settings-Parent-Category=system-administration
-Keywords=face;biometric;howdy;fingerprint
-Keywords[ru]=лицо;отпечаток;биометрия;камера
+Keywords=face;biometric;howdy;users
+Keywords[ru]=лицо;распознавание;пользователи;камера;биометрия
 OnlyShowIn=KDE;

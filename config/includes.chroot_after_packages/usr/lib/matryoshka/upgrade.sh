@@ -40,6 +40,7 @@ rollback() {
     tar -C / -xpf "$PAMSNAP" && say "настройки входа (PAM) возвращены"
   fi
   systemctl daemon-reload; dpkg --configure -a >/dev/null 2>&1
+  if [ -n "${GRUBBAK:-}" ] && [ -f "$GRUBBAK" ]; then cp -a "$GRUBBAK" /boot/grub/grub.cfg && say "меню загрузки возвращено, пункт Windows на месте"; fi
   echo "ОБНОВЛЕНИЕ НЕ ПРИМЕНЕНО, файлы возвращены. Если система ведёт себя странно: загрузитесь с флешки через F12 и выполните полное восстановление (инструкция в программе)."
   type isoclean >/dev/null 2>&1 && isoclean
   exit 7
@@ -159,6 +160,18 @@ if [ -n "$ISO" ]; then
   else echo "ВНИМАНИЕ: не удалось открыть образ, живая система на диск не скопирована; обновление системы при этом применено"; fi
 fi
 isoclean
+GRUBBAK=""
+WINBEFORE=0
+if [ -f /boot/grub/grub.cfg ]; then
+  GRUBBAK=/boot/grub/grub.cfg.matryoshka-before
+  cp -a /boot/grub/grub.cfg "$GRUBBAK"
+  WINBEFORE=$(grep -c -i windows /boot/grub/grub.cfg || true)
+fi
+if [ ! -f /boot/grub/fonts/unicode.pf2 ]; then
+  for f in /usr/share/grub/unicode.pf2 /boot/grub/unicode.pf2; do
+    if [ -f "$f" ]; then mkdir -p /boot/grub/fonts; cp -f "$f" /boot/grub/fonts/unicode.pf2; break; fi
+  done
+fi
 if ! update-grub >/tmp/matryoshka-grub.log 2>&1; then
   echo "update-grub завершился с ошибкой:"; tail -n 15 /tmp/matryoshka-grub.log
   if [ -x /etc/grub.d/43_matryoshka_live ]; then
@@ -167,7 +180,14 @@ if ! update-grub >/tmp/matryoshka-grub.log 2>&1; then
     else chmod +x /etc/grub.d/43_matryoshka_live; tail -n 15 /tmp/matryoshka-grub.log; rollback; fi
   else rollback; fi
 fi
+WINAFTER=0
+[ -f /boot/grub/grub.cfg ] && WINAFTER=$(grep -c -i windows /boot/grub/grub.cfg || true)
+if [ "${WINBEFORE:-0}" -gt 0 ] && [ "${WINAFTER:-0}" -eq 0 ]; then
+  echo "В меню пропал пункт Windows. Возвращаю прежнее меню и откатываю обновление, чтобы не пришлось ставить Windows заново."
+  rollback
+fi
 grep -q "живая система" /boot/grub/grub.cfg && say "В меню загрузки есть пункт «Матрёшка — живая система»" || echo "ВНИМАНИЕ: пункта живой системы в меню нет (журнал /tmp/matryoshka-grub.log)"; grep -i "живая\|error\|ошибк" /tmp/matryoshka-grub.log | tail -n 5
+[ -x /etc/grub.d/01_matryoshka_lang ] || echo "ВНИМАНИЕ: нет /etc/grub.d/01_matryoshka_lang, русский текст меню может не включиться. Обновление из-за этого не откатываю."
 cat $W/VERSION > /etc/matryoshka-version
 [ -x /usr/lib/matryoshka/apply-look.sh ] && /usr/lib/matryoshka/apply-look.sh || true
 rm -rf $W

@@ -139,6 +139,12 @@ class Center(QWidget):
         st = QLabel(); v.addWidget(st)
         def upd(): st.setText("<h3>Сейчас: %s</h3>" % ("включена" if C.net_on() else "выключена"))
         v.addWidget(btn("Включить / выключить одним нажатием", lambda: (C.net_set(not C.net_on()), upd()))); upd()
+        kn = QCheckBox("Полностью отключить бумажник сети (KWallet). Пароль бумажника больше не спрашивается; пароли Wi-Fi храните «для всех пользователей».")
+        kn.setChecked(not bool(self.s.get("kwallet", True)))
+        def knet(x):
+            self.s["kwallet"] = not bool(x); self.save()
+            import session; session.kwallet(not bool(x))
+        kn.toggled.connect(knet); v.addWidget(kn)
         cb = QCheckBox("При включении сети обновлять базы антивируса и искать драйверы"); cb.setChecked(not os.path.exists("/var/lib/matryoshka/no-av-update"))
         cb.toggled.connect(lambda x: C.root("av-autoupdate", "on" if x else "off")); v.addWidget(cb)
         v.addWidget(QLabel("<h3>Скорость и задержки</h3>Уже включено: BBR + fq, TCP Fast Open, увеличенные буферы, кэш DNS.", wordWrap=True))
@@ -153,7 +159,7 @@ class Center(QWidget):
         v.addWidget(btn("Выбрать самое быстрое зеркало сейчас", lambda: so.setPlainText((lambda r: r.stdout + r.stderr)(C.root("sources-auto")))))
         v.addWidget(btn("Вернуть прежние источники", lambda: so.setPlainText((lambda r: r.stdout + r.stderr)(C.root("sources-restore")))))
     def p_av(self, v):
-        v.addWidget(QLabel("<h2>Защита</h2>Антивирус включён всегда: ClamAV + открытые правила YARA (YARA Forge) следят за «Загрузками», рабочим столом и флешками. Находки объясняет нейросеть, решаете вы. Активаторы без вирусов не блокируются, но показывается предупреждение о законах выбранной страны.", wordWrap=True))
+        v.addWidget(QLabel("<h2>Защита</h2>ClamAV и открытые правила YARA следят за «Загрузками», рабочим столом и флешками. Быстрые правила не пропускают известные трояны, майнеры и тестовый файл EICAR. Находки объясняет нейросеть, решаете вы. Полное выключение — отдельная кнопка ниже, его не сделает ни вирус, ни агент. Активаторы без вирусов не блокируются, но показывается предупреждение о законах выбранной страны.", wordWrap=True))
         f = QFormLayout(); v.addLayout(f)
         co = QComboBox(); [co.addItem(n, k) for k, (n, _) in C.COUNTRIES.items()]; co.setCurrentIndex(list(C.COUNTRIES).index(self.s["country"])); f.addRow("Страна", co)
         ai = QComboBox(); [ai.addItem(n, k) for k, n in (("api", "API (OpenAI-совместимый, по умолчанию бесплатный LLM7)"), ("chat", "Чат на сайте нейросети"), ("local", "Локальная модель (Ollama)"))]
@@ -165,9 +171,15 @@ class Center(QWidget):
         def ok():
             self.s.update(country=co.currentData(), ai=ai.currentData(), **{k: e.text() for k, e in fields.items()}); self.save()
         v.addWidget(btn("Сохранить", ok)); o = self.out(v)
-        isc = QCheckBox("Проверять программы антивирусом при установке"); isc.setChecked(C.install_scan()); isc.setToolTip("Если выключить, файлы .deb, AppImage, архивы и пакеты Android ставятся без проверки ClamAV. Остальная защита не меняется.")
+        isc = QCheckBox("Проверять программы антивирусом при установке и запуске"); isc.setChecked(C.install_scan()); isc.setToolTip("Если выключить, .deb, AppImage, архивы, .exe, .msi и пакеты Android открываются сразу, без ClamAV и без второй проверки. Быстрые правила на майнеры и трояны тоже не запускаются. Страж папок остаётся, пока защиту не выключат полностью.")
         isc.toggled.connect(lambda x: (self.s.update(install_scan=bool(x)), self.save())); v.addWidget(isc)
         off = QCheckBox("Выключить ИИ полностью (антивирус без объяснений, ИИ-управляющий недоступен)"); off.setChecked(bool(self.s.get("ai_off"))); off.toggled.connect(lambda x: (self.s.update(ai_off=x), self.save())); v.addWidget(off)
+        v.addWidget(btn("Выключить защиту полностью…", lambda: subprocess.Popen(["python3", "/usr/lib/matryoshka/avoff.py", "ui"], start_new_session=True)))
+        v.addWidget(btn("Запомнить устройство подтверждения (Bluetooth, Wi-Fi или USB)…", lambda: subprocess.Popen(["python3", "/usr/lib/matryoshka/avoff.py", "enroll-ui"], start_new_session=True)))
+        def avon():
+            x = C.root("av-on", timeout=60)
+            o.setPlainText(((x.stdout or "") + (x.stderr or "")).strip() or "готово")
+        v.addWidget(btn("Включить защиту снова", avon))
         def scan():
             d = QFileDialog.getExistingDirectory(self, "Папка для проверки", os.path.expanduser("~"))
             if d:
@@ -324,7 +336,7 @@ class Center(QWidget):
             o.setHtml(html); go.setEnabled(not r["problems"])
         v.addWidget(btn("1. Проверить компьютер", check)); v.addWidget(go)
     def p_bio(self, v):
-        v.addWidget(QLabel("<h2>Вход по пальцу и лицу</h2>Отпечаток открывает экран входа и блокировки. Лицо на экране блокировки узнаётся сразу, без Enter, а на экране входа — после пустого Enter. Введённый пароль проверяется сразу, камера и сканер его не задерживают. Чтобы войти пальцем или лицом на экране входа, оставьте поле пароля пустым и нажмите Enter. Отпечаток для окон прав администратора включается отдельно, по желанию. Для установки системы, шифрованных дисков и «Бесконечной памяти» всегда нужен пароль.", wordWrap=True))
+        v.addWidget(QLabel("<h2>Вход по пальцу и лицу</h2>Сначала пароль, если он введён. Если поле пустое, сначала предлагается сканер, и только потом лицо. После блокировки и после открытия крышки камера пять минут не включается сама: в это время работают пароль и отпечаток, экран не ждёт камеру. На экране входа лицо по-прежнему после пустого Enter. Отпечаток для окон прав администратора включается отдельно. Для установки системы, шифрованных дисков и «Бесконечной памяти» всегда нужен пароль.", wordWrap=True))
         o = self.out(v)
         def r(*a):
             x = C.root("bio", *a); o.setPlainText((x.stdout + x.stderr)[-3000:] or "готово")
@@ -361,7 +373,7 @@ class Center(QWidget):
         def lo_set(x):
             kw("Leave Open", "true" if x else "false"); kw("Close When Idle", "false" if x else "true"); kw("Close on Screensaver", "false")
         lo.toggled.connect(lo_set); v.addWidget(lo)
-        wd = QCheckBox("Отключить бумажник KDE (пароль бумажника не спрашивается; пароли Wi-Fi храните «для всех пользователей»)"); wd.setChecked(not self.s.get("kwallet", True))
+        wd = QCheckBox("Отключить бумажник сети полностью (KWallet не запускается, пароль не спрашивается; пароли Wi-Fi храните «для всех пользователей»)"); wd.setChecked(not self.s.get("kwallet", True))
         def wd_set(x):
             self.s["kwallet"] = not x; self.save()
             import session; session.kwallet(not x)
@@ -377,7 +389,7 @@ class Center(QWidget):
         v.addWidget(btn("Окно записи лица (несколько снимков)", lambda: subprocess.Popen(["matryoshka-face-gui"])))
         v.addWidget(btn("1. Записать лицо (смотрите в камеру)", lambda: r("face-add")))
         v.addWidget(btn("2. Включить вход по лицу", lambda: r("face-login-on"))); v.addWidget(btn("Выключить вход по лицу", lambda: r("face-login-off")))
-        fl = QCheckBox("Узнавать лицо на экране блокировки сразу, без Enter"); fl.setChecked(st.get("FACE_LOCK", st.get("FACE_LOGIN", "0")) == "1"); fl.toggled.connect(lambda x: r("face-lock-on" if x else "face-lock-off")); v.addWidget(fl)
+        fl = QCheckBox("Узнавать лицо на экране блокировки (не сразу: камера включится через 5 минут, раньше — только пароль и палец)"); fl.setChecked(st.get("FACE_LOCK", st.get("FACE_LOGIN", "0")) == "1"); fl.toggled.connect(lambda x: r("face-lock-on" if x else "face-lock-off")); v.addWidget(fl)
         v.addWidget(btn("Проверить, узнаёт ли меня", lambda: r("face-check"))); v.addWidget(btn("Удалить снимки лица", lambda: r("face-clear")))
     def p_users(self, v):
         v.addWidget(QLabel("<h2>Пользователи</h2>Добавление пользователя с именем и типом учётной записи, смена типа, запись лица и отпечатка для каждого пользователя. Нужны права администратора.", wordWrap=True))

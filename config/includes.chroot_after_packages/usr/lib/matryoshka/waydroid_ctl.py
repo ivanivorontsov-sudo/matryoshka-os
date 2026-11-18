@@ -28,10 +28,19 @@ def props():
     for k, v in (("persist.waydroid.multi_windows", "true"), ("persist.waydroid.width", str(w)), ("persist.waydroid.height", str(h)), ("persist.waydroid.suspend", "false")):
         run(["waydroid", "prop", "set", k, v], timeout=30)
 
+
+def ensure_net():
+    try:
+        import common as C
+        C.root("waydroid-net", timeout=30)
+    except Exception:
+        pass
+
 def ensure(wait=90):
     if not shutil.which("waydroid"):
         return False
     run(["systemctl", "start", "waydroid-container"], timeout=40)
+    ensure_net()
     if not running():
         props()
         run(["systemctl", "restart", "waydroid-container"], timeout=60)
@@ -46,6 +55,7 @@ def show():
     if not shutil.which("waydroid"):
         return 1
     run(["systemctl", "start", "waydroid-container"], timeout=40)
+    ensure_net()
     props()
     run(["systemctl", "restart", "waydroid-container"], timeout=90)
     run(["waydroid", "session", "start"], timeout=40)
@@ -86,8 +96,7 @@ def controller():
     if not app.desktopFileName(): app.setDesktopFileName("matryoshka-android")
     w = QWidget()
     w.setWindowTitle("Android")
-    w.setWindowFlag(Qt.WindowType.WindowMinimizeButtonHint, True)
-    w.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, True)
+    w.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowSystemMenuHint | Qt.WindowType.WindowMinimizeButtonHint | Qt.WindowType.WindowMaximizeButtonHint | Qt.WindowType.WindowCloseButtonHint)
     h = QHBoxLayout(w)
     h.addWidget(QLabel("Android работает в обычном окне. Закрытие этого окна гасит только экран, установка APK после этого работает."))
     bmin = QPushButton("Свернуть")

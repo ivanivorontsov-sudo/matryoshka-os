@@ -149,6 +149,22 @@ def cards_present():
         return False
 
 AUDIO_FIX = {"times": []}
+LOCK = {"on": None}
+
+def nudge_wireplumber():
+    if audiodev.has_hw_sink(short_names("sinks")) or not cards_present():
+        return
+    now = time.time()
+    AUDIO_FIX["times"] = [t for t in AUDIO_FIX["times"] if now - t < 3600]
+    if len(AUDIO_FIX["times"]) >= 3 or (AUDIO_FIX["times"] and now - AUDIO_FIX["times"][-1] < 300):
+        return
+    AUDIO_FIX["times"].append(now)
+    C.run(["logger", "-t", "matryoshka-audio", "после смены сеанса нет устройств, перезапуск только WirePlumber"], timeout=5)
+    C.run(["systemctl", "--user", "restart", "wireplumber"], timeout=20)
+    time.sleep(1)
+    restore_audio()
+    fix_sink()
+    fix_source()
 
 def ensure_devices(wait=4):
     time.sleep(wait)
@@ -183,6 +199,24 @@ def fix_sink(user_pick=False):
         data["sink"] = want
     audiodev.save_audio(AUDIO, data)
 
+def note_lock():
+    sid = my_session()
+    if not sid:
+        return
+    on = (C.run(["loginctl", "show-session", sid, "-p", "LockedHint", "--value"], timeout=5).stdout or "").strip()
+    if on not in ("yes", "no") or LOCK["on"] == on:
+        return
+    LOCK["on"] = on
+    p = os.path.expanduser("~/.local/state/matryoshka/face-hold")
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    if on == "yes":
+        open(p, "w", encoding="utf-8").write("%s\n" % time.time())
+    else:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
 def watch_session():
     sid = my_session()
     if not sid:
@@ -191,6 +225,7 @@ def watch_session():
     while True:
         time.sleep(2)
         try:
+            note_lock()
             now = session_active(sid)
             if now == was:
                 continue
@@ -198,15 +233,15 @@ def watch_session():
             if not now:
                 other = other_active_session(sid)
                 pause_players(sid if other else None)
-                if not other:
-                    suspend_hw(True)
             else:
+                # unsuspend only. Suspending the hardware sink removes it from the other session.
                 suspend_hw(False)
-                ensure_devices()
+                time.sleep(1)
                 restore_audio()
                 fix_sink()
                 fix_source()
                 apply_profile(force=True)
+                nudge_wireplumber()
         except Exception:
             pass
 
@@ -400,7 +435,27 @@ def kwallet(on):
     C.kwrite("kwalletrc", "Wallet", "First Use", "false")
     C.kwrite("kwalletrc", "Wallet", "Use One Wallet", "true")
     C.kwrite("kwalletrc", "Wallet", "SecretServiceEnabled", "true" if on else "false")
-    C.kwrite("kwalletrc", "Wallet", "Prompt on Open", "false" if on else "true")
+    C.kwrite("kwalletrc", "Wallet", "Prompt on Open", "false")
+    C.kwrite("kwalletrc", "Wallet", "Close When Idle", "false" if on else "true")
+    C.kwrite("kwalletrc", "Wallet", "Launch", "true" if on else "false")
+    for rc in ("kded5rc", "kded6rc"):
+        C.kwrite(rc, "Module-kwallet", "autoload", "true" if on else "false")
+        C.kwrite(rc, "Module-kwalletd", "autoload", "true" if on else "false")
+    d = os.path.expanduser("~/.config/autostart")
+    os.makedirs(d, exist_ok=True)
+    for name in ("org.kde.kwalletd5.desktop", "org.kde.kwalletd6.desktop"):
+        p = os.path.join(d, name)
+        if on:
+            try:
+                if os.path.isfile(p) and "X-Matryoshka-KWallet=off" in open(p, encoding="utf-8", errors="replace").read():
+                    os.remove(p)
+            except OSError:
+                pass
+        else:
+            open(p, "w", encoding="utf-8").write("[Desktop Entry]\nType=Application\nName=KWallet\nHidden=true\nX-Matryoshka-KWallet=off\n")
+    if not on:
+        C.run(["killall", "-q", "kwalletd6"], timeout=5)
+        C.run(["killall", "-q", "kwalletd5"], timeout=5)
 
 def chooser():
     from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox
@@ -542,6 +597,7 @@ def icons_fix():
 KWIN_RULES = {
     "matryoshka-print-okular": {"Description": "Матрёшка: окно печати Okular поверх", "wmclass": "okular", "wmclassmatch": "2", "types": "32", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2", "acceptfocus": "true", "acceptfocusrule": "2"},
     "matryoshka-print-portal": {"Description": "Матрёшка: окно печати поверх", "wmclass": "xdg-desktop-portal-kde", "wmclassmatch": "2", "title": "Печать|Print", "titlematch": "3", "above": "true", "aboverule": "3", "fsplevel": "0", "fsplevelrule": "2"},
+    "matryoshka-waydroid": {"Description": "Матрёшка: окно Android с кнопками", "wmclass": "waydroid", "wmclassmatch": "2", "noborder": "false", "noborderrule": "2"},
 }
 
 def kwin_rules():
@@ -628,6 +684,11 @@ def cloud_tray():
 def on_login():
     try:
         home_defaults()
+    except Exception:
+        pass
+    try:
+        import deskicons
+        deskicons.trash_icon()
     except Exception:
         pass
     try:

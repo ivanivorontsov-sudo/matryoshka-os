@@ -2,6 +2,7 @@
 [ "$1" = post ] || exit 0
 [ -e /etc/matryoshka/gxfp-on ] || exit 0
 [ -x /usr/sbin/matryoshka-gxfp ] || exit 0
-systemctl is-active -q matryoshka-gxfp-watch.service && exit 0
+# reset-idle does not touch the reader while a finger is being checked.
+# The watch service used to skip this, so after a long lid-close the reader stayed dead.
 ( sleep 2; /usr/sbin/matryoshka-gxfp reset-idle 3 >/dev/null 2>&1 ) &
 exit 0

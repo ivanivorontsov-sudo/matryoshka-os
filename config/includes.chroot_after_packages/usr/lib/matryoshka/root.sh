@@ -23,6 +23,18 @@ case "$cmd" in
   av-update)
     if systemctl is-active -q clamav-freshclam; then systemctl restart clamav-freshclam; sleep 25; tail -n 25 /var/log/clamav/freshclam.log; else freshclam; fi ;;
   av-start) systemctl start clamav-daemon.socket >/dev/null 2>&1; systemctl reset-failed clamav-daemon.service >/dev/null 2>&1; systemctl start clamav-daemon.service; systemctl is-active clamav-daemon.service ;;
+  av-pause) [ -f /etc/matryoshka/av-disabled ] && exit 0; systemctl stop clamav-daemon.service >/dev/null 2>&1; systemctl start clamav-daemon.socket >/dev/null 2>&1; echo "движок остановлен, чтобы виртуальной машине хватило памяти" ;;
+  av-off-begin) python3 /usr/lib/matryoshka/avoff.py begin "$U" "$H" ;;
+  av-off-finish)
+    case "$1" in /tmp/matryoshka-avoff-*) ;; *) echo "ответ не принят"; exit 2 ;; esac
+    case "$1" in *..*) echo "ответ не принят"; exit 2 ;; esac
+    python3 /usr/lib/matryoshka/avoff.py finish "$U" "$1" ;;
+  av-on) python3 /usr/lib/matryoshka/avoff.py enable ;;
+  av-token)
+    case "$1" in bluetooth|wifi|usb) ;; *) echo "нужно bluetooth, wifi или usb"; exit 2 ;; esac
+    [[ "$2" =~ ^[0-9A-Fa-f:.]+$ ]] || { echo "устройство не выбрано"; exit 2; }
+    MATRYOSHKA_HOME="$H" python3 /usr/lib/matryoshka/avoff.py enroll "$1" "$2" "${3:-$2}" ;;
+  waydroid-net) python3 /usr/lib/matryoshka/waydroid_net.py apply ;;
   av-log) tail -n 60 /var/log/clamav/freshclam.log 2>/dev/null || journalctl -u clamav-freshclam -n 60 --no-pager ;;
   snitch-on) systemctl enable --now opensnitch.service; echo "OpenSnitch включён" ;;
   snitch-off) systemctl disable --now opensnitch.service; echo "OpenSnitch выключен" ;;

@@ -53,8 +53,19 @@ def entry(path):
         return None
 
 
+TRASH = """[Desktop Entry]
+Type=Link
+Name=Корзина
+Name[ru]=Корзина
+Comment=Удалённые файлы
+Icon=user-trash
+URL=trash:/
+EmptyIcon=user-trash
+"""
+
+
 def wanted(name, path):
-    if name.startswith(("matryoshka-", "kcm_")):
+    if name.startswith("kcm_") or (name.startswith("matryoshka-") and not name.startswith("matryoshka-archive-")):
         return False
     e = entry(path)
     if not e or e.get("Type", "Application") != "Application" or not e.get("Exec"):
@@ -88,6 +99,34 @@ def ours(path):
         return any(l.strip() == MARK + "=true" for l in open(path, encoding="utf-8"))
     except OSError:
         return False
+
+
+def trash_icon(home=None):
+    home = home or HOME
+    folder = desktop_dir() if home == HOME else None
+    if folder is None:
+        for n in ("Рабочий стол", "Desktop"):
+            p = os.path.join(home, n)
+            if os.path.isdir(p):
+                folder = p
+                break
+        folder = folder or os.path.join(home, "Desktop")
+    os.makedirs(folder, exist_ok=True)
+    dst = os.path.join(folder, "Корзина.desktop")
+    if os.path.lexists(dst):
+        return dst
+    tmp = dst + ".matryoshka-new"
+    open(tmp, "w", encoding="utf-8").write(TRASH)
+    os.chmod(tmp, 0o755)
+    os.replace(tmp, dst)
+    return dst
+
+
+def place(src):
+    name = os.path.basename(src)
+    if not enabled() or not os.path.isfile(src) or not wanted(name, src):
+        return None
+    return make_icon(name, src)
 
 
 def make_icon(name, src):

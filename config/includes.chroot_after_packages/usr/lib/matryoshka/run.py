@@ -72,21 +72,39 @@ def dos(path):
 INSTALLERS = ("msi", "apk", "xapk", "apks", "apkm")
 OWN_SCAN = ("deb", "appimage", "gz", "tgz", "bz2", "xz", "tar", "zst")
 
+def launch_scan(kind, enabled, disabled):
+    if disabled or not enabled:
+        return False
+    if kind in OWN_SCAN:
+        return False
+    return True
+
 def main(path):
     import scangate
     kind = path.lower().rsplit(".", 1)[-1]
-    if kind in OWN_SCAN or (kind in INSTALLERS and not C.install_scan()):
+    disabled = False
+    try:
+        import avoff
+        disabled = avoff.disabled()
+    except Exception:
+        disabled = False
+    if not launch_scan(kind, C.install_scan(), disabled):
         res = {"malicious": False, "activator": False}
     else:
-        res = scangate.check(path)
-    if res["malicious"] or res["activator"]:
+        res = scangate.check(path, quick=True, wait=8, clamd_timeout=20)
+    if res["malicious"]:
+        try:
+            av.dialog(res)
+        except Exception:
+            pass
+        return 4
+    if res["activator"]:
         av.dialog(res)
         if not os.path.exists(path): return 4
-        if res["activator"]:
-            import legal
-            if subprocess.call(["kdialog", "--title", "Активатор", "--warningcontinuecancel", "Файл похож на активатор (средство обхода лицензии).\n\n" + legal.activator_text()]) != 0: return 5
-            r = subprocess.run(["kdialog", "--title", "Активатор", "--checklist", "Запуск разрешён только после подтверждения:", "ok", "подтверждаю, что использую только для экспериментов", "off"], capture_output=True, text=True)
-            if "ok" not in r.stdout: return 5
+        import legal
+        if subprocess.call(["kdialog", "--title", "Активатор", "--warningcontinuecancel", "Файл похож на активатор (средство обхода лицензии).\n\n" + legal.activator_text()]) != 0: return 5
+        r = subprocess.run(["kdialog", "--title", "Активатор", "--checklist", "Запуск разрешён только после подтверждения:", "ok", "подтверждаю, что использую только для экспериментов", "off"], capture_output=True, text=True)
+        if "ok" not in r.stdout: return 5
     ext = path.lower().rsplit(".", 1)[-1]
     if ext in ("com", "bat") or (ext == "exe" and exe_kind(path) == "dos"):
         return dos(path)
