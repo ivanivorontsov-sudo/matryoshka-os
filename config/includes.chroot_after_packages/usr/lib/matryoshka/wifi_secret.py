@@ -159,6 +159,86 @@ def plant_psk(text, psk):
     return "".join(lines), True
 
 
+def valid_psk(psk):
+    if not psk or any(c in psk for c in "\r\n\x00"):
+        return False
+    if len(psk) == 64 and all(c in "0123456789abcdefABCDEF" for c in psk):
+        return True
+    return 8 <= len(psk) <= 63
+
+
+def set_psk(text, psk):
+    """Пароль, введённый пользователем, заменяет старый в файле или добавляется."""
+    if not valid_psk(psk):
+        return text, False
+    lines = text.splitlines(keepends=True)
+    for name, start, end in section_ranges(lines):
+        if name != "wifi-security":
+            continue
+        found = fields(lines, start, end)
+        if found.get("key-mgmt", (None, ""))[1] not in PSK_MGMT:
+            return text, False
+        item = found.get("psk")
+        ending = "\n"
+        if lines and lines[-1].endswith("\r\n"):
+            ending = "\r\n"
+        if item:
+            if item[1] == psk:
+                return text, False
+            lines[item[0]] = "psk=%s%s" % (psk, ending)
+        else:
+            at = end
+            while at > start + 1 and not lines[at - 1].strip():
+                at -= 1
+            lines.insert(at, "psk=%s%s" % (psk, ending))
+        return "".join(lines), True
+    return text, False
+
+
+def read_pairs(stream, limit=65536):
+    """Строки «uuid<TAB>пароль» со стандартного входа. Пароль не печатается."""
+    try:
+        data = stream.read(limit)
+    except Exception:
+        return []
+    pairs = []
+    for line in data.splitlines():
+        uuid, sep, psk = line.partition("\t")
+        uuid = uuid.strip()
+        if sep and uuid_ok(uuid) and valid_psk(psk):
+            pairs.append((uuid, psk))
+    return pairs
+
+
+def store_pairs(pairs):
+    done = []
+    for uuid, psk in pairs:
+        path = filename_for(uuid)
+        if not path:
+            continue
+        old = read_text(path)
+        text, _ = set_psk(old, psk)
+        if text == old and wifi_with_password(old):
+            done.append(uuid)
+            continue
+        if text == old:
+            continue
+        text, _ = repair_text(text)
+        if wifi_with_password(text):
+            text, _ = ensure_autoconnect(text)
+            text, _ = share_saved(text)
+        try:
+            write_text(path, text)
+        except OSError:
+            continue
+        try:
+            run(["nmcli", "connection", "load", path], timeout=15)
+        except Exception:
+            pass
+        done.append(uuid)
+    return done
+
+
 def needs_agent(text):
     lines = text.splitlines(keepends=True)
     sections = {}
@@ -380,6 +460,11 @@ def main(argv):
     if os.geteuid() != 0:
         return 1
     pin_only = "--pin" in argv
+    if "--stdin" in argv:
+        # Пароли сетей, которые сеанс пользователя достал из бумажника или
+        # спросил своим окном. Записываются в файлы соединений (psk-flags=0).
+        store_pairs(read_pairs(sys.stdin))
+        argv = [item for item in argv if item != "--stdin"]
     uuids = [item for item in argv[1:] if uuid_ok(item)]
     if uuids:
         paths = [filename_for(item) for item in uuids]

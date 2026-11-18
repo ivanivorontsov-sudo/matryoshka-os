@@ -560,15 +560,100 @@ def stop_kwalletd():
     subprocess.run(["killall", "-q", "kwalletd6", "kwalletd5"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def wifi_save():
-    # Пароль уже подключённой сети пишется в файл NetworkManager.
-    # sudo здесь без пароля: отдельное правило, не окно бумажника.
-    # Код 0 — пароль сети уже в файле, Wi-Fi не ждёт хранилище ключей.
+WIFI_PSK_MGMT = ("wpa-psk", "sae", "wpa-psk-sha256")
+
+
+def _nm_env():
+    env = dict(os.environ)
+    env["LC_ALL"] = "C"
+    env["LANG"] = "C"
+    return env
+
+
+def saved_wifi_rows():
+    listed = C.run(["nmcli", "-t", "-f", "UUID,TYPE,TIMESTAMP", "connection", "show"], timeout=8, env=_nm_env())
+    rows = []
+    for line in (listed.stdout or "").splitlines():
+        parts = line.split(":")
+        if len(parts) >= 3 and parts[1] in ("802-11-wireless", "wifi") and parts[0]:
+            rows.append((parts[0], parts[1], parts[2]))
+    return rows
+
+
+def wifi_profile(uuid):
+    """Тип защиты, флаг пароля и имя сети. Сам пароль здесь не читается."""
+    out = C.run(["nmcli", "-t", "-e", "no", "-g", "802-11-wireless-security.key-mgmt,802-11-wireless-security.psk-flags,802-11-wireless.ssid", "connection", "show", uuid], timeout=8, env=_nm_env())
+    lines = (out.stdout or "").splitlines()
+    if out.returncode != 0 or len(lines) < 3:
+        return "", "", ""
+    return lines[0].strip(), lines[1].strip(), lines[2].strip()
+
+
+def psk_in_file(flags):
+    # psk-flags 0 — пароль в файле соединения. 1 — у агента (бумажник),
+    # 2 — не сохранён. Строка nmcli бывает вида «0 (none)».
+    return (flags or "0").split(" ", 1)[0] in ("0", "")
+
+
+def wifi_need_psk():
+    """Сохранённые сети WPA, пароль которых не лежит в файле соединения."""
+    found = []
+    for uuid, _kind, _ts in saved_wifi_rows():
+        mgmt, flags, ssid = wifi_profile(uuid)
+        if mgmt in WIFI_PSK_MGMT and not psk_in_file(flags):
+            found.append((uuid, ssid))
+    return found
+
+
+def harvest_psk():
+    """Пока бумажник доступен, пароли сетей берутся у агента секретов сеанса.
+
+    nmcli от root их не получает: пароль с psk-flags=1 хранит агент
+    пользователя (plasma-nm и KWallet). Окно пароля здесь не вызывается.
+    """
+    pairs = []
+    for uuid, _ssid in wifi_need_psk():
+        out = C.run(["nmcli", "-s", "-t", "-e", "no", "-g", "802-11-wireless-security.psk", "connection", "show", uuid], timeout=12, env=_nm_env())
+        psk = (out.stdout or "").rstrip("\n")
+        if out.returncode == 0 and psk and "\n" not in psk and psk not in ("--", "<hidden>"):
+            pairs.append((uuid, psk))
+    return pairs
+
+
+def store_psk(pairs):
+    if not pairs:
+        return False
+    data = "".join("%s\t%s\n" % (u, k) for u, k in pairs)
     try:
-        result = subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+        result = subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save", "--stdin"], input=data, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
         return result.returncode == 0
     except Exception:
         return False
+
+
+def wifi_save():
+    # Пароль сохранённых сетей пишется в файл NetworkManager (psk-flags=0).
+    # Сначала пароли забираются у агента секретов этого сеанса, потом root
+    # переписывает файлы. sudo без пароля: отдельное правило, не окно бумажника.
+    # Код 0 — пароль сети уже в файле, Wi-Fi не ждёт хранилище ключей.
+    try:
+        # Закрытый бумажник nmcli -s попросил бы открыть окном пароля.
+        # Поэтому пароли берутся, только если бумажник уже открыт.
+        if wallet_unlocked():
+            store_psk(harvest_psk())
+    except Exception:
+        pass
+    try:
+        result = subprocess.run(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "wifi-save"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def ask_wifi_password(uuid, ssid):
+    # Бумажник выключен, а пароля сети в файле нет: без этого окна NetworkManager
+    # висит в «Ожидании авторизации». Окно своё, KWallet не нужен.
+    subprocess.Popen(["python3", "/usr/lib/matryoshka/wifi_ask.py", uuid, ssid or ""], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def wallet_cleanup():
@@ -708,8 +793,15 @@ def connect_saved_wifi():
             continue
         rows.append((parts[0], parts[1], parts[2]))
     best = newest_wifi_uuid(rows)
-    if best:
-        C.run(["nmcli", "-w", "25", "connection", "up", best], timeout=40, env=env)
+    if not best:
+        return
+    if C.settings().get("kwallet", True) is False:
+        mgmt, flags, ssid = wifi_profile(best)
+        if mgmt in WIFI_PSK_MGMT and not psk_in_file(flags):
+            # Агента с паролем нет: подключение повисло бы на авторизации.
+            ask_wifi_password(best, ssid)
+            return
+    C.run(["nmcli", "-w", "25", "connection", "up", best], timeout=40, env=env)
 
 
 def wifi_after_unlock():

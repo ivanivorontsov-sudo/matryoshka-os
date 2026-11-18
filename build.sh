@@ -23,33 +23,47 @@ sp=$(echo /opt/matryoshka-voice/venv/lib/python3.*/site-packages)
 miss=0
 for m in requests tqdm srt websockets; do ls $sp/$m >/dev/null 2>&1 || ls $sp/${m}-* >/dev/null 2>&1 || miss=1; done
 if [ ! -d $V/model-ru ] || [ "$miss" = 1 ]; then sudo rm -rf /opt/matryoshka-voice; sudo mkdir -p /opt/matryoshka-voice; sudo chown $(id -u) /opt/matryoshka-voice; python3 -m venv --system-site-packages /opt/matryoshka-voice/venv; /opt/matryoshka-voice/venv/bin/pip install -q --ignore-installed vosk==0.3.45 requests tqdm srt websockets certifi cffi pycparser charset_normalizer idna urllib3; curl -fsSL -o /tmp/m.zip https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip; echo "961d5ff98a17f4aa6de69864d0aa71fa5bac682301d2b5d17a3f24c5c99a46d4  /tmp/m.zip" | sha256sum -c; unzip -q /tmp/m.zip -d /opt/matryoshka-voice; mv /opt/matryoshka-voice/vosk-model-small-ru-0.22 /opt/matryoshka-voice/model-ru; mkdir -p $V; cp -a /opt/matryoshka-voice/. $V/; fi
-if grep -q '/updates ' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
-  sudo sed -i 's#/updates #-security #g' /usr/lib/live/build/lb_chroot_archives
-fi
-if ! grep -q '%no-protection' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
-  sudo sed -i 's/%secring/%no-protection\n\t\t\t\t\t      %secring/' /usr/lib/live/build/lb_chroot_archives
-fi
-if grep -q 'gpg --batch --gen-key' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
-  sudo sed -i 's/gpg --batch --gen-key/gpg --batch --pinentry-mode loopback --gen-key/; s/gpg --no-default-keyring/gpg --batch --pinentry-mode loopback --no-default-keyring/g' /usr/lib/live/build/lb_chroot_archives
-  sudo sed -i 's#mkdir -p chroot/root/.gnupg#mkdir -p chroot/root/.gnupg\n\t\t\t\t\techo allow-loopback-pinentry > chroot/root/.gnupg/gpg-agent.conf#' /usr/lib/live/build/lb_chroot_archives
-fi
+# Правки ниже нужны live-build из Ubuntu 24.04. В Debian 13 (live-build 20250505) файла lb_chroot_archives нет.
 if [ -f /usr/lib/live/build/lb_chroot_archives ]; then
+  if grep -q '/updates ' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
+    sudo sed -i 's#/updates #-security #g' /usr/lib/live/build/lb_chroot_archives
+  fi
+  if ! grep -q '%no-protection' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
+    sudo sed -i 's/%secring/%no-protection\n\t\t\t\t\t      %secring/' /usr/lib/live/build/lb_chroot_archives
+  fi
+  if grep -q 'gpg --batch --gen-key' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
+    sudo sed -i 's/gpg --batch --gen-key/gpg --batch --pinentry-mode loopback --gen-key/; s/gpg --no-default-keyring/gpg --batch --pinentry-mode loopback --no-default-keyring/g' /usr/lib/live/build/lb_chroot_archives
+    sudo sed -i 's#mkdir -p chroot/root/.gnupg#mkdir -p chroot/root/.gnupg\n\t\t\t\t\techo allow-loopback-pinentry > chroot/root/.gnupg/gpg-agent.conf#' /usr/lib/live/build/lb_chroot_archives
+  fi
   sudo sed -i 's#deb file:/root/packages ./#deb [trusted=yes] file:/root/packages ./#' /usr/lib/live/build/lb_chroot_archives
+  # gpg 2.4 не пишет %secring и не смотрит --secret-keyring. Локальный репозиторий и так trusted=yes, срыв подписи не должен оборвать образ.
+  if ! grep -q 'Release.gpg /root/packages/Release" || true' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
+    sudo sed -i 's#/root/packages/Release.gpg /root/packages/Release"#/root/packages/Release.gpg /root/packages/Release" || true#' /usr/lib/live/build/lb_chroot_archives
+  fi
 fi
-# gpg 2.4 не пишет %secring и не смотрит --secret-keyring. Локальный репозиторий и так trusted=yes, срыв подписи не должен оборвать образ.
-if ! grep -q 'Release.gpg /root/packages/Release" || true' /usr/lib/live/build/lb_chroot_archives 2>/dev/null; then
-  sudo sed -i 's#/root/packages/Release.gpg /root/packages/Release"#/root/packages/Release.gpg /root/packages/Release" || true#' /usr/lib/live/build/lb_chroot_archives
+if [ -x /usr/lib/live/build/chroot_includes_after_packages ]; then
+  # Debian 13: includes.chroot_after_packages подхватывается сам, а ссылка
+  # includes.chroot обрывает сборку («Only one directory is allowed»).
+  [ -L config/includes.chroot ] && rm -f config/includes.chroot
+  # chroot_hooks запускает config/hooks/live/*.chroot только если есть
+  # config/hooks/normal/*.chroot (их обычно создаёт lb config). Без них
+  # хуки Матрёшки молча не выполняются.
+  mkdir -p config/hooks/normal
+  for h in /usr/share/live/build/hooks/normal/*.hook.chroot; do
+    [ -e "config/hooks/normal/$(basename "$h")" ] || ln -s "$h" "config/hooks/normal/$(basename "$h")"
+  done
+else
+  # live-build из Ubuntu 24.04 копирует только config/includes.chroot и config/hooks/*.chroot.
+  if [ ! -e config/includes.chroot ]; then
+    ln -s includes.chroot_after_packages config/includes.chroot
+  fi
+  mkdir -p config/hooks
+  for h in config/hooks/live/*.hook.chroot; do
+    [ -f "$h" ] || continue
+    b=config/hooks/$(basename "$h" .hook.chroot).chroot
+    [ -e "$b" ] || ln -s "live/$(basename "$h")" "$b"
+  done
 fi
-# live-build из Ubuntu 24.04 копирует только config/includes.chroot и config/hooks/*.chroot.
-if [ ! -e config/includes.chroot ]; then
-  ln -s includes.chroot_after_packages config/includes.chroot
-fi
-mkdir -p config/hooks
-for h in config/hooks/live/*.hook.chroot; do
-  [ -f "$h" ] || continue
-  b=config/hooks/$(basename "$h" .hook.chroot).chroot
-  [ -e "$b" ] || ln -s "live/$(basename "$h")" "$b"
-done
 sudo python3 - << 'PY'
 from pathlib import Path
 p = Path("/usr/lib/live/build/lb_chroot_linux-image")
@@ -61,4 +75,7 @@ if text and old in text:
 PY
 # git хранит файлы sudoers как 0644 владельца сборщика. В образ они идут root:root 0440.
 chmod 0755 $I/etc/sudoers.d && chmod 0440 $I/etc/sudoers.d/*
+# live-build 20250505 не начинает chroot без отметки стадии config (её ставит lb config).
+# Конфиг уже в git, поэтому lb config не запускается, только ставится отметка.
+[ -f .build/config ] || { sudo mkdir -p .build && sudo touch .build/config; }
 sudo env MKSQUASHFS_OPTIONS="-processors 2 -mem 1G" nice -n 19 lb build

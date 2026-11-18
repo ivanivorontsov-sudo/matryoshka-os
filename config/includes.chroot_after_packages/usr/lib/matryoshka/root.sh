@@ -35,7 +35,7 @@ case "$cmd" in
     [[ "$2" =~ ^[0-9A-Fa-f:.]+$ ]] || { echo "устройство не выбрано"; exit 2; }
     MATRYOSHKA_HOME="$H" python3 /usr/lib/matryoshka/avoff.py enroll "$1" "$2" "${3:-$2}" ;;
   waydroid-net) python3 /usr/lib/matryoshka/waydroid_net.py apply ;;
-  wifi-save) python3 /usr/lib/matryoshka/wifi_secret.py ;;
+  wifi-save) if [ "${1:-}" = --stdin ]; then python3 /usr/lib/matryoshka/wifi_secret.py --stdin; else python3 /usr/lib/matryoshka/wifi_secret.py </dev/null; fi ;;
   av-log) tail -n 60 /var/log/clamav/freshclam.log 2>/dev/null || journalctl -u clamav-freshclam -n 60 --no-pager ;;
   snitch-on) systemctl enable --now opensnitch.service; echo "OpenSnitch включён" ;;
   snitch-off) systemctl disable --now opensnitch.service; echo "OpenSnitch выключен" ;;
