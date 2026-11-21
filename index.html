@@ -4,17 +4,69 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#090b14">
-<title>Матрёшка OS — Linux, который слушается владельца</title>
-<meta name="description" content="Матрёшка — настольная операционная система на базе Debian 13 с KDE Plasma, Wine, Waydroid, инструментами приватности, защиты и восстановления. Последний выпуск 18.6.18.">
-<meta name="keywords" content="Матрёшка OS, Matryoshka OS, Linux, Debian 13, российская операционная система, KDE Plasma, Wine, Waydroid">
+<title>Матрёшка OS — Linux на Debian 13 с KDE, Wine и Waydroid</title>
+<meta name="description" content="Матрёшка OS — авторская Linux-система на Debian 13 и KDE Plasma 6 для ПК x86_64. Wine, Waydroid, инструменты защиты и восстановления. Скачать ISO 18.6.18.">
+<meta name="author" content="Иван Воронцов">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Матрёшка OS — компьютер под контролем">
-<meta property="og:description" content="Debian 13, KDE Plasma, Windows- и Android-приложения, инструменты приватности и восстановления.">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:title" content="Матрёшка OS — Linux на Debian 13 с KDE Plasma">
+<meta property="og:description" content="Настольная Linux-система для x86_64: Debian 13, KDE Plasma 6, Wine, Waydroid, резервное копирование и контроль сети. Выпуск 18.6.18.">
 <meta property="og:url" content="https://ivanivorontsov-sudo.github.io/matryoshka-os/">
 <meta property="og:site_name" content="Матрёшка OS">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Матрёшка OS — Linux на Debian 13">
+<meta name="twitter:description" content="KDE Plasma 6, Wine, Waydroid и инструменты восстановления для ПК x86_64.">
 <link rel="canonical" href="https://ivanivorontsov-sudo.github.io/matryoshka-os/">
+<link rel="alternate" type="application/rss+xml" title="Релизы Матрёшки на GitHub" href="https://github.com/ivanivorontsov-sudo/matryoshka-os/releases.atom">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://ivanivorontsov-sudo.github.io/matryoshka-os/#website",
+      "url": "https://ivanivorontsov-sudo.github.io/matryoshka-os/",
+      "name": "Матрёшка OS",
+      "alternateName": "Matryoshka OS",
+      "inLanguage": "ru-RU",
+      "publisher": {"@id": "https://ivanivorontsov-sudo.github.io/matryoshka-os/#author"}
+    },
+    {
+      "@type": "Person",
+      "@id": "https://ivanivorontsov-sudo.github.io/matryoshka-os/#author",
+      "name": "Иван Воронцов",
+      "url": "https://github.com/ivanivorontsov-sudo"
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://ivanivorontsov-sudo.github.io/matryoshka-os/#software",
+      "name": "Матрёшка OS",
+      "alternateName": "Matryoshka OS",
+      "applicationCategory": "OperatingSystem",
+      "operatingSystem": "Debian 13 (Linux), x86_64",
+      "softwareVersion": "18.6.18",
+      "description": "Авторская настольная Linux-система на базе Debian 13 с KDE Plasma 6, Wine, Waydroid и инструментами защиты и восстановления.",
+      "url": "https://ivanivorontsov-sudo.github.io/matryoshka-os/",
+      "downloadUrl": "https://github.com/ivanivorontsov-sudo/matryoshka-os/releases/latest",
+      "codeRepository": "https://github.com/ivanivorontsov-sudo/matryoshka-os",
+      "author": {"@id": "https://ivanivorontsov-sudo.github.io/matryoshka-os/#author"},
+      "featureList": [
+        "KDE Plasma 6 desktop",
+        "Wine for compatible Windows applications",
+        "Waydroid for compatible Android applications",
+        "ClamAV and YARA file analysis tools",
+        "Snapper, Btrfs and Restic backup and recovery tools",
+        "OpenSnitch network control"
+      ]
+    }
+  ]
+}
+</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%237c5cff'/%3E%3Cpath d='M50 12c-19 0-31 14-31 32 0 22 14 42 31 44 17-2 31-22 31-44 0-18-12-32-31-32Zm0 12c12 0 19 9 19 21 0 15-8 29-19 31-11-2-19-16-19-31 0-12 7-21 19-21Zm0 12c-6 0-10 5-10 12 0 9 4 17 10 19 6-2 10-10 10-19 0-7-4-12-10-12Z' fill='white'/%3E%3C/svg%3E">
 <style>
+.skip-link{position:absolute;left:-9999px;top:8px;z-index:20;background:#fff;color:#090b14;padding:10px 14px;border-radius:8px}.skip-link:focus{left:12px}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 :root{color-scheme:dark;--bg:#090b14;--panel:#111525;--muted:#a6aec5;--text:#f5f6ff;--line:#ffffff18;--purple:#987cff;--cyan:#62e5dc;--pink:#ff85bd}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(ellipse at 75% 0%,#33245b66,transparent 38rem),radial-gradient(ellipse at 5% 45%,#123d4a55,transparent 34rem),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.6}a{color:inherit;text-decoration:none}.wrap{width:min(1160px,calc(100% - 40px));margin:auto}.nav{height:82px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.2px}.logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(145deg,var(--purple),#5942bd);display:grid;place-items:center;box-shadow:0 8px 30px #795cff55;font-size:24px}.navlinks{display:flex;gap:26px;color:var(--muted);font-size:14px}.navlinks a:hover,.textlink:hover{color:var(--cyan)}.hero{padding:92px 0 80px;display:grid;grid-template-columns:1.08fr .92fr;gap:50px;align-items:center}.eyebrow{display:inline-flex;align-items:center;gap:9px;border:1px solid #987cff55;background:#987cff18;border-radius:99px;padding:7px 13px;color:#d4c8ff;font-size:13px;font-weight:650}.dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px var(--cyan)}h1{font-size:clamp(46px,6.5vw,78px);line-height:1.02;letter-spacing:-.055em;margin:24px 0 22px}.gradient{background:linear-gradient(100deg,#c8baff 5%,#7cebe3 90%);-webkit-background-clip:text;background-clip:text;color:transparent}.lead{font-size:19px;color:#c0c6d8;max-width:620px}.actions{display:flex;flex-wrap:wrap;gap:13px;margin-top:32px}.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:13px 19px;border-radius:13px;font-weight:750;border:1px solid var(--line);transition:.2s}.btn.primary{background:linear-gradient(110deg,#8063ef,#5d77dc);box-shadow:0 10px 32px #735bdf44}.btn:hover{transform:translateY(-2px);filter:brightness(1.12)}.btn.secondary{background:#ffffff09}.fine{color:#818ba5;font-size:13px;margin-top:17px}.visual{position:relative;min-height:410px;display:grid;place-items:center}.orb{position:absolute;width:320px;height:320px;border-radius:50%;background:linear-gradient(135deg,#987cff66,#52d8d055);filter:blur(22px);opacity:.6}.device{position:relative;width:min(100%,490px);padding:13px;border:1px solid #ffffff30;border-radius:24px;background:linear-gradient(145deg,#20283b,#0e1220);box-shadow:0 35px 90px #0009,0 0 0 1px #9a83ff20;transform:perspective(900px) rotateY(-8deg) rotateX(3deg)}.screen{border-radius:15px;overflow:hidden;background:#101727;min-height:300px}.screenbar{height:32px;background:#242d43;display:flex;align-items:center;padding:0 12px;gap:6px}.win-dot{width:7px;height:7px;border-radius:50%;background:#ff8e9b}.win-dot:nth-child(2){background:#f8d879}.win-dot:nth-child(3){background:#7ce0b4}.screenbody{padding:22px;display:grid;grid-template-columns:72px 1fr;gap:16px;min-height:275px;background:radial-gradient(circle at 70% 20%,#55408c77,transparent 45%),linear-gradient(140deg,#121c31,#101426)}.dock{border:1px solid #ffffff20;background:#ffffff0b;border-radius:14px;display:flex;flex-direction:column;align-items:center;gap:13px;padding:12px 0}.dock i{width:27px;height:27px;border-radius:8px;background:linear-gradient(140deg,#9c80ff,#5a72ca)}.desktop{display:flex;flex-direction:column;justify-content:space-between}.desktop h3{font-size:26px;margin:15px 0 3px}.desktop p{color:#aeb8d0;font-size:12px;margin:0}.widgets{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:25px}.widget{height:58px;border-radius:10px;background:#ffffff0e;border:1px solid #ffffff18;padding:10px;color:#dce4ff;font-size:10px}.widget b{display:block;font-size:15px;color:white}.float-tag{position:absolute;right:-8px;bottom:25px;padding:12px 16px;border:1px solid #ffffff25;border-radius:14px;background:#151a2beF;box-shadow:0 15px 35px #0008;font-size:13px}.float-tag strong{color:var(--cyan)}.section{padding:76px 0;border-top:1px solid var(--line)}.section-head{max-width:700px;margin-bottom:32px}.kicker{color:var(--cyan);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}h2{font-size:clamp(30px,4vw,46px);letter-spacing:-.04em;line-height:1.12;margin:10px 0 14px}.sub{color:var(--muted);font-size:17px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.card{padding:24px;border:1px solid var(--line);border-radius:19px;background:linear-gradient(145deg,#ffffff0c,#ffffff04);min-height:190px;transition:.2s}.card:hover{border-color:#9b82ff77;transform:translateY(-3px);background:#ffffff10}.ico{width:43px;height:43px;border-radius:13px;display:grid;place-items:center;background:#927aff22;color:#cbbcff;font-size:21px;margin-bottom:17px}.card h3{font-size:18px;margin:0 0 7px}.card p{color:var(--muted);font-size:14px;margin:0}.split{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{border:1px solid var(--line);border-radius:20px;background:#ffffff08;padding:28px}.panel h3{margin:0 0 10px;font-size:21px}.list{padding:0;margin:18px 0 0;list-style:none}.list li{padding:10px 0;border-top:1px solid var(--line);color:#c0c7d9;font-size:14px}.list li:before{content:"✦";color:var(--cyan);margin-right:10px}.release{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:26px;border:1px solid #8d7aff66;border-radius:20px;background:linear-gradient(110deg,#7257db25,#52d8d014)}.release strong{font-size:30px;display:block}.release p{margin:3px 0 0;color:var(--muted)}.faq{display:grid;grid-template-columns:1fr 1fr;gap:13px}.faq details{padding:19px;border:1px solid var(--line);border-radius:15px;background:#ffffff07}.faq summary{font-weight:700;cursor:pointer}.faq p{color:var(--muted);font-size:14px;margin-bottom:0}.footer{padding:35px 0 50px;border-top:1px solid var(--line);color:#8790a8;font-size:13px;display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}.textlink{color:#d5ccff;text-decoration:underline;text-decoration-color:#987cff66;text-underline-offset:4px}
 @media(max-width:850px){.hero{grid-template-columns:1fr;padding:65px 0 55px;gap:20px}.visual{min-height:360px}.grid{grid-template-columns:repeat(2,1fr)}.navlinks{gap:13px}.navlinks a:nth-child(2){display:none}}
@@ -22,11 +74,13 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#main-content">Перейти к содержимому</a>
 <header class="wrap nav">
 <a class="brand" href="#top" aria-label="Матрёшка OS — на главную"><span class="logo">М</span><span>МАТРЁШКА <span style="color:#9b87ff">OS</span></span></a>
-<nav class="navlinks" aria-label="Главная навигация"><a href="#features">Возможности</a><a href="#privacy">Приватность</a><a href="#download">Загрузка</a><a href="#about">О проекте</a></nav>
+<nav class="navlinks" aria-label="Главная навигация"><a href="features/">Возможности</a><a href="#privacy">Приватность</a><a href="download/">Загрузка</a><a href="installation/">Установка</a></nav>
 </header>
 <main id="top">
+<div id="main-content" class="sr-only" tabindex="-1">Основная информация о Матрёшка OS</div>
 <section class="wrap hero">
 <div>
 <span class="eyebrow"><span class="dot"></span> Debian 13 · KDE Plasma 6 · x86_64</span>
@@ -39,7 +93,8 @@
 <div class="orb"></div><div class="device"><div class="screen"><div class="screenbar"><i class="win-dot"></i><i class="win-dot"></i><i class="win-dot"></i></div><div class="screenbody"><div class="dock"><i></i><i style="background:linear-gradient(140deg,#5fe2d5,#348d9a)"></i><i style="background:linear-gradient(140deg,#ff9fc8,#b84d91)"></i><i style="background:linear-gradient(140deg,#ffd77d,#bc8644)"></i></div><div class="desktop"><div><p>ДОБРО ПОЖАЛОВАТЬ</p><h3>Матрёшка</h3><p>Твой компьютер. Твои правила.</p></div><div class="widgets"><div class="widget"><b>18.6.18</b>Текущий выпуск</div><div class="widget"><b>Debian 13</b>Основа системы</div><div class="widget"><b>Wine</b>Windows-приложения</div><div class="widget"><b>Waydroid</b>Android-приложения</div></div></div></div></div></div><div class="float-tag">Система под контролем <strong>✦</strong></div>
 </div>
 </section>
-<section class="section" id="features"><div class="wrap"><div class="section-head"><span class="kicker">Возможности</span><h2>Не просто Linux.<br>Целая матрёшка возможностей.</h2><p class="sub">Знакомые технологии собраны в единую систему с собственными настройками, оболочками и сценариями.</p></div>
+<section class="section" id="overview"><div class="wrap"><div class="section-head"><span class="kicker">Знакомство с системой</span><h2>Что такое Матрёшка OS?</h2><p class="sub">Матрёшка OS — авторская настольная операционная система на базе Debian 13 (ветка Debian 13 «trixie») для компьютеров с архитектурой amd64 / x86_64. В основе графического интерфейса — KDE Plasma 6. Проект объединяет Linux-среду, интеграцию совместимых Windows-программ через Wine и Android-приложений через Waydroid, а также инструменты обслуживания и восстановления.</p><p class="sub">Это не отдельное ядро и не операционная система, написанная целиком с нуля: Матрёшка собирается из Debian и сторонних открытых компонентов, дополненных авторскими настройками, сценариями и интеграциями. Подробности о составе, ограничениях и лицензиях доступны в документации проекта.</p><div class="actions"><a class="btn secondary" href="features/">Подробно о возможностях ↗</a><a class="btn secondary" href="https://github.com/ivanivorontsov-sudo/matryoshka-os/blob/main/docs/README-ru.md">Документация проекта ↗</a></div></div></div></section>
+<section class="section" id="features"><div class="wrap"><div class="section-head"><span class="kicker">Возможности</span><h2>Не просто Linux.<br>Целая матрёшка возможностей.</h2><p class="sub">Знакомые технологии собраны в единую систему с собственными настройками, оболочками и сценариями. Состав компонентов и практические ограничения описаны отдельно — без обещаний совместимости со всем на свете.</p><a class="textlink" href="features/">Все функции и компоненты Матрёшка OS ↗</a></div>
 <div class="grid">
 <article class="card"><div class="ico">▦</div><h3>Рабочий стол KDE</h3><p>KDE Plasma 6, несколько вариантов оформления, темы и режимы рабочего стола.</p></article>
 <article class="card"><div class="ico">▣</div><h3>Windows-приложения</h3><p>Wine для запуска совместимых программ Windows и интеграция с рабочим столом.</p></article>
@@ -56,13 +111,15 @@
 <p class="fine">Важно: это описание штатной конфигурации, а не гарантия абсолютной безопасности или полной анонимности. Поведение зависит от установленных приложений, настроек, оборудования и действий пользователя.</p>
 </div></section>
 <section class="section" id="download"><div class="wrap"><div class="section-head"><span class="kicker">Загрузка</span><h2>Попробовать Матрёшку.</h2><p class="sub">Все опубликованные образы, пакеты обновлений и примечания к выпускам находятся в GitHub Releases.</p></div>
-<div class="release"><div><span class="kicker">Последний выпуск</span><strong>18.6.18</strong><p>Исправления Vivaldi и входа в Zoom через Google.</p></div><a class="btn primary" href="https://github.com/ivanivorontsov-sudo/matryoshka-os/releases/latest">Открыть загрузки ↗</a></div>
-<div class="split" style="margin-top:16px"><div class="panel"><h3>Перед установкой</h3><p class="sub">Сделайте проверенную резервную копию на отдельный носитель, проверьте разметку диска и прочитайте предупреждение.</p><a class="textlink" href="https://github.com/ivanivorontsov-sudo/matryoshka-os/blob/main/docs/INSTALLATION-WARNING.md">Предупреждение перед установкой ↗</a></div><div class="panel"><h3>Исходный код и документация</h3><p class="sub">Посмотрите устройство проекта, лицензии, инструкции и историю изменений.</p><a class="textlink" href="https://github.com/ivanivorontsov-sudo/matryoshka-os">Открыть репозиторий ↗</a></div></div>
+<div class="release"><div><span class="kicker">Последний выпуск</span><strong>18.6.18</strong><p>Исправления Vivaldi и входа в Zoom через Google.</p></div><a class="btn primary" href="download/">Скачать Матрёшка OS ↗</a></div>
+<div class="split" style="margin-top:16px"><div class="panel"><h3>Перед установкой</h3><p class="sub">Сделайте проверенную резервную копию на отдельный носитель, проверьте разметку диска и прочитайте предупреждение.</p><a class="textlink" href="installation/">Инструкция и предупреждения перед установкой ↗</a></div><div class="panel"><h3>Исходный код и документация</h3><p class="sub">Посмотрите устройство проекта, лицензии, инструкции и историю изменений.</p><a class="textlink" href="https://github.com/ivanivorontsov-sudo/matryoshka-os">Открыть репозиторий ↗</a><br><a class="textlink" href="https://github.com/ivanivorontsov-sudo/matryoshka-os/blob/main/docs/DEVELOPER.md">Документация разработчика ↗</a></div></div>
 </div></section>
 <section class="section" id="about"><div class="wrap"><div class="section-head"><span class="kicker">О проекте</span><h2>Идея — своя. Основа — открытая.</h2><p class="sub">Матрёшка — авторский проект Ивана Воронцова на базе Debian 13. Архитектура, назначение, требования и пользовательские сценарии определяются автором; при реализации и доработке кода используются ИИ-инструменты и сторонние открытые проекты.</p></div>
 <div class="faq">
 <details><summary>Это система, написанная с нуля?</summary><p>Нет. Матрёшка основана на Debian 13 и объединяет KDE Plasma, Wine, Waydroid и другие сторонние компоненты с авторскими конфигурациями и интеграциями.</p></details>
-<details><summary>На каких компьютерах работает?</summary><p>Проект ориентирован на x86_64. Фактическая совместимость зависит от конкретного оборудования, прошивки, драйверов и выпуска. Перед установкой проверьте требования и примечания релиза.</p></details>
+<details><summary>На каких компьютерах работает Матрёшка OS?</summary><p>Опубликованный образ предназначен для архитектуры amd64 / x86_64. Поддержка ARM в документации не заявлена. Совместимость отдельных устройств зависит от прошивки, драйверов, видеокарты, Wi-Fi-адаптера и другого оборудования.</p></details>
+<details><summary>Как скачать ISO, если образ разделён на части?</summary><p>В выпуске 18.6.18 ISO опубликован двумя файлами .part00 и .part01. Скачайте обе части и приложенный join.sh; сверяйтесь с инструкциями и контрольными суммами в разделе загрузки.</p></details>
+<details><summary>Как обновить установленную систему?</summary><p>В выпуске 18.6.18 пакет обновления предназначен для версий 18.6.3–18.6.17.2. Перед обновлением сделайте отдельную проверенную резервную копию и следуйте примечаниям конкретного выпуска.</p></details>
 <details><summary>Можно ли запускать любые EXE и APK?</summary><p>Нет универсальной гарантии. Wine и Waydroid поддерживают множество приложений, но совместимость зависит от конкретной программы и её требований.</p></details>
 <details><summary>Как сообщить об ошибке?</summary><p>Создайте Issue в GitHub и укажите версию, модель оборудования, режим загрузки и шаги воспроизведения. Не публикуйте пароли и ключи.</p></details>
 </div>
