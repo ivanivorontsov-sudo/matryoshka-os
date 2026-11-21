@@ -7,6 +7,9 @@ on:
       - "index.html"
       - "robots.txt"
       - "sitemap.xml"
+      - "features/**"
+      - "download/**"
+      - "installation/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -34,6 +37,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html robots.txt sitemap.xml _site/
+          cp -R features download installation _site/
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
