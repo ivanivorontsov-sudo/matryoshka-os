@@ -2,7 +2,7 @@
 set -e
 cmd="$1"; shift || true
 case "$cmd" in
-  drivers-install|update-all|os-update|apt-install|apt-remove|deb-install|remove-app|upgrade|sysbackup|fwupd-update|android-init|android-stores|android-arm|ndk-install|ai-install|snap-rollback)
+  drivers-install|update-all|os-update|apt-install|apt-remove|deb-install|remove-app|upgrade|sysbackup|fwupd-update|android-init|android-stores|android-arm|ndk-install|ai-install|ai-runtime|snap-rollback)
     if [ -z "${MATRYOSHKA_SCOPED:-}" ] && [ -d /run/systemd/system ] && command -v systemd-run >/dev/null && grep -q 'session-[^/]*\.scope' /proc/self/cgroup 2>/dev/null; then
       export MATRYOSHKA_SCOPED=1; exec systemd-run --scope --quiet --collect --unit="matryoshka-root-$$" "$0" "$cmd" "$@"
     fi ;;
@@ -184,15 +184,18 @@ case "$cmd" in
     dev=$(blkid -t TYPE=crypto_LUKS -o device | head -1); [ -n "$dev" ] || { echo "нет LUKS"; exit 2; }
     k=$(tr -dc 'A-HJ-NP-Z2-9' </dev/urandom | head -c 32 | sed 's/.\{4\}/&-/g;s/-$//'); old=$(cat)
     printf '%s' "$old" | cryptsetup luksAddKey "$dev" <(printf '%s' "$k") --key-file - && echo "КЛЮЧ ВОССТАНОВЛЕНИЯ: $k" ;;
-  ai-install)
+  ai-runtime|ai-install)
     nmcli -t networking | grep -q enabled || { echo "Включите сеть"; exit 4; }
-    t=$(mktemp -d); u=https://github.com/ollama/ollama/releases/latest/download
-    curl -fsSL -o $t/ollama-linux-amd64.tar.zst $u/ollama-linux-amd64.tar.zst && curl -fsSL -o $t/sha256sum.txt $u/sha256sum.txt || exit 1
-    (cd $t && grep ' ollama-linux-amd64.tar.zst$' sha256sum.txt | sed 's#\./##' | sha256sum -c -) || { echo "контрольная сумма Ollama не совпала"; rm -rf $t; exit 5; }
-    mkdir -p /opt/ollama && tar --zstd -xf $t/ollama-linux-amd64.tar.zst -C /opt/ollama && ln -sf /opt/ollama/bin/ollama /usr/local/bin/ollama; rm -rf $t
+    if [ ! -x /usr/local/bin/ollama ]; then
+      t=$(mktemp -d); u=https://github.com/ollama/ollama/releases/latest/download
+      curl -fsSL -o $t/ollama-linux-amd64.tar.zst $u/ollama-linux-amd64.tar.zst && curl -fsSL -o $t/sha256sum.txt $u/sha256sum.txt || exit 1
+      (cd $t && grep ' ollama-linux-amd64.tar.zst$' sha256sum.txt | sed 's#\./##' | sha256sum -c -) || { echo "контрольная сумма Ollama не совпала"; rm -rf $t; exit 5; }
+      mkdir -p /opt/ollama && tar --zstd -xf $t/ollama-linux-amd64.tar.zst -C /opt/ollama && ln -sf /opt/ollama/bin/ollama /usr/local/bin/ollama; rm -rf $t
+    fi
     id ollama >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin -m -d /var/lib/ollama ollama
     printf '[Unit]\nDescription=Local AI for Matryoshka antivirus\nAfter=network.target\n[Service]\nUser=ollama\nEnvironment=OLLAMA_HOST=127.0.0.1:11434\nEnvironment=OLLAMA_KEEP_ALIVE=2m\nExecStart=/usr/local/bin/ollama serve\nNice=19\nIOSchedulingClass=idle\nCPUWeight=10\nMemoryHigh=60%%\nRestart=on-failure\n[Install]\nWantedBy=multi-user.target\n' > /etc/systemd/system/matryoshka-ai.service
     systemctl daemon-reload && systemctl enable --now matryoshka-ai.service; sleep 3
+    if [ "$cmd" = ai-runtime ]; then echo "Готово: среда Ollama установлена"; exit 0; fi
     mem=$(awk '/MemTotal/{print int($2/1048576)}' /proc/meminfo); m=qwen2.5:3b; [ "$mem" -lt 6 ] && m=qwen2.5:1.5b
     OLLAMA_HOST=127.0.0.1:11434 ollama pull $m && echo "MODEL=$m" > /etc/matryoshka-ai.conf && echo "Готово: модель $m" ;;
   ai-remove) systemctl disable --now matryoshka-ai.service; rm -f /etc/systemd/system/matryoshka-ai.service /usr/local/bin/ollama /etc/matryoshka-ai.conf; rm -rf /opt/ollama /var/lib/ollama; userdel ollama 2>/dev/null; echo удалено ;;

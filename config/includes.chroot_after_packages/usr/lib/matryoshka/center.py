@@ -195,8 +195,16 @@ class Center(QWidget):
         for key, label in (("api_url", "Адрес API"), ("api_model", "Модель API"), ("api_key", "Ключ API (необязательно)"), ("chat_url", "Сайт чата"), ("local_url", "Адрес Ollama"), ("local_model", "Локальная модель")):
             e = QLineEdit(self.s[key]); fields[key] = e; f.addRow(label, e)
             if key == "api_key": e.setEchoMode(QLineEdit.EchoMode.Password)
+        v.addWidget(QLabel("Поиск в интернете для ИИ-управляющего. Запрос уходит в сеть только когда вы просите найти в интернете и подтверждаете действие. Без ключей открываются страницы результатов Яндекса и Google. Если зададите официальные ключи API — используются они.", wordWrap=True))
+        se = QComboBox(); [se.addItem(n, k) for k, n in (("yandex,google", "Яндекс и Google"), ("yandex", "Только Яндекс"), ("google", "Только Google"))]
+        i = se.findData(self.s.get("search_engines") or "yandex,google"); se.setCurrentIndex(max(i, 0)); fields["_search_engines"] = se; f.addRow("Искать в", se)
+        for key, label in (("yandex_search_user", "Яндекс XML: пользователь"), ("yandex_search_key", "Яндекс XML: ключ"), ("google_search_key", "Google Custom Search: ключ"), ("google_search_cx", "Google Custom Search: cx")):
+            e = QLineEdit(self.s.get(key, "")); fields[key] = e; f.addRow(label, e)
+            if key.endswith("_key"): e.setEchoMode(QLineEdit.EchoMode.Password)
         def ok():
-            self.s.update(country=co.currentData(), ai=ai.currentData(), **{k: e.text() for k, e in fields.items()}); self.save()
+            vals = {k: (e.currentData() if k == "_search_engines" else e.text()) for k, e in fields.items()}
+            engines = vals.pop("_search_engines")
+            self.s.update(country=co.currentData(), ai=ai.currentData(), search_engines=engines, **vals); self.save()
         v.addWidget(QLabel("Эта нейросеть используется и антивирусом, и ИИ-управляющим. У LLM7 есть бесплатный лимит; если он исчерпан, нужен ключ с dash.llm7.io.", wordWrap=True)); v.addWidget(btn("Сохранить", ok)); o = self.out(v)
         isc = QCheckBox("Проверять программы антивирусом при установке и запуске"); isc.setChecked(C.install_scan()); isc.setToolTip("Если выключить, .deb, AppImage, архивы, .exe, .msi и пакеты Android открываются сразу, без ClamAV и без второй проверки. Быстрые правила на майнеры и трояны тоже не запускаются. Страж папок остаётся, пока защиту не выключат полностью.")
         isc.toggled.connect(lambda x: (self.s.update(install_scan=bool(x)), self.save())); v.addWidget(isc)

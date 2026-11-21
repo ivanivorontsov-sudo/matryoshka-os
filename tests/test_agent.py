@@ -97,7 +97,8 @@ def stub_qt():
     def pyqtSignal(*a, **k):
         return Sig()
     class Qt:
-        pass
+        class ItemDataRole:
+            UserRole = 256
     class QTimer:
         @staticmethod
         def singleShot(*a, **k):
@@ -133,6 +134,12 @@ def stub_qt():
             return self.items[self.i][1] if self.items else None
         def currentIndexChanged(self):
             return Sig()
+        def currentText(self):
+            return self.items[self.i][0] if self.items else ""
+        def setEditable(self, *a):
+            pass
+        def blockSignals(self, *a):
+            pass
     class Dummy:
         def __init__(self, *a, **k):
             pass
@@ -154,10 +161,41 @@ def stub_qt():
             pass
         def connect(self, *a):
             return Sig()
+        def setText(self, *a):
+            pass
+        def setVisible(self, *a):
+            pass
+        def hide(self, *a):
+            pass
+        def show(self, *a):
+            pass
+        def setRange(self, *a):
+            pass
+        def setWordWrap(self, *a):
+            pass
+        def setPlaceholderText(self, *a):
+            pass
+        def currentItemChanged(self):
+            return Sig()
+        def currentItem(self):
+            return None
+        def addItem(self, *a, **k):
+            pass
+        def exec(self, *a):
+            return 0
+        def accept(self, *a):
+            pass
+        def setData(self, *a):
+            pass
+        def data(self, *a):
+            return None
+        def blockSignals(self, *a):
+            pass
     for name, cls in {
         "QApplication": Dummy, "QWidget": W, "QVBoxLayout": Dummy, "QHBoxLayout": Dummy,
         "QTextEdit": Dummy, "QLineEdit": Dummy, "QPushButton": Dummy, "QComboBox": Combo,
-        "QLabel": Dummy, "QMessageBox": Dummy,
+        "QLabel": Dummy, "QMessageBox": Dummy, "QDialog": W, "QListWidget": Dummy,
+        "QListWidgetItem": Dummy, "QProgressBar": Dummy,
     }.items():
         setattr(widgets, name, cls)
     qt.QtCore = core

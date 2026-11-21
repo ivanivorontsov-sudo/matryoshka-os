@@ -46,7 +46,10 @@ def settings():
     return load("settings", {"theme": "matryoshka", "layout": "windows", "mode": "standard", "country": "RU",
                              "ai": "api", "api_url": "https://api.llm7.io/v1", "api_model": "default", "api_key": "",
                              "local_url": "http://127.0.0.1:11434", "local_model": "llama3.2",
-                             "chat_url": "https://chat.qwen.ai/", "launcher": {"kind": "plasma", "target": ""}, "launcher_v": 3,
+                             "chat_url": "https://chat.qwen.ai/",
+                             "search_engines": "yandex,google", "google_search_key": "", "google_search_cx": "",
+                             "yandex_search_key": "", "yandex_search_user": "",
+                             "launcher": {"kind": "plasma", "target": ""}, "launcher_v": 3,
                              "extra_launcher": "off", "extra_launcher_apk": "", "waydroid_autostart": False, "startup_chooser": False,
                              "hotkeys": "windows", "kwallet": True, "wallet_auto": True, "dos_file_bar": True, "sound_enhance": True, "sound_preset": "Пространство-наушники", "install_scan": True})
 

@@ -1,7 +1,8 @@
 import sys, os, json, re, glob, shutil, subprocess, urllib.request, datetime
 from PyQt6.QtCore import Qt, QTimer, QUrl, QThread, pyqtSignal
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLineEdit, QPushButton, QComboBox, QLabel, QMessageBox
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLineEdit, QPushButton, QComboBox, QLabel, QMessageBox, QDialog, QListWidget, QListWidgetItem, QProgressBar
 import common as C
+import agent_models
 
 TOOLS = {
     "open_app": "запустить программу по названию: {name}",
@@ -20,14 +21,17 @@ TOOLS = {
     "windows": "список открытых окон: {}",
     "remember": "запомнить факт о пользователе навсегда: {fact}",
     "system_info": "сведения о системе только для чтения: {topic} из hardware, logs, packages, snapshots, crashes, settings, disks, services",
+    "web_search": "найти в интернете через Яндекс и Google только если пользователь просит поиск в сети: {query}. В say перечисли источники (название и ссылка)",
 }
-CONFIRM = {"delete", "write_text", "install_package", "remove_package", "network"}
+CONFIRM = {"delete", "write_text", "install_package", "remove_package", "network", "web_search"}
+SECRET_SETTINGS = ("api_key", "google_search_key", "google_search_cx", "yandex_search_key", "yandex_search_user")
 BACKENDS = (("api", "API (OpenAI-совместимый)"), ("chat", "Веб-чат (вход в аккаунт)"), ("local", "Локальная модель (Ollama)"))
 SYSTEM = """Ты — ИИ-управляющий операционной системы «Матрёшка» (Debian 13, KDE Plasma). Отвечай по-русски, коротко и понятно, объясняй непонятное простыми словами.
 Отвечай ТОЛЬКО одним JSON-объектом без текста вокруг: {"say": "что сказать пользователю", "actions": [{"tool": "имя", "args": {...}}]}
 Если действия не нужны, actions = []. Доступные инструменты:
 %s
 После действий ты получишь их результаты и сможешь ответить снова. Никогда не выдумывай инструменты. Опасные действия пользователь подтверждает сам.
+Инструмент web_search вызывай только если пользователь явно просит найти в интернете, в сети, в Яндексе или в Google. Без такой просьбы не ищи в сети.
 Память о пользователе: %s"""
 
 def mem():
@@ -46,7 +50,7 @@ def system_info(topic):
     if t == "packages": return sh(["sh", "-c", "dpkg-query -W -f '${Package} ${Version}\\n' | wc -l; flatpak list --app 2>/dev/null"])
     if t == "snapshots": return sh(["sudo", "-n", "/usr/lib/matryoshka/root.sh", "snap-list"])
     if t == "crashes": return sh(["sh", "-c", "journalctl -b -1 -p 3 -n 60 --no-pager 2>/dev/null; coredumpctl list 2>/dev/null | tail -10"])
-    if t == "settings": return json.dumps({k: v for k, v in C.settings().items() if k != "api_key"}, ensure_ascii=False)
+    if t == "settings": return json.dumps({k: v for k, v in C.settings().items() if k not in SECRET_SETTINGS}, ensure_ascii=False)
     if t == "disks": return sh(["sh", "-c", "lsblk -f; df -h"])
     if t == "services": return sh(["sh", "-c", "systemctl --failed --no-pager; systemctl list-units --type=service --state=running --no-pager | head -40"])
     return "неизвестная тема"
@@ -86,6 +90,9 @@ def do(tool, a):
     if tool == "remember":
         m = mem(); m["facts"].append(a.get("fact", "")); C.save("agent", m); return "запомнил"
     if tool == "system_info": return system_info(a.get("topic"))
+    if tool == "web_search":
+        import agent_websearch
+        return agent_websearch.search(a.get("query", ""), C.settings())
     return "нет такого инструмента"
 
 def backend_of(s):
@@ -144,7 +151,7 @@ def http_chat(url, model, key, msgs):
 def err_text(backend, e):
     t = str(e)
     if backend == "local" and ("111" in t or "Connection refused" in t or "нет связи" in t):
-        return "Локальная модель не запущена. Скачайте её в Центре управления → Защита («Умный антивирус») или выберите в списке «Мозг» пункт API."
+        return "Локальная модель не запущена. Откройте «Модели» в этом окне или скачайте её в Центре управления → Защита («Умный антивирус»), либо выберите в списке «Мозг» пункт API."
     if backend == "api" and not C.net_on():
         return "Сеть выключена. Включите сеть или выберите локальную модель."
     return "Не удалось получить ответ модели: %s" % t
@@ -159,15 +166,227 @@ class _Ask(QThread):
         except Exception as e:
             self.done.emit(None, e)
 
+
+def arg_value(flag):
+    if flag in sys.argv:
+        i = sys.argv.index(flag)
+        if i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith("-"):
+            return sys.argv[i + 1]
+    return ""
+
+class ModelsDialog(QDialog):
+    _cb = pyqtSignal(object)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._cb.connect(lambda fn: fn())
+        self.setWindowTitle("Модели ИИ")
+        self.resize(760, 560)
+        self.found = []
+        self._busy = False
+        v = QVBoxLayout(self)
+        v.addWidget(QLabel("Каталог официальной библиотеки Ollama и модели GGUF с Hugging Face. Скачивание начинается только по вашей кнопке. Сеть для каталога и загрузки нужна.", wordWrap=True))
+        h = QHBoxLayout(); v.addLayout(h)
+        self.src = QComboBox(); self.src.addItem("Библиотека Ollama", "ollama"); self.src.addItem("Hugging Face (GGUF)", "huggingface")
+        h.addWidget(self.src)
+        self.q = QLineEdit(placeholderText="Название модели, например qwen2.5 или llama3.2"); self.q.returnPressed.connect(self.search)
+        h.addWidget(self.q, 1)
+        b = QPushButton("Найти"); b.clicked.connect(self.search); h.addWidget(b)
+        h2 = QHBoxLayout(); v.addLayout(h2)
+        left = QVBoxLayout(); right = QVBoxLayout(); h2.addLayout(left, 1); h2.addLayout(right, 1)
+        left.addWidget(QLabel("Найдено"))
+        self.res = QListWidget(); self.res.currentItemChanged.connect(self._picked); left.addWidget(self.res, 1)
+        self.tag = QComboBox(); self.tag.setEditable(True); left.addWidget(self.tag)
+        row = QHBoxLayout(); left.addLayout(row)
+        dl = QPushButton("Скачать выбранную"); dl.clicked.connect(self.download); row.addWidget(dl)
+        custom = QPushButton("Скачать по имени"); custom.clicked.connect(self.download_named); row.addWidget(custom)
+        right.addWidget(QLabel("Установленные — каждая появляется в меню программ"))
+        self.inst = QListWidget(); right.addWidget(self.inst, 1)
+        row2 = QHBoxLayout(); right.addLayout(row2)
+        op = QPushButton("Открыть чат"); op.clicked.connect(self.open_chat); row2.addWidget(op)
+        rm = QPushButton("Удалить"); rm.clicked.connect(self.remove); row2.addWidget(rm)
+        rf = QPushButton("Обновить список"); rf.clicked.connect(self.refresh_installed); row2.addWidget(rf)
+        self.rt = QPushButton("Установить среду Ollama"); self.rt.clicked.connect(self.install_runtime); v.addWidget(self.rt)
+        self.bar = QProgressBar(); self.bar.setRange(0, 0); self.bar.hide(); v.addWidget(self.bar)
+        self.st = QLabel(""); self.st.setWordWrap(True); v.addWidget(self.st)
+        self.refresh_installed()
+        self._runtime_label()
+    def _later(self, fn):
+        self._cb.emit(fn)
+    def _runtime_label(self):
+        if agent_models.running():
+            self.rt.hide(); self.st.setText("Среда Ollama запущена.")
+        else:
+            self.rt.show(); self.st.setText("Локальная среда ещё не установлена или не запущена. Нажмите «Установить среду Ollama» (нужны сеть и пароль администратора).")
+    def _set_busy(self, on, text=""):
+        self._busy = on
+        self.bar.setVisible(on)
+        if text:
+            self.st.setText(text)
+    def search(self):
+        if self._busy:
+            return
+        if not C.net_on():
+            self.st.setText("Сеть выключена. Включите сеть, чтобы смотреть каталог."); return
+        q = self.q.text().strip(); src = self.src.currentData(); self._set_busy(True, "Ищу в официальном каталоге…")
+        def work():
+            err, found = "", []
+            try:
+                found = agent_models.search_hf(q) if src == "huggingface" else agent_models.search_ollama(q)
+            except Exception as e:
+                err = str(e)[:400]
+            self._later(lambda: self._searched(found, err))
+        import threading
+        threading.Thread(target=work, daemon=True).start()
+    def _searched(self, found, err):
+        self._set_busy(False)
+        self.found = found; self.res.clear(); self.tag.clear()
+        if err:
+            self.st.setText("Не удалось открыть каталог: " + err); return
+        for m in found:
+            it = QListWidgetItem(m["title"] + ((" — " + m["detail"]) if m.get("detail") else ""))
+            it.setData(Qt.ItemDataRole.UserRole, m)
+            self.res.addItem(it)
+        self.st.setText("Ничего не найдено." if not found else "Найдено: %d. Выберите модель и нажмите «Скачать»." % len(found))
+    def _picked(self, cur, _prev=None):
+        if not cur:
+            return
+        m = cur.data(Qt.ItemDataRole.UserRole) or {}
+        self.tag.clear()
+        name = m.get("name") or ""
+        self.tag.addItem(name, name)
+        if m.get("source") != "ollama" or ":" in name or not C.net_on():
+            return
+        def work():
+            tags, err = [], ""
+            try:
+                tags = agent_models.ollama_tags(name)
+            except Exception as e:
+                err = str(e)[:200]
+            self._later(lambda: self._tags(name, tags, err))
+        import threading
+        threading.Thread(target=work, daemon=True).start()
+    def _tags(self, name, tags, err):
+        if not self.res.currentItem():
+            return
+        cur = (self.res.currentItem().data(Qt.ItemDataRole.UserRole) or {}).get("name")
+        if cur != name:
+            return
+        if err or not tags:
+            return
+        self.tag.clear()
+        for tg in tags:
+            self.tag.addItem(tg, tg)
+        prefer = [x for x in tags if x.endswith(":3b") or x.endswith(":1.5b") or x.endswith(":1b") or x == name]
+        if prefer:
+            i = self.tag.findData(prefer[0])
+            if i >= 0:
+                self.tag.setCurrentIndex(i)
+    def _target(self):
+        tg = (self.tag.currentText() or self.tag.currentData() or "").strip()
+        if not tg and self.res.currentItem():
+            tg = ((self.res.currentItem().data(Qt.ItemDataRole.UserRole) or {}).get("name") or "").strip()
+        return tg
+    def download_named(self):
+        name = (self.q.text() or "").strip()
+        if not name:
+            self.st.setText("Введите имя модели из библиотеки Ollama или адрес hf.co/организация/модель."); return
+        self._download(name)
+    def download(self):
+        self._download(self._target())
+    def _download(self, name):
+        if self._busy:
+            return
+        if not name:
+            self.st.setText("Сначала выберите модель."); return
+        if not agent_models.name_ok(name):
+            self.st.setText("Недопустимое имя модели."); return
+        if not C.net_on():
+            self.st.setText("Сеть выключена. Включите сеть, чтобы скачать модель."); return
+        if not agent_models.running():
+            self.st.setText("Сначала установите и запустите среду Ollama."); return
+        self._set_busy(True, "Скачиваю %s…" % name)
+        def work():
+            err = ""
+            try:
+                agent_models.pull(name, progress=lambda st: self._later(lambda s=st: self.st.setText(s or "Скачиваю…")))
+                agent_models.write_desktop(name)
+                agent_models.refresh_menu()
+            except Exception as e:
+                err = str(e)[:400]
+            self._later(lambda: self._downloaded(name, err))
+        import threading
+        threading.Thread(target=work, daemon=True).start()
+    def _downloaded(self, name, err):
+        self._set_busy(False)
+        self.refresh_installed()
+        if err:
+            self.st.setText("Не удалось скачать «%s»: %s" % (name, err))
+        else:
+            self.st.setText("Модель «%s» установлена и добавлена в меню программ." % name)
+    def refresh_installed(self):
+        self.inst.clear()
+        if not agent_models.running():
+            self._runtime_label(); return
+        try:
+            models = agent_models.installed()
+            agent_models.sync_desktops()
+            agent_models.refresh_menu()
+        except Exception as e:
+            self.st.setText("Не удалось прочитать установленные модели: %s" % e); return
+        for m in models:
+            size = m.get("size") or 0
+            label = m["name"] + ((" — %.1f ГБ" % (size / 1024 / 1024 / 1024)) if size else "")
+            it = QListWidgetItem(label); it.setData(Qt.ItemDataRole.UserRole, m["name"]); self.inst.addItem(it)
+        self._runtime_label()
+        if models:
+            self.st.setText("Установлено моделей: %d." % len(models))
+    def open_chat(self):
+        it = self.inst.currentItem()
+        if not it:
+            self.st.setText("Выберите установленную модель."); return
+        name = it.data(Qt.ItemDataRole.UserRole)
+        if self.parent() and hasattr(self.parent(), "use_model"):
+            self.parent().use_model(name); self.accept()
+        else:
+            os.execvp("matryoshka-agent", ["matryoshka-agent", "--model", name])
+    def remove(self):
+        it = self.inst.currentItem()
+        if not it:
+            return
+        name = it.data(Qt.ItemDataRole.UserRole)
+        if QMessageBox.question(self, "Удалить модель", "Удалить локальную модель «%s»?" % name) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            agent_models.delete_model(name); agent_models.remove_desktop(name); agent_models.refresh_menu()
+        except Exception as e:
+            self.st.setText("Не удалось удалить: %s" % e); return
+        self.refresh_installed(); self.st.setText("Модель «%s» удалена." % name)
+    def install_runtime(self):
+        if self._busy:
+            return
+        if not C.net_on():
+            self.st.setText("Сеть выключена. Включите сеть, чтобы установить Ollama."); return
+        self._set_busy(True, "Устанавливаю официальную среду Ollama…")
+        def done(code, text):
+            self._set_busy(False)
+            self._runtime_label()
+            self.refresh_installed()
+            self.st.setText((text or "").strip()[-800:] or ("Готово." if code == 0 else "Не удалось установить среду (код %s)." % code))
+        C.Task(self, C.root_argv("ai-runtime"), done, timeout=7200, out=lambda t: self.st.setText(t[-600:]))
+
 class Agent(QWidget):
-    def __init__(self):
+    def __init__(self, model=""):
         super().__init__(); self.setWindowTitle("ИИ-управляющий"); self.resize(720, 640)
+        self.session_model = model or ""
         v = QVBoxLayout(self); h = QHBoxLayout(); v.addLayout(h)
         self.back = QComboBox()
         for k, n in BACKENDS:
             self.back.addItem(n, k)
-        s = C.settings(); i = self.back.findData(backend_of(s)); self.back.setCurrentIndex(max(i, 0)); self.back.currentIndexChanged.connect(self.save_back); h.addWidget(QLabel("Мозг:")); h.addWidget(self.back, 1)
+        s = C.settings(); b = "local" if model else backend_of(s); i = self.back.findData(b)
+        self.back.blockSignals(True); self.back.setCurrentIndex(max(i, 0)); self.back.blockSignals(False)
+        self.back.currentIndexChanged.connect(self.save_back); h.addWidget(QLabel("Мозг:")); h.addWidget(self.back, 1)
         lb = QPushButton("Войти в веб-чат"); lb.clicked.connect(self.login); h.addWidget(lb)
+        mb = QPushButton("Модели"); mb.clicked.connect(self.open_models); h.addWidget(mb)
         self.log = QTextEdit(readOnly=True); v.addWidget(self.log, 1)
         h2 = QHBoxLayout(); v.addLayout(h2); self.inp = QLineEdit(placeholderText="Что сделать? Например: «найди мои документы про отпуск» или «что такое snapper?»"); self.inp.returnPressed.connect(self.send); h2.addWidget(self.inp, 1)
         b = QPushButton("Отправить"); b.clicked.connect(self.send); h2.addWidget(b)
@@ -178,6 +397,16 @@ class Agent(QWidget):
     def save_back(self):
         k = self.back.currentData()
         C.save("settings", dict(C.settings(), ai=k, agent_backend=k))
+        if k != "local":
+            self.session_model = ""
+    def open_models(self):
+        ModelsDialog(self).exec()
+    def use_model(self, name):
+        self.session_model = name
+        i = self.back.findData("local")
+        self.back.blockSignals(True); self.back.setCurrentIndex(max(i, 0)); self.back.blockSignals(False)
+        C.save("settings", dict(C.settings(), ai="local", agent_backend="local", local_model=name))
+        self.setWindowTitle("ИИ-управляющий — %s" % name)
     def say_of(self, t):
         try: return parse(t)["say"]
         except Exception: return t
@@ -189,7 +418,7 @@ class Agent(QWidget):
     def ask(self, msgs):
         if C.settings().get("ai_off"): raise RuntimeError("ИИ выключен в Центре → Защита.")
         b = self.back.currentData(); s = C.settings()
-        if b == "local": return http_chat(s["local_url"].rstrip("/") + "/v1", s["local_model"], "", msgs)
+        if b == "local": return http_chat(s["local_url"].rstrip("/") + "/v1", self.session_model or s["local_model"], "", msgs)
         if b == "api":
             if not C.net_on(): raise RuntimeError("Сеть выключена. Включите сеть, чтобы спросить нейросеть, или выберите локальную модель.")
             return http_chat(s["api_url"], s["api_model"], s.get("api_key") or "", msgs)
@@ -263,4 +492,11 @@ class Agent(QWidget):
         raise RuntimeError("веб-чат не ответил. Разметка сайта могла измениться; попробуйте API или локальную модель.")
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv); C.qt_ru(app); w = Agent(); w.show(); sys.exit(app.exec())
+    app = QApplication(sys.argv); C.qt_ru(app)
+    w = Agent(model=arg_value("--model")); w.show()
+    q = arg_value("--query")
+    if q:
+        w.inp.setText(q)
+        if "--send" in sys.argv:
+            QTimer.singleShot(0, w.send)
+    sys.exit(app.exec())
