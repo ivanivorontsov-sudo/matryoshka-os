@@ -189,15 +189,15 @@ class Center(QWidget):
         v.addWidget(QLabel("<h2>Защита</h2>ClamAV и открытые правила YARA следят за «Загрузками», рабочим столом и флешками. Быстрые правила не пропускают известные трояны, майнеры и тестовый файл EICAR. Находки объясняет нейросеть, решаете вы. Полное выключение — отдельная кнопка ниже, его не сделает ни вирус, ни агент. Активаторы без вирусов не блокируются, но показывается предупреждение о законах выбранной страны.", wordWrap=True))
         f = QFormLayout(); v.addLayout(f)
         co = QComboBox(); [co.addItem(n, k) for k, (n, _) in C.COUNTRIES.items()]; co.setCurrentIndex(list(C.COUNTRIES).index(self.s["country"])); f.addRow("Страна", co)
-        ai = QComboBox(); [ai.addItem(n, k) for k, n in (("api", "API (OpenAI-совместимый, по умолчанию бесплатный LLM7)"), ("chat", "Чат на сайте нейросети"), ("local", "Локальная модель (Ollama)"))]
-        ai.setCurrentIndex(["api", "chat", "local"].index(self.s["ai"])); f.addRow("Нейросеть", ai)
+        ai = QComboBox(); [ai.addItem(n, k) for k, n in (("api", "API (OpenAI-совместимый, по умолчанию LLM7)"), ("chat", "Чат на сайте нейросети"), ("local", "Локальная модель (Ollama)"))]
+        ai.setCurrentIndex(["api", "chat", "local"].index(self.s.get("ai") or "api")); f.addRow("Нейросеть", ai)
         fields = {}
         for key, label in (("api_url", "Адрес API"), ("api_model", "Модель API"), ("api_key", "Ключ API (необязательно)"), ("chat_url", "Сайт чата"), ("local_url", "Адрес Ollama"), ("local_model", "Локальная модель")):
             e = QLineEdit(self.s[key]); fields[key] = e; f.addRow(label, e)
             if key == "api_key": e.setEchoMode(QLineEdit.EchoMode.Password)
         def ok():
             self.s.update(country=co.currentData(), ai=ai.currentData(), **{k: e.text() for k, e in fields.items()}); self.save()
-        v.addWidget(btn("Сохранить", ok)); o = self.out(v)
+        v.addWidget(QLabel("Эта нейросеть используется и антивирусом, и ИИ-управляющим. У LLM7 есть бесплатный лимит; если он исчерпан, нужен ключ с dash.llm7.io.", wordWrap=True)); v.addWidget(btn("Сохранить", ok)); o = self.out(v)
         isc = QCheckBox("Проверять программы антивирусом при установке и запуске"); isc.setChecked(C.install_scan()); isc.setToolTip("Если выключить, .deb, AppImage, архивы, .exe, .msi и пакеты Android открываются сразу, без ClamAV и без второй проверки. Быстрые правила на майнеры и трояны тоже не запускаются. Страж папок остаётся, пока защиту не выключат полностью.")
         isc.toggled.connect(lambda x: (self.s.update(install_scan=bool(x)), self.save())); v.addWidget(isc)
         off = QCheckBox("Выключить ИИ полностью (антивирус без объяснений, ИИ-управляющий недоступен)"); off.setChecked(bool(self.s.get("ai_off"))); off.toggled.connect(lambda x: (self.s.update(ai_off=x), self.save())); v.addWidget(off)

@@ -1,5 +1,5 @@
 import sys, os, json, re, glob, shutil, subprocess, urllib.request, datetime
-from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtCore import Qt, QTimer, QUrl, QThread, pyqtSignal
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLineEdit, QPushButton, QComboBox, QLabel, QMessageBox
 import common as C
 
@@ -22,6 +22,7 @@ TOOLS = {
     "system_info": "сведения о системе только для чтения: {topic} из hardware, logs, packages, snapshots, crashes, settings, disks, services",
 }
 CONFIRM = {"delete", "write_text", "install_package", "remove_package", "network"}
+BACKENDS = (("api", "API (OpenAI-совместимый)"), ("chat", "Веб-чат (вход в аккаунт)"), ("local", "Локальная модель (Ollama)"))
 SYSTEM = """Ты — ИИ-управляющий операционной системы «Матрёшка» (Debian 13, KDE Plasma). Отвечай по-русски, коротко и понятно, объясняй непонятное простыми словами.
 Отвечай ТОЛЬКО одним JSON-объектом без текста вокруг: {"say": "что сказать пользователю", "actions": [{"tool": "имя", "args": {...}}]}
 Если действия не нужны, actions = []. Доступные инструменты:
@@ -87,33 +88,96 @@ def do(tool, a):
     if tool == "system_info": return system_info(a.get("topic"))
     return "нет такого инструмента"
 
+def backend_of(s):
+    k = s.get("ai") or s.get("agent_backend") or "api"
+    if k == "web":
+        return "chat"
+    if k in ("api", "chat", "local"):
+        return k
+    return "api"
+
 def parse(text):
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m: raise ValueError("нет JSON")
-    d = json.loads(m.group(0))
-    if not isinstance(d.get("say", ""), str) or not isinstance(d.get("actions", []), list): raise ValueError("неверная схема")
-    for x in d.get("actions", []):
-        if x.get("tool") not in TOOLS or not isinstance(x.get("args", {}), dict): raise ValueError("неизвестный инструмент " + str(x.get("tool")))
-    return d
+    t = (text or "").strip()
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", t, re.S)
+    raw = m.group(1) if m else None
+    if raw is None:
+        m = re.search(r"\{.*\}", t, re.S)
+        raw = m.group(0) if m else None
+    if not raw:
+        raise ValueError("нет JSON")
+    d = json.loads(raw)
+    if not isinstance(d, dict):
+        raise ValueError("неверная схема")
+    if "say" not in d and "actions" not in d:
+        raise ValueError("неверная схема")
+    say = d.get("say", "")
+    if say is None:
+        say = ""
+    if not isinstance(say, str):
+        say = str(say)
+    acts = d.get("actions", [])
+    if acts is None:
+        acts = []
+    if not isinstance(acts, list):
+        raise ValueError("неверная схема")
+    for x in acts:
+        if not isinstance(x, dict) or x.get("tool") not in TOOLS or not isinstance(x.get("args", {}), dict):
+            raise ValueError("неизвестный инструмент " + str((x or {}).get("tool")))
+    return {"say": say, "actions": acts}
+
+def reply_of(text):
+    try:
+        return parse(text)
+    except Exception:
+        t = (text or "").strip()
+        if not t:
+            raise
+        return {"say": t, "actions": []}
 
 def http_chat(url, model, key, msgs):
-    req = urllib.request.Request(url.rstrip("/") + "/chat/completions", json.dumps({"model": model, "messages": msgs, "temperature": 0.2}).encode(), {"Content-Type": "application/json", "Authorization": "Bearer " + (key or "none")})
-    return json.load(urllib.request.urlopen(req, timeout=120))["choices"][0]["message"]["content"]
+    data = C.http_json(url.rstrip("/") + "/chat/completions", {"model": model, "messages": msgs, "temperature": 0.2}, key=key or None)
+    try:
+        return data["choices"][0]["message"]["content"]
+    except Exception:
+        raise RuntimeError("необычный ответ API")
+
+def err_text(backend, e):
+    t = str(e)
+    if backend == "local" and ("111" in t or "Connection refused" in t or "нет связи" in t):
+        return "Локальная модель не запущена. Скачайте её в Центре управления → Защита («Умный антивирус») или выберите в списке «Мозг» пункт API."
+    if backend == "api" and not C.net_on():
+        return "Сеть выключена. Включите сеть или выберите локальную модель."
+    return "Не удалось получить ответ модели: %s" % t
+
+class _Ask(QThread):
+    done = pyqtSignal(object, object)
+    def __init__(self, fn, parent=None):
+        super().__init__(parent); self.fn = fn
+    def run(self):
+        try:
+            self.done.emit(self.fn(), None)
+        except Exception as e:
+            self.done.emit(None, e)
 
 class Agent(QWidget):
     def __init__(self):
         super().__init__(); self.setWindowTitle("ИИ-управляющий"); self.resize(720, 640)
         v = QVBoxLayout(self); h = QHBoxLayout(); v.addLayout(h)
-        self.back = QComboBox(); self.back.addItem("Локальная модель (Ollama)", "local"); self.back.addItem("API (OpenAI-совместимый)", "api"); self.back.addItem("Веб-чат (вход в аккаунт)", "web")
-        s = C.settings(); i = self.back.findData(s.get("agent_backend", "local")); self.back.setCurrentIndex(max(i, 0)); self.back.currentIndexChanged.connect(lambda: C.save("settings", dict(C.settings(), agent_backend=self.back.currentData()))); h.addWidget(QLabel("Мозг:")); h.addWidget(self.back, 1)
+        self.back = QComboBox()
+        for k, n in BACKENDS:
+            self.back.addItem(n, k)
+        s = C.settings(); i = self.back.findData(backend_of(s)); self.back.setCurrentIndex(max(i, 0)); self.back.currentIndexChanged.connect(self.save_back); h.addWidget(QLabel("Мозг:")); h.addWidget(self.back, 1)
         lb = QPushButton("Войти в веб-чат"); lb.clicked.connect(self.login); h.addWidget(lb)
         self.log = QTextEdit(readOnly=True); v.addWidget(self.log, 1)
         h2 = QHBoxLayout(); v.addLayout(h2); self.inp = QLineEdit(placeholderText="Что сделать? Например: «найди мои документы про отпуск» или «что такое snapper?»"); self.inp.returnPressed.connect(self.send); h2.addWidget(self.inp, 1)
         b = QPushButton("Отправить"); b.clicked.connect(self.send); h2.addWidget(b)
-        self.web = None; self.m = mem()
+        self.web = None; self.m = mem(); self.busy = False; self._job = None; self._depth = 0
         for r, t in self.m["history"][-30:]:
             if r == "user" and t.startswith("Результаты действий"): continue
             self.show_msg("Вы" if r == "user" else "ИИ", t if r == "user" else self.say_of(t))
+    def save_back(self):
+        k = self.back.currentData()
+        C.save("settings", dict(C.settings(), ai=k, agent_backend=k))
     def say_of(self, t):
         try: return parse(t)["say"]
         except Exception: return t
@@ -123,26 +187,47 @@ class Agent(QWidget):
         sysm = SYSTEM % ("\n".join("- %s: %s" % kv for kv in TOOLS.items()), facts)
         return [{"role": "system", "content": sysm}] + [{"role": r, "content": t} for r, t in m["history"][-20:]]
     def ask(self, msgs):
-        if C.settings().get("ai_off"): raise SystemExit("ИИ выключен")
+        if C.settings().get("ai_off"): raise RuntimeError("ИИ выключен в Центре → Защита.")
         b = self.back.currentData(); s = C.settings()
         if b == "local": return http_chat(s["local_url"].rstrip("/") + "/v1", s["local_model"], "", msgs)
-        if b == "api": return http_chat(s["api_url"], s["api_model"], s["api_key"], msgs)
+        if b == "api":
+            if not C.net_on(): raise RuntimeError("Сеть выключена. Включите сеть, чтобы спросить нейросеть, или выберите локальную модель.")
+            return http_chat(s["api_url"], s["api_model"], s.get("api_key") or "", msgs)
         return self.web_ask(msgs)
     def hist(self, r, t):
         m = mem(); m["history"].append([r, t]); m["history"] = m["history"][-200:]; C.save("agent", m)
     def send(self):
+        if self.busy: return
         if C.settings().get("ai_off"): self.show_msg("ИИ", "ИИ выключен в Центре → Защита."); return
         q = self.inp.text().strip()
         if not q: return
-        self.inp.clear(); self.show_msg("Вы", q); self.hist("user", q); QApplication.processEvents(); self.turn(0)
+        self.inp.clear(); self.show_msg("Вы", q); self.hist("user", q)
+        self.busy = True; self.inp.setEnabled(False); self.setWindowTitle("ИИ-управляющий — думаю…")
+        self.turn(0)
     def turn(self, depth):
-        msgs = self.msgs(); d = None
-        for i in range(4):
+        self._depth = depth
+        if self.back.currentData() == "chat":
             try:
-                t = self.ask(msgs); d = parse(t); break
+                self.finish_ask(self.ask(self.msgs()), None)
             except Exception as e:
-                msgs = msgs + [{"role": "user", "content": "Ошибка формата: %s. Ответь строго одним JSON по схеме." % e}]
-        if d is None: self.show_msg("ИИ", "Не удалось получить понятный ответ от модели."); return
+                self.finish_ask(None, e)
+            return
+        if self._job is not None:
+            try: self._job.done.disconnect(self.finish_ask)
+            except Exception: pass
+        self._job = _Ask(lambda: self.ask(self.msgs()), self)
+        self._job.done.connect(self.finish_ask)
+        self._job.start()
+    def finish_ask(self, val, err):
+        self._job = None
+        if err is not None:
+            self.show_msg("ИИ", err_text(self.back.currentData(), err))
+            self.busy = False; self.inp.setEnabled(True); self.setWindowTitle("ИИ-управляющий"); return
+        try:
+            d = reply_of(val)
+        except Exception:
+            self.show_msg("ИИ", "Не удалось получить понятный ответ от модели.")
+            self.busy = False; self.inp.setEnabled(True); self.setWindowTitle("ИИ-управляющий"); return
         self.hist("assistant", json.dumps(d, ensure_ascii=False)); self.show_msg("ИИ", d["say"])
         res = []
         for x in d.get("actions", []):
@@ -152,8 +237,9 @@ class Agent(QWidget):
             try: r = do(tool, a)
             except Exception as e: r = "ошибка: %s" % e
             res.append("%s: %s" % (tool, str(r)[:4000])); self.log.append("<i>⚙ %s → %s</i>" % (tool, str(r)[:200].replace("\n", " ")))
-        if res and depth < 3:
-            self.hist("user", "Результаты действий:\n" + "\n".join(res)); QApplication.processEvents(); self.turn(depth + 1)
+        if res and self._depth < 3:
+            self.hist("user", "Результаты действий:\n" + "\n".join(res)); self.turn(self._depth + 1); return
+        self.busy = False; self.inp.setEnabled(True); self.setWindowTitle("ИИ-управляющий")
     def login(self):
         from PyQt6.QtWebEngineWidgets import QWebEngineView
         from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
@@ -165,16 +251,16 @@ class Agent(QWidget):
         from PyQt6.QtCore import QEventLoop
         out = []; loop = QEventLoop(); self.web.page().runJavaScript(code, lambda r: (out.append(r), loop.quit())); QTimer.singleShot(10000, loop.quit); loop.exec(); return out[0] if out else None
     def web_ask(self, msgs):
-        if not self.web: self.login(); raise RuntimeError("сначала войдите в веб-чат")
+        if not self.web: self.login(); raise RuntimeError("сначала войдите в веб-чат и дождитесь загрузки страницы, затем отправьте вопрос снова")
         text = "\n\n".join("[%s]\n%s" % (m["role"], m["content"]) for m in msgs)
-        n0 = self.js("document.querySelectorAll('.markdown-body, .message-content, [data-message-author-role=assistant]').length") or 0
-        self.js("""(function(t){var e=document.querySelector('textarea');var s=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;s.call(e,t);e.dispatchEvent(new Event('input',{bubbles:true}));setTimeout(function(){var b=document.querySelector('button[type=submit], #send-message-button, button[aria-label*=end]');if(b)b.click();else e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))},300)})(%s)""" % json.dumps(text))
+        n0 = self.js("document.querySelectorAll('.markdown-body, .message-content, [data-message-author-role=assistant], .message-bubble, [class*=assistant]').length") or 0
+        self.js("""(function(t){var e=document.querySelector('textarea, [contenteditable=true], div[role=textbox]');if(!e)return;if(e.tagName==='TEXTAREA'||e.tagName==='INPUT'){var s=Object.getOwnPropertyDescriptor(window[e.tagName==='TEXTAREA'?'HTMLTextAreaElement':'HTMLInputElement'].prototype,'value').set;s.call(e,t);e.dispatchEvent(new Event('input',{bubbles:true}));}else{e.focus();e.innerText=t;e.dispatchEvent(new Event('input',{bubbles:true}));}setTimeout(function(){var b=document.querySelector('button[type=submit], #send-message-button, button[aria-label*=end], button[aria-label*=Send], button[aria-label*=Отправ]');if(b)b.click();else e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))},300)})(%s)""" % json.dumps(text))
         from PyQt6.QtCore import QEventLoop
         for _ in range(90):
             loop = QEventLoop(); QTimer.singleShot(2000, loop.quit); loop.exec()
-            r = self.js("(function(){var a=document.querySelectorAll('.markdown-body, .message-content, [data-message-author-role=assistant]');return a.length>%d?a[a.length-1].innerText:''})()" % n0)
-            if r and re.search(r"\}\s*$", r.strip()): return r
-        raise RuntimeError("веб-чат не ответил")
+            r = self.js("(function(){var a=document.querySelectorAll('.markdown-body, .message-content, [data-message-author-role=assistant], .message-bubble, [class*=assistant]');return a.length>%d?a[a.length-1].innerText:''})()" % n0)
+            if r and (re.search(r"\}\s*$", r.strip()) or len(r.strip()) > 20): return r
+        raise RuntimeError("веб-чат не ответил. Разметка сайта могла измениться; попробуйте API или локальную модель.")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv); C.qt_ru(app); w = Agent(); w.show(); sys.exit(app.exec())

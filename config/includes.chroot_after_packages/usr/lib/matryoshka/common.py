@@ -1,4 +1,4 @@
-import json, os, re, shlex, subprocess, configparser, glob, shutil, sys
+import json, os, re, shlex, subprocess, configparser, glob, shutil, sys, urllib.error, urllib.request
 
 HOME = os.path.expanduser("~")
 CONF = os.path.join(HOME, ".config", "matryoshka")
@@ -49,6 +49,35 @@ def settings():
                              "chat_url": "https://chat.qwen.ai/", "launcher": {"kind": "plasma", "target": ""}, "launcher_v": 3,
                              "extra_launcher": "off", "extra_launcher_apk": "", "waydroid_autostart": False, "startup_chooser": False,
                              "hotkeys": "windows", "kwallet": True, "wallet_auto": True, "dos_file_bar": True, "sound_enhance": True, "sound_preset": "Пространство-наушники", "install_scan": True})
+
+
+def http_json(url, payload, key=None, timeout=120, headers=None):
+    h = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "Matryoshka"}
+    if headers:
+        h.update(headers)
+    if key:
+        h["Authorization"] = "Bearer " + key
+    req = urllib.request.Request(url, json.dumps(payload).encode(), h)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")[:800]
+        msg = "HTTP %s" % e.code
+        try:
+            err = json.loads(body).get("error")
+            if isinstance(err, dict):
+                msg = err.get("message") or err.get("code") or msg
+            elif err:
+                msg = str(err)
+            elif body:
+                msg = "%s: %s" % (msg, body)
+        except Exception:
+            if body:
+                msg = "%s: %s" % (msg, body)
+        raise RuntimeError(msg) from None
+    except urllib.error.URLError as e:
+        raise RuntimeError("нет связи с моделью: %s" % e.reason) from None
 
 def install_scan():
     return settings().get("install_scan", True) is not False
