@@ -155,14 +155,10 @@ def ask_ai(res):
     s = C.settings(); text = res["_text"] if "_text" in res else prompt(res)
     try:
         if s["ai"] == "local":
-            req = urllib.request.Request(s["local_url"].rstrip("/") + "/api/chat", json.dumps({"model": s["local_model"], "stream": False, "messages": [{"role": "user", "content": text}]}).encode(), {"Content-Type": "application/json"})
-            return json.load(urllib.request.urlopen(req, timeout=60))["message"]["content"]
+            return C.http_json(s["local_url"].rstrip("/") + "/api/chat", {"model": s["local_model"], "stream": False, "messages": [{"role": "user", "content": text}]}, timeout=60)["message"]["content"]
         if s["ai"] == "api":
             if not C.net_on(): return "Сеть выключена. Включите сеть, чтобы спросить нейросеть, или выберите локальную модель."
-            h = {"Content-Type": "application/json"}
-            if s["api_key"]: h["Authorization"] = "Bearer " + s["api_key"]
-            req = urllib.request.Request(s["api_url"].rstrip("/") + "/chat/completions", json.dumps({"model": s["api_model"], "messages": [{"role": "user", "content": text}]}).encode(), h)
-            return json.load(urllib.request.urlopen(req, timeout=60))["choices"][0]["message"]["content"]
+            return C.http_json(s["api_url"].rstrip("/") + "/chat/completions", {"model": s["api_model"], "messages": [{"role": "user", "content": text}]}, key=s.get("api_key") or None, timeout=60)["choices"][0]["message"]["content"]
         C.run(["wl-copy", text]) if os.environ.get("WAYLAND_DISPLAY") else C.run(["xclip", "-selection", "clipboard"], input=text)
         webbrowser.open(s["chat_url"])
         return "Вопрос скопирован в буфер обмена, открыт чат нейросети. Вставьте его (Ctrl+V) и прочитайте ответ."

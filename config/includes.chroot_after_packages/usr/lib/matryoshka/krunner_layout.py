@@ -6,6 +6,7 @@ from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 sys.path.insert(0, "/usr/lib/matryoshka")
 import common as C
+import krunner_match
 
 KCMS = (
     ("kcm_users", "пользователи", "users accounts fingerprint лицо отпечаток"),
@@ -30,32 +31,20 @@ class Runner(dbus.service.Object):
         super().__init__(name, "/runner")
     @dbus.service.method("org.kde.krunner1", in_signature="s", out_signature="a(sssida{sv})")
     def Match(self, query):
-        q = str(query).strip()
-        if len(q) < 2:
-            return []
+        raw = krunner_match.with_ai_search(query, krunner_match.find_matches(query, C.desktop_apps(), C.score, KCMS))
         out = []
-        apps = C.desktop_apps()
-        ranked = sorted(((C.score(a["name"], a["kw"], q), a) for a in apps), key=lambda x: -x[0])
-        remove = q.lower().startswith("удалить") or q.lower().startswith("uninstall")
-        qq = q.split(" ", 1)[1] if remove and " " in q else q
-        if remove:
-            ranked = sorted(((C.score(a["name"], a["kw"], qq), a) for a in apps), key=lambda x: -x[0])
-        for s, a in ranked:
-            if s <= 0:
-                continue
-            mid = "app:" + a["file"]
-            props = {"actions": dbus.Array(["info", "uninstall"], signature="s")}
-            out.append((mid, a["name"], a.get("icon") or "application-x-executable", 100, float(s) / 100.0, props))
-            if len(out) >= 8:
-                break
-        for kcm, ru, extra in KCMS:
-            blob = ru + " " + extra
-            if C.score(ru, blob, q if not remove else qq) > 0:
-                out.append(("kcm:" + kcm, "Настройки: " + ru, "preferences-system", 50, 0.7, {}))
-        return out[:12]
+        for mid, name, icon, typ, rel, props in raw:
+            p = dict(props)
+            if "actions" in p:
+                p["actions"] = dbus.Array(p["actions"], signature="s")
+            out.append((mid, name, icon, typ, rel, p))
+        return out
     @dbus.service.method("org.kde.krunner1", in_signature="ss", out_signature="")
     def Run(self, matchId, actionId):
         mid, act = str(matchId), str(actionId)
+        if mid.startswith("ai:"):
+            subprocess.Popen(["matryoshka-agent", "--query", mid[3:], "--send"], start_new_session=True)
+            return
         if mid.startswith("kcm:"):
             C.run(["systemsettings", mid[4:]])
             return

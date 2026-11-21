@@ -1,3 +1,3 @@
 #!/bin/sh
 export IVANCODE_PON=/usr/local/bin/ponyatny
-exec /opt/ivankod/ivankod "$@"
+exec /opt/ivankod/ivankod --ozone-platform=x11 --password-store=basic "$@"
