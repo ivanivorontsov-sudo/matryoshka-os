@@ -36,14 +36,6 @@
 
 Если `/etc/sudoers.d` или файл в нём принадлежит не root, `sudo` перестаёт работать («/etc/sudoers.d is owned by uid 1000»). Новый скрипт `/usr/lib/matryoshka/sudoers-fix.sh` ставит каталогу `root:root 0755`, файлам `root:root 0440`. Он вызывается при сборке образа, при установке с флешки, сразу после копирования файлов обновления и один раз при загрузке новой версии (служба `matryoshka-homefix`). Само обновление ставится через «Копию и обновление», то есть через pkexec, поэтому сломанный `sudo` ему не мешает.
 
-## VPN и прокси убраны
-
-Клиенты VPN, плагины VPN для NetworkManager и прокси снимаются с установленной системы и не попадают в образ. Повторно поставить их через apt нельзя: `/etc/apt/preferences.d/matryoshka-no-vpn` (`Pin-Priority: -1`). Профили NetworkManager типов `vpn`, `wireguard`, `tun`, `ip-tunnel`, `vxlan` и системный прокси (`http_proxy`, `Acquire::http::Proxy`, `ProxyType` в `kioslaverc`) убираются.
-
-Список пакетов: `openvpn`, `openvpn-systemd-resolved`, `openvpn-dco-dkms`, `openvpn3-client`, `openvpn-auth-ldap`, `openvpn-auth-radius`, `easy-rsa`, `openconnect`, `ocproxy`, `vpnc`, `vpnc-scripts`, `wireguard`, `wireguard-tools`, `wireguard-go`, `strongswan` и его части (`strongswan-charon`, `strongswan-libcharon`, `strongswan-nm`, `strongswan-pki`, `strongswan-starter`, `strongswan-swanctl`, `charon-systemd`, `libcharon-extauth-plugins`, `libcharon-extra-plugins`), `libreswan`, `xl2tpd`, `pptp-linux`, `sstp-client`, `iodine`, `openfortivpn`, `riseup-vpn`, `sshuttle`, плагины `network-manager-openvpn`, `-openconnect`, `-vpnc`, `-pptp`, `-l2tp`, `-strongswan`, `-iodine`, `-ssh`, `-sstp`, `-fortisslvpn` (и их `-gnome`), прокси `proxychains`, `proxychains4`, `tsocks`, `redsocks`, `privoxy`, `squid` (и `squid-common`, `squid-openssl`, `squid-cgi`, `squidclient`, `squidguard`), `tinyproxy`, `tinyproxy-bin`, `microsocks`, `shadowsocks-libev`, `trojan`, `v2ray`, `cntlm`, `stunnel4`, `corkscrew`, `proxytunnel`, `connect-proxy`, `tor`, `torsocks`, `obfs4proxy`, `apt-transport-tor`.
-
-Не трогаются: `network-manager`, `wpasupplicant`, `modemmanager` (USB-модем), `ppp`, `dnsmasq-base`, `libopenconnect5` (её требует меню сетей `plasma-nm`), `openssh-client`, `ufw`, `nftables`, сеть Android.
-
 ## Исправление 18.6.17.1: Wi-Fi «Ожидание авторизации» при выключенном бумажнике
 
 > [!IMPORTANT]
