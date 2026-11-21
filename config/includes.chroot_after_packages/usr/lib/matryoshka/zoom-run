@@ -187,12 +187,21 @@ if [ -n "$URL" ]; then
     *) RETRY_OK="" ;;
   esac
 fi
+OSR=/usr/lib/os-release
+JAIL=""
+if [ "$MATRYOSHKA_ZOOM_OSR" != 0 ] && [ -f /etc/os-release ] && [ ! -L /etc/os-release ] && [ -f "$OSR" ] \
+   && LC_ALL=C grep -q '[^ -~]' /etc/os-release && ! LC_ALL=C grep -q '[^ -~]' "$OSR" \
+   && command -v bwrap >/dev/null 2>&1 \
+   && bwrap --dev-bind / / --ro-bind "$OSR" /etc/os-release -- true >/dev/null 2>&1; then
+  JAIL="bwrap --dev-bind / / --ro-bind $OSR /etc/os-release --"
+fi
+printf '%s os-release=%s\n' "$(date -Is)" "${JAIL:+debian}" >> "$L/matryoshka-run.log"
 start=$(date +%s)
 if [ -n "$LAUNCH" ] && [ -x "$DIR/ZoomLauncher" ]; then
-  "$DIR/ZoomLauncher" "$URL" 2>>"$E"
+  $JAIL "$DIR/ZoomLauncher" "$URL" 2>>"$E"
   status=$?
 else
-  "$BIN" $GPU "$@" 2>>"$E"
+  $JAIL "$BIN" $GPU "$@" 2>>"$E"
   status=$?
 fi
 end=$(date +%s)
