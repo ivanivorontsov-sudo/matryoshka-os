@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "index.html"
+      - "favicon.svg"
       - "robots.txt"
       - "sitemap.xml"
       - "features/**"
@@ -35,10 +36,17 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Prepare static site
+        env:
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
         run: |
           mkdir -p _site
-          cp index.html robots.txt sitemap.xml _site/
+          cp index.html robots.txt sitemap.xml favicon.svg _site/
           cp -R features download installation en _site/
+          if [ -n "$INDEXNOW_KEY" ]; then
+            case "$INDEXNOW_KEY" in *[!a-zA-Z0-9-]* ) echo "Invalid IndexNow key format"; exit 1;; esac
+            if [ ${#INDEXNOW_KEY} -lt 8 ] || [ ${#INDEXNOW_KEY} -gt 128 ]; then echo "Invalid IndexNow key length"; exit 1; fi
+            printf \"%s\" "$INDEXNOW_KEY" > "_site/${INDEXNOW_KEY}.txt"
+          fi
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
@@ -46,3 +54,28 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Notify Yandex and IndexNow about updated pages
+        if: ${{ secrets.INDEXNOW_KEY != '' }}
+        env:
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+        run: |
+          payload=$(jq -n \
+            --arg host "ivanivorontsov-sudo.github.io" \
+            --arg key "$INDEXNOW_KEY" \
+            --arg keyLocation "https://ivanivorontsov-sudo.github.io/matryoshka-os/${INDEXNOW_KEY}.txt" \
+            --argjson urls '[
+              "https://ivanivorontsov-sudo.github.io/matryoshka-os/",
+              "https://ivanivorontsov-sudo.github.io/matryoshka-os/features/",
+              "https://ivanivorontsov-sudo.github.io/matryoshka-os/download/",
+              "https://ivanivorontsov-sudo.github.io/matryoshka-os/installation/",
+              "https://ivanivorontsov-sudo.github.io/matryoshka-os/en/",
+              "https://ivanivorontsov-sudo.github.io/matryoshka-os/en/features/",
+              "https://ivanivorontsov-sudo.github.io/matryoshka-os/en/download/",
+              "https://ivanivorontsov-sudo.github.io/matryoshka-os/en/installation/"
+            ]' \
+            '{host:$host,key:$key,keyLocation:$keyLocation,urlList:$urls}')
+          curl --fail-with-body --silent --show-error \
+            -X POST "https://yandex.com/indexnow" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data-binary "$payload"
