@@ -45,7 +45,7 @@ jobs:
           if [ -n "$INDEXNOW_KEY" ]; then
             case "$INDEXNOW_KEY" in *[!a-zA-Z0-9-]* ) echo "Invalid IndexNow key format"; exit 1;; esac
             if [ ${#INDEXNOW_KEY} -lt 8 ] || [ ${#INDEXNOW_KEY} -gt 128 ]; then echo "Invalid IndexNow key length"; exit 1; fi
-            printf \"%s\" "$INDEXNOW_KEY" > "_site/${INDEXNOW_KEY}.txt"
+            printf '%s' "$INDEXNOW_KEY" > "_site/${INDEXNOW_KEY}.txt"
           fi
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
@@ -56,9 +56,9 @@ jobs:
         uses: actions/deploy-pages@v4
 
       - name: Notify Yandex and IndexNow about updated pages
-        if: ${{ secrets.INDEXNOW_KEY != '' }}
         env:
           INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+        if: ${{ env.INDEXNOW_KEY != '' }}
         run: |
           payload=$(jq -n \
             --arg host "ivanivorontsov-sudo.github.io" \
