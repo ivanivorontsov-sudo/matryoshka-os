@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Программы других платформ
+GenericName=macOS, iPhone, Symbian, Java-телефоны, Windows Mobile
+Comment=Запуск программ macOS, старых игр iPhone, Symbian, Java кнопочных телефонов и Windows Mobile
+Exec=matryoshka-compat %f
+Icon=preferences-desktop-emoticons
+Categories=X-Matryoshka;System;Emulator;
+MimeType=application/x-ios-app;application/x-apple-diskimage;application/x-xar;text/vnd.sun.j2me.app-descriptor;application/java-archive;application/x-java-archive;application/vnd.symbian.install;x-epoc/x-sisx-app;application/x-ngage-game;application/vnd.ms-cab-compressed;application/x-windows-phone-xap;application/appx;
+Keywords=macOS;iOS;iPhone;ipa;dmg;Darling;touchHLE;Symbian;Nokia;J2ME;jar;Windows Mobile;Pocket PC;

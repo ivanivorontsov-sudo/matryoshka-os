@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Программы Windows Mobile (PocketHLE)
+Comment=Старые игры для КПК Pocket PC, экспериментально
+Exec=matryoshka-compat wm
+Icon=pda
+Categories=X-Matryoshka;Emulator;Game;
+NoDisplay=false

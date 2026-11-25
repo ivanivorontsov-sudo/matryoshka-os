@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Программы Symbian и N-Gage (EKA2L1)
+Comment=Нужна прошивка вашего телефона Nokia
+Exec=matryoshka-compat symbian
+Icon=phone
+Categories=X-Matryoshka;Emulator;Game;
+NoDisplay=false

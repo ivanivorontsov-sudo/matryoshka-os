@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Старые игры iPhone (touchHLE)
+Comment=32-битные игры iPhone OS 2–4.0
+Exec=matryoshka-compat ios
+Icon=phone
+Categories=X-Matryoshka;Emulator;Game;
+NoDisplay=false

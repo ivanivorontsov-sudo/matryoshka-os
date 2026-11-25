@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Java кнопочных телефонов (FreeJ2ME-Plus)
+Comment=Игры .jar и .jad для Nokia, Sony Ericsson и других
+Exec=matryoshka-compat j2me
+Icon=applications-games
+Categories=X-Matryoshka;Emulator;Game;
+NoDisplay=false

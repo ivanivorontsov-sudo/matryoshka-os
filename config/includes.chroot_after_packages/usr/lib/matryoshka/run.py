@@ -70,6 +70,7 @@ def dos(path):
     return dosbox.launch(path, C.HOME)
 
 INSTALLERS = ("msi", "apk", "xapk", "apks", "apkm")
+COMPAT_EXT = ("ipa", "cab", "dmg", "pkg", "mpkg", "sis", "sisx", "n-gage", "xap", "appx", "appxbundle", "app")
 OWN_SCAN = ("deb", "appimage", "gz", "tgz", "bz2", "xz", "tar", "zst")
 
 def launch_scan(kind, enabled, disabled):
@@ -228,6 +229,9 @@ def main(path):
     ext = path.lower().rsplit(".", 1)[-1]
     if ext in ("com", "bat") or (ext == "exe" and exe_kind(path) == "dos"):
         return dos(path)
+    if ext == "exe":
+        import compat
+        if compat.is_wince_exe(path): return compat.run_wm(path)
     if ext in ("exe", "msi", "lnk"):
         C.prep_wine(); env = wine_env()
         if os.path.exists("/usr/lib/matryoshka-fixes/wine-fonts"):
@@ -246,10 +250,12 @@ def main(path):
                 return subprocess.call(["matryoshka-pkginstall", "--apt", "chromium"])
             return 1
         return subprocess.call(wine_argv(path, electron_dir(os.path.dirname(path))), env=env, cwd=os.path.dirname(path) or None)
-    if ext == "jar":
-        if shutil.which("java"): return subprocess.call(["java", "-jar", path])
-        if subprocess.call(["kdialog", "--yesno", "Для .jar нужна Java (около 200 МБ). Установить?"]) == 0: return subprocess.call(["matryoshka-pkginstall", "--apt", "default-jre"])
-        return 1
+    if ext in ("jar", "jad"):
+        import compat
+        return compat.run_jar(path)
+    if ext in COMPAT_EXT:
+        import compat
+        return compat.open_file(path)
     if ext == "rpm":
         return subprocess.call(["kdialog", "--sorry", "Это пакет для Fedora/openSUSE (.rpm). Для Матрёшки ищите .deb, Flatpak или AppImage этой программы."])
     if ext == "appimage":
@@ -276,5 +282,5 @@ def main(path):
     return subprocess.call([path])
 
 if __name__ == "__main__":
-    a = sys.argv[1] if len(sys.argv) > 1 else subprocess.run(["kdialog", "--title", "Запустить программу", "--getopenfilename", os.path.expanduser("~"), "*.exe *.msi *.apk *.xapk *.apks *.apkm *.deb *.AppImage *.appimage *.sh *.bat *.com *.jar *.flatpakref"], capture_output=True, text=True).stdout.strip()
+    a = sys.argv[1] if len(sys.argv) > 1 else subprocess.run(["kdialog", "--title", "Запустить программу", "--getopenfilename", os.path.expanduser("~"), "*.exe *.msi *.apk *.xapk *.apks *.apkm *.deb *.AppImage *.appimage *.sh *.bat *.com *.jar *.jad *.ipa *.dmg *.pkg *.sis *.sisx *.cab *.xap *.flatpakref"], capture_output=True, text=True).stdout.strip()
     sys.exit(main(os.path.abspath(a)) if a else 0)

@@ -317,7 +317,7 @@ class Center(QWidget):
         v.addWidget(btn("Настройки Windows-слоя (winecfg)", lambda: (C.prep_wine(), subprocess.Popen(["winecfg"]))))
         v.addWidget(btn("Открыть «Общее»", lambda: subprocess.Popen(["dolphin", C.shared_dir()])))
         v.addWidget(btn("Читалка для Android (установить APK)", lambda: subprocess.Popen(["matryoshka-run", "/usr/share/matryoshka/apk/Chitalka.apk"])))
-        for t, c in (("Эмуляторы консолей", "matryoshka-emulators"), ("Песочница", "matryoshka-sandbox"), ("Другие системы (Linux, Windows, DOS)", "matryoshka-vms"),
+        for t, c in (("Эмуляторы консолей", "matryoshka-emulators"), ("Программы других платформ (macOS, iPhone, Symbian, Java-телефоны, КПК)", "matryoshka-compat"), ("Песочница", "matryoshka-sandbox"), ("Другие системы (Linux, Windows, DOS)", "matryoshka-vms"),
                      ("Вы программист? Языки и среды разработки", "matryoshka-dev"), ("ИванКод — редактор с Понятным", "ivankod"), ("ИИ-управляющий", "matryoshka-agent"), ("Бесконечная память", "matryoshka-cloud"), ("Удалить программы и «Обновить всё»", "matryoshka-apps"), ("Android-магазины (Google Play, RuStore)", "matryoshka-android")):
             v.addWidget(btn(t, lambda _=False, c=c: subprocess.Popen([c])))
         v.addWidget(QLabel("<h3>Свои сценарии</h3>Положите .js или .pon (Понятный) в ~/.config/matryoshka/scripts — они выполняются при входе в безопасной песочнице: могут менять тему, режим, вид, открывать программы и показывать уведомления, но не трогают файлы и системные части.", wordWrap=True))

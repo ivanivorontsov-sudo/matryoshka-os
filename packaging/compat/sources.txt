@@ -1,0 +1,3 @@
+freej2me https://github.com/TASEmulators/freej2me-plus/releases/download/1.53/freej2me_plus-v1.53.zip f2c647c3a62a55d904115fc7ec28103ed3bc3f438cac1de8d90e2cfd4c054f25
+freej2me-runtime https://github.com/TASEmulators/freej2me-plus/releases/download/1.53/freej2me_plus_runtime_linux-x64.tar.gz fa0ad54b93b5e120e6f2d1f32c27c3157a1e14a6bce9bc29aa91d21f82ba30b8
+pockethle https://github.com/j92580498-max/PocketHLE/releases/download/0.3.2/PocketHLE-linux-x86_64.tar.gz 6ac4cfbe6b5dec151686726cb16b67d8d0a46817109cc68c63603f43f3beac24

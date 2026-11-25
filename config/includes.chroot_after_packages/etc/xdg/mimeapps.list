@@ -1,4 +1,14 @@
 [Default Applications]
+application/x-ios-app=matryoshka-compat.desktop
+application/x-apple-diskimage=matryoshka-compat.desktop
+application/x-xar=matryoshka-compat.desktop
+text/vnd.sun.j2me.app-descriptor=matryoshka-compat.desktop
+application/java-archive=matryoshka-compat.desktop
+application/vnd.symbian.install=matryoshka-compat.desktop
+x-epoc/x-sisx-app=matryoshka-compat.desktop
+application/x-ngage-game=matryoshka-compat.desktop
+application/vnd.ms-cab-compressed=matryoshka-compat.desktop
+application/x-windows-phone-xap=matryoshka-compat.desktop
 x-scheme-handler/appstream=matryoshka-uninstall.desktop
 x-scheme-handler/zoommtg=matryoshka-zoom.desktop
 x-scheme-handler/zoomus=matryoshka-zoom.desktop
