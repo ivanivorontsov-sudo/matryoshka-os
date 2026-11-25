@@ -20,6 +20,9 @@ class Book:
     kind = "book"
 
     def __init__(self, raw):
+        from .strict import to_transitional
+        self.source = raw              # без правок отдаём исходные байты
+        raw = to_transitional(raw)     # Strict OOXML openpyxl открыл бы пустым
         self.raw = raw
         self.dirty = False
         self.cache = {}
@@ -48,7 +51,7 @@ class Book:
 
     def save_bytes(self):
         if not self.dirty:
-            return self.raw
+            return getattr(self, "source", self.raw)
         buf = io.BytesIO()
         self.wb.save(buf)
         data = merge_preserve(self.raw, buf.getvalue())
@@ -56,7 +59,10 @@ class Book:
 
     def sheet(self, name=None):
         if name is None:
-            return self.wb.active
+            ws = self.wb.active
+            if ws is None or not hasattr(ws, "iter_rows"):  # активен лист-диаграмма или книга без активного
+                ws = self.wb.worksheets[0] if self.wb.worksheets else self.wb.create_sheet("Лист1")
+            return ws
         if name not in self.wb.sheetnames:
             raise KeyError("нет листа %s" % name)
         return self.wb[name]
@@ -137,6 +143,39 @@ class Book:
         self.sheet(sheet).row_dimensions[int(row)].height = float(height)
         self.dirty = True
         return "высота строки изменена"
+
+    # --- строки и столбцы как в Excel: формулы, объединения, условия, имена, диаграммы едут следом
+    def insert_rows(self, at, count=1, sheet=None):
+        from . import sheetops
+        return sheetops.insert_rows(self, at, count, sheet)
+
+    def delete_rows(self, at, count=1, sheet=None):
+        from . import sheetops
+        return sheetops.delete_rows(self, at, count, sheet)
+
+    def insert_cols(self, at, count=1, sheet=None):
+        from . import sheetops
+        return sheetops.insert_cols(self, at, count, sheet)
+
+    def delete_cols(self, at, count=1, sheet=None):
+        from . import sheetops
+        return sheetops.delete_cols(self, at, count, sheet)
+
+    def sort_range(self, ref, key, descending=False, header=True, sheet=None, keys=None):
+        from . import sheetops
+        return sheetops.sort_range(self, ref, key, descending, header, sheet, keys)
+
+    def find(self, text, sheet=None, match_case=False, whole=False):
+        from . import sheetops
+        return sheetops.find(self, text, sheet, match_case, whole)
+
+    def replace(self, text, new, sheet=None, match_case=False, whole=False):
+        from . import sheetops
+        return sheetops.replace(self, text, new, sheet, match_case, whole)
+
+    def fill_series(self, ref, step=None, sheet=None):
+        from . import sheetops
+        return sheetops.fill_series(self, ref, step, sheet)
 
     def add_sheet(self, name):
         if name in self.wb.sheetnames:

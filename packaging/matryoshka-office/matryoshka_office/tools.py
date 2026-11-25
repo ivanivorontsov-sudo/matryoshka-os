@@ -737,3 +737,29 @@ for _name, (_fn, _ren, _desc) in _TABLE_TOOLS.items():
     TOOLS[_name] = _desc
     _DISPATCH[_name] = _tab(_fn, _ren)
 CONFIRM |= {"table_delete"}
+
+
+# ---------------------------------------------------------------- строки и столбцы «Таблиц» (sheetops)
+
+def _book(method):
+    def run(doc, args):
+        _need(doc, "book")
+        out = getattr(doc, method)(**dict(args))
+        return json.dumps(out, ensure_ascii=False) if isinstance(out, (list, dict)) else out
+    return run
+
+
+_BOOK_TOOLS = {
+    "insert_rows": ("insert_rows", "вставить строки как в Excel (формулы, объединения, условия, имена, диаграммы сдвигаются): {at, count?, sheet?}"),
+    "delete_rows": ("delete_rows", "удалить строки, ссылки на них станут #REF!: {at, count?, sheet?}"),
+    "insert_cols": ("insert_cols", "вставить столбцы: {at, count?, sheet?} — at буква или номер"),
+    "delete_cols": ("delete_cols", "удалить столбцы: {at, count?, sheet?}"),
+    "sort_range": ("sort_range", "сортировать диапазон: {ref, key, descending?, header?, sheet?, keys?} — keys [[\"B\", true], [\"A\", false]]"),
+    "fill_series": ("fill_series", "продолжить ряд (числа, даты, месяцы, «Шаг 1», формулы): {ref, step?, sheet?}"),
+    "find_cells": ("find", "найти ячейки с текстом: {text, sheet?, match_case?, whole?}"),
+    "replace_cells": ("replace", "заменить текст в ячейках: {text, new, sheet?, match_case?, whole?}"),
+}
+for _name, (_m, _desc) in _BOOK_TOOLS.items():
+    TOOLS[_name] = _desc
+    _DISPATCH[_name] = _book(_m)
+CONFIRM |= {"delete_rows", "delete_cols"}

@@ -74,8 +74,14 @@ def errors(raw):
         root = _clean(etree.fromstring(z.read(name), etree.XMLParser(resolve_entities=False, huge_tree=True)))
         sch = _schema(xsd)
         sch.validate(etree.ElementTree(root))
-        out[name] = {re.sub(r"line \d+", "", e.message) for e in sch.error_log}
+        out[name] = {re.sub(r"line \d+", "", e.message) for e in sch.error_log if not _quirk(e.message)}
     return out
+
+
+def _quirk(msg):
+    """Известные расхождения схемы с самим Excel: xml:space="preserve" у <t> Excel пишет сам
+    (sharedStrings, inlineStr), а в ST_Xstring схемы этого атрибута нет."""
+    return "XML/1998/namespace}space' is not allowed" in msg
 
 
 def new_errors(before, after):

@@ -39,6 +39,9 @@ class Deck:
     kind = "deck"
 
     def __init__(self, raw):
+        from .strict import to_transitional
+        self.source = raw
+        raw = to_transitional(raw)
         self.raw = raw
         self.dirty = False
         self.prs = Presentation(io.BytesIO(raw))
@@ -74,7 +77,7 @@ class Deck:
 
     def save_bytes(self):
         if not self.dirty:
-            return self.raw
+            return getattr(self, "source", self.raw)
         buf = io.BytesIO()
         self.prs.save(buf)
         data = merge_preserve(self.raw, buf.getvalue())

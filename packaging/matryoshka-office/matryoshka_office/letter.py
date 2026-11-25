@@ -56,7 +56,10 @@ class Letter:
     kind = "letter"
 
     def __init__(self, raw):
-        self.opc = OpcPackage.from_bytes(raw)
+        from .strict import is_strict, to_transitional
+        self.opc = OpcPackage.from_bytes(to_transitional(raw))
+        if is_strict(raw):
+            self.opc.raw = raw  # без правок — исходные байты Strict
         self.trees = {}
         self.dirty_trees = set()
 

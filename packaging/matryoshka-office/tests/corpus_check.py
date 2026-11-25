@@ -10,6 +10,7 @@
 
 import io
 import os
+import signal
 import sys
 import time
 import traceback
@@ -125,8 +126,20 @@ CHECKS = {".docx": ("docx", check_docx), ".docm": ("docx", check_docx), ".xlsx":
           ".xlsm": ("xlsx", check_xlsx), ".pptx": ("pptx", check_pptx), ".pptm": ("pptx", check_pptx)}
 
 
+class Timeout(Exception):
+    pass
+
+
+def _alarm(_sig, _frm):
+    raise Timeout("дольше %d с" % LIMIT)
+
+
+LIMIT = int(os.environ.get("MATRYOSHKA_CORPUS_LIMIT", "60"))
+
+
 def run(root, layout=False, out=sys.stdout):
-    stats = {"ok": 0, "skip": 0, "fail": 0}
+    stats = {"ok": 0, "skip": 0, "fail": 0, "timeout": 0}
+    signal.signal(signal.SIGALRM, _alarm)
     fails = []
     for dirpath, _, files in os.walk(root):
         for name in sorted(files):
@@ -143,13 +156,20 @@ def run(root, layout=False, out=sys.stdout):
                 REF["on"] = False
                 ref_err = type(exc).__name__
             t0 = time.time()
+            signal.alarm(LIMIT)
             try:
                 notes = fn(raw, layout)
+                signal.alarm(0)
                 if not REF["on"]:
                     notes.insert(0, "эталон этот файл не открывает (%s), мы — да" % ref_err)
                 stats["ok"] += 1
                 print("OK   %s (%.1f с): %s" % (name, time.time() - t0, "; ".join(notes)), file=out)
+            except Timeout as exc:
+                stats["timeout"] += 1
+                print("ТАЙМАУТ %s: %s" % (name, exc), file=out)
+                continue
             except Exception as exc:  # noqa: BLE001
+                signal.alarm(0)
                 if not REF["on"]:
                     stats["skip"] += 1
                     print("ПРОПУСК %s: битый образец, не открыл ни эталон (%s), ни мы (%s)" % (name, ref_err, type(exc).__name__), file=out)
@@ -158,7 +178,7 @@ def run(root, layout=False, out=sys.stdout):
                 fails.append((path, traceback.format_exc()))
                 print("СБОЙ %s: %s: %s" % (name, type(exc).__name__, str(exc)[:200]), file=out)
             out.flush()
-    print("\nИтого: %(ok)d прошли, %(fail)d сбоев, %(skip)d битых образцов пропущено" % stats, file=out)
+    print("\nИтого: %(ok)d прошли, %(fail)d сбоев, %(timeout)d таймаутов, %(skip)d битых образцов пропущено" % stats, file=out)
     return stats, fails
 
 

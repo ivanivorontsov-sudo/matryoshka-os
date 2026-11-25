@@ -10,7 +10,7 @@ from PyQt6.QtGui import QColor, QFont, QAction, QBrush, QPen, QTextCharFormat, Q
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDockWidget, QFileDialog, QFormLayout, QFrame,
     QGraphicsRectItem, QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout,
-    QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox, QPushButton, QScrollArea,
+    QInputDialog, QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox, QPushButton, QScrollArea,
     QSplitter, QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QTextBrowser,
     QTextEdit, QToolBar, QVBoxLayout, QWidget,
 )
@@ -279,18 +279,32 @@ class LetterView(QScrollArea):
 
 
 class BookView(QWidget):
+    """Книга: строка формул, диаграммы своим движком, листы на SheetGrid (без потолка в 40 строк)."""
+
     def __init__(self, window):
         super().__init__()
         self.window = window
         self.loading = False
         layout = QVBoxLayout(self)
         bar = QHBoxLayout()
-        bar.addWidget(QLabel("Формула"))
+        self.addr = QLabel("A1")
+        self.addr.setMinimumWidth(56)
+        self.addr.setStyleSheet("color: #FFC94A; font-weight: bold;")
+        bar.addWidget(self.addr)
+        fx = QLabel("Формула")
+        fx.setStyleSheet("color: #FFF4E0;")
+        bar.addWidget(fx)
         self.formula = QLineEdit()
         self.formula.returnPressed.connect(self._apply_formula)
         bar.addWidget(self.formula, 1)
+        for text, tip, slot in (("Найти и заменить", "Поиск по всем листам и замена", self._find),
+                                ("Заполнить ряд", "Продолжить ряд вниз/вправо по выделению: числа, даты, месяцы, формулы", self._fill)):
+            b = QPushButton(text)
+            b.setToolTip(tip)
+            b.clicked.connect(slot)
+            bar.addWidget(b)
         layout.addLayout(bar)
-        self.chart_host = QVBoxLayout()
+        self.chart_host = QHBoxLayout()
         layout.addLayout(self.chart_host)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
@@ -304,7 +318,9 @@ class BookView(QWidget):
         self._show_chart(target(self.window.session.doc), self.tabs.tabText(index))
 
     def reload(self):
+        from .sheetview import SheetGrid
         self.loading = True
+        current = self.tabs.currentIndex()
         self.tabs.clear()
         self.grids = {}
         doc = target(self.window.session.doc)
@@ -314,98 +330,107 @@ class BookView(QWidget):
             pass
         for name in doc.wb.sheetnames:
             ws = doc.wb[name]
-            rows = max(18, min(40, (ws.max_row or 1) + 3))
-            cols = max(8, min(16, (ws.max_column or 1) + 2))
-            grid = QTableWidget(rows, cols)
-            grid.setHorizontalHeaderLabels([_col(i) for i in range(1, cols + 1)])
-            for merge in ws.merged_cells.ranges:
-                grid.setSpan(merge.min_row - 1, merge.min_col - 1, merge.max_row - merge.min_row + 1, merge.max_col - merge.min_col + 1)
-            for r in range(1, rows + 1):
-                for c in range(1, cols + 1):
-                    cell = ws.cell(r, c)
-                    shown = doc.display(cell.coordinate, name)
-                    item = QTableWidgetItem("" if shown is None else str(shown))
-                    if cell.font and cell.font.bold:
-                        item.setFont(QFont(font().family(), 11, QFont.Weight.Bold))
-                    try:
-                        rgb = str(cell.fill.fgColor.rgb)
-                    except Exception:
-                        rgb = ""
-                    if rgb and rgb not in ("00000000", "None") and len(rgb) >= 6:
-                        color = QColor("#" + rgb[-6:])
-                        item.setBackground(QBrush(color))
-                        if color.lightness() < 140:
-                            item.setForeground(QBrush(QColor("#FFF8EE")))
-                    grid.setItem(r - 1, c - 1, item)
-            grid.itemChanged.connect(lambda item, sheet=name: self._edited(sheet, item))
-            grid.currentCellChanged.connect(lambda r, c, *rest, sheet=name, g=grid: self._focus(sheet, g, r, c))
+            if not hasattr(ws, "iter_rows"):  # лист-диаграмма
+                self.tabs.addTab(QLabel("Лист-диаграмма «%s»" % name), name)
+                continue
+            grid = SheetGrid(self, doc, name)
+            grid.selectionModel().currentChanged.connect(lambda cur, _prev, sheet=name: self._focus(sheet, cur.row(), cur.column()))
             self.grids[name] = grid
             self.tabs.addTab(grid, name)
-        self._show_chart(doc, doc.wb.sheetnames[0])
+        if 0 <= current < self.tabs.count():
+            self.tabs.setCurrentIndex(current)
+        self._show_chart(doc, self.tabs.tabText(max(0, self.tabs.currentIndex())))
         self.loading = False
 
+    def run(self, fn):
+        """Правка книги из меню: шаг отмены, пересчёт, перерисовка, итог в строке состояния."""
+        try:
+            self.window.session.snapshot()
+            msg = fn()
+        except (ValueError, KeyError, IndexError) as exc:
+            QMessageBox.warning(self, "Таблицы", str(exc))
+            return
+        self.reload()
+        if self.window.statusBar() and msg:
+            self.window.statusBar().showMessage(str(msg), 6000)
+
     def _show_chart(self, doc, name):
+        from .sheetview import chart_images
+        from PyQt6.QtGui import QPixmap
         while self.chart_host.count():
             item = self.chart_host.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        ws = doc.wb[name]
-        if not ws._charts:
+        if name not in doc.wb.sheetnames:
             return
-        try:
-            from PyQt6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView
-        except Exception:
-            return
-        series = QBarSeries()
-        bucket = QBarSet("Значение")
-        labels = []
-        for row in range(2, min((ws.max_row or 1), 8) + 1):
-            number = ws.cell(row, 2).value
-            if isinstance(number, (int, float)):
-                labels.append(str(ws.cell(row, 1).value or row))
-                bucket.append(float(number))
-        if not labels:
-            return
-        series.append(bucket)
-        chart = QChart()
-        chart.addSeries(series)
-        title = "Диаграмма"
-        try:
-            title = ws._charts[0].title.tx.rich.p[0].r[0].t or title
-        except Exception:
-            pass
-        chart.setTitle(str(title))
-        chart.setBackgroundBrush(QBrush(QColor(PAPER)))
-        axis = QBarCategoryAxis()
-        axis.append(labels)
-        chart.addAxis(axis, Qt.AlignmentFlag.AlignBottom)
-        series.attachAxis(axis)
-        view = QChartView(chart)
-        view.setFixedHeight(180)
-        self.chart_host.addWidget(view)
+        for img, w, h in chart_images(doc, name)[:4]:
+            lab = QLabel()
+            lab.setPixmap(QPixmap.fromImage(img))
+            lab.setFixedSize(int(w), int(h))
+            self.chart_host.addWidget(lab)
+        if self.chart_host.count():
+            self.chart_host.addStretch(1)
 
-    def _focus(self, sheet, grid, row, col):
+    def _focus(self, sheet, row, col):
         if row < 0:
             return
         addr = "%s%d" % (_col(col + 1), row + 1)
-        value = target(self.window.session.doc).wb[sheet][addr].value
+        self.addr.setText(addr)
+        cell = target(self.window.session.doc).wb[sheet]._cells.get((row + 1, col + 1))
+        value = cell.value if cell is not None else None
         self.formula.setText("" if value is None else str(value))
 
-    def _edited(self, sheet, item):
-        if self.loading:
-            return
-        addr = "%s%d" % (_col(item.column() + 1), item.row() + 1)
-        target(self.window.session.doc).set_cell(addr, item.text(), sheet)
-
-    def _apply_formula(self):
+    def _current(self):
         grid = self.tabs.currentWidget()
         sheet = self.tabs.tabText(self.tabs.currentIndex())
-        row, col = grid.currentRow(), grid.currentColumn()
-        if row < 0:
+        return (grid, sheet) if sheet in self.grids else (None, None)
+
+    def _apply_formula(self):
+        grid, sheet = self._current()
+        if grid is None:
             return
-        addr = "%s%d" % (_col(col + 1), row + 1)
-        target(self.window.session.doc).set_cell(addr, self.formula.text(), sheet)
-        self.reload()
+        idx = grid.currentIndex()
+        if not idx.isValid():
+            return
+        addr = "%s%d" % (_col(idx.column() + 1), idx.row() + 1)
+        self.run(lambda: target(self.window.session.doc).set_cell(addr, self.formula.text(), sheet))
+
+    def _fill(self):
+        grid, sheet = self._current()
+        if grid is None:
+            return
+        idx = grid.selectionModel().selectedIndexes()
+        if len(idx) < 2:
+            QMessageBox.information(self, "Заполнить ряд", "Выделите начало ряда и ячейки, которые нужно заполнить.")
+            return
+        r1, r2 = min(i.row() for i in idx) + 1, max(i.row() for i in idx) + 1
+        c1, c2 = min(i.column() for i in idx) + 1, max(i.column() for i in idx) + 1
+        ref = "%s%d:%s%d" % (_col(c1), r1, _col(c2), r2)
+        self.run(lambda: target(self.window.session.doc).fill_series(ref, sheet=sheet))
+
+    def _find(self):
+        doc = target(self.window.session.doc)
+        text, ok = QInputDialog.getText(self, "Найти", "Что найти:")
+        if not ok or not text:
+            return
+        hits = doc.find(text)
+        if not hits:
+            QMessageBox.information(self, "Найти", "Ничего не найдено.")
+            return
+        new, ok = QInputDialog.getText(self, "Заменить", "Найдено ячеек: %d (%s%s).\nЗаменить на (пусто — только перейти к первой):"
+                                       % (len(hits), ", ".join(hits[:5]), "…" if len(hits) > 5 else ""))
+        if ok and new:
+            self.run(lambda: doc.replace(text, new))
+            return
+        sheet, addr = hits[0].split("!")
+        from openpyxl.utils.cell import coordinate_from_string, column_index_from_string
+        col, row = coordinate_from_string(addr)
+        for i in range(self.tabs.count()):
+            if self.tabs.tabText(i) == sheet:
+                self.tabs.setCurrentIndex(i)
+                grid = self.grids.get(sheet)
+                if grid is not None:
+                    grid.setCurrentIndex(grid.model().index(row - 1, column_index_from_string(col) - 1))
 
 
 class DeckView(QWidget):
