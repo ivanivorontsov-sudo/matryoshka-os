@@ -296,8 +296,13 @@ def is_wp_xap(path):
 def run_wp(path=None):
     return say("Это программа для Windows Phone. Рабочего эмулятора Windows Phone 7, 8 или 10 для Linux не существует: эмуляторы Microsoft работают только в Windows с Hyper-V. Матрёшка не может её запустить и не делает вид, что может.\n\nЕсли у программы есть версия для Android, её можно поставить в Android-слой Матрёшки.", kind="sorry")
 
+def darling_env():
+    e = dict(os.environ)
+    e["XDG_CACHE_HOME"] = userdir("darling-cache")
+    return e
+
 def darling_shell(cmd):
-    return subprocess.call([DARLING, "shell", "/bin/bash", "-c", cmd])
+    return subprocess.call([DARLING, "shell", "/bin/bash", "-c", cmd], env=darling_env())
 
 def q(s):
     return "'" + s.replace("'", "'\\''") + "'"
@@ -309,7 +314,7 @@ def run_macos(path=None):
     if not ready("macos"):
         return missing("macos")
     if not path:
-        return subprocess.call(["konsole", "-e", DARLING, "shell"])
+        return subprocess.call(["konsole", "-e", DARLING, "shell"], env=darling_env())
     low = path.lower().rstrip("/")
     if low.endswith(".dmg"):
         script = "set -e; m=$(hdiutil attach %s | awk -F'\\t' '/\\/Volumes\\//{print $NF}' | tail -n1); [ -n \"$m\" ] || m=$(ls -d /Volumes/*/ | grep -v SystemRoot | tail -n1); a=$(find \"$m\" -maxdepth 2 -name '*.app' | head -n1); [ -n \"$a\" ] || { echo NOAPP; exit 3; }; mkdir -p /Applications; cp -R \"$a\" /Applications/; open \"/Applications/$(basename \"$a\")\"" % q(darling_path(path))
@@ -318,7 +323,7 @@ def run_macos(path=None):
             say("В образе диска нет программы .app. Возможно, внутри установщик .pkg: откройте его так же двойным щелчком.", kind="sorry")
         return rc
     if low.endswith((".pkg", ".mpkg")):
-        return subprocess.call(["konsole", "--hold", "-e", DARLING, "shell", "installer", "-pkg", darling_path(path), "-target", "/"])
+        return subprocess.call(["konsole", "--hold", "-e", DARLING, "shell", "installer", "-pkg", darling_path(path), "-target", "/"], env=darling_env())
     meta = app_info_dir(path) if os.path.isdir(path) else None
     if meta and meta["kind"] == "ios":
         return run_ios(path)

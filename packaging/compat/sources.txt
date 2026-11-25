@@ -1,3 +1,7 @@
 freej2me https://github.com/TASEmulators/freej2me-plus/releases/download/1.53/freej2me_plus-v1.53.zip f2c647c3a62a55d904115fc7ec28103ed3bc3f438cac1de8d90e2cfd4c054f25
 freej2me-runtime https://github.com/TASEmulators/freej2me-plus/releases/download/1.53/freej2me_plus_runtime_linux-x64.tar.gz fa0ad54b93b5e120e6f2d1f32c27c3157a1e14a6bce9bc29aa91d21f82ba30b8
 pockethle https://github.com/j92580498-max/PocketHLE/releases/download/0.3.2/PocketHLE-linux-x86_64.tar.gz 6ac4cfbe6b5dec151686726cb16b67d8d0a46817109cc68c63603f43f3beac24
+touchhle https://github.com/ivanivorontsov-sudo/matryoshka-os/releases/download/v18.6.21/matryoshka-compat-touchhle-0.3.0-debian13-x86_64.tar.gz 389f661addd6e7efdbc56cdcf717fe59601c2017f7f71c4a2d91e84e695e9a66
+eka2l1 https://github.com/ivanivorontsov-sudo/matryoshka-os/releases/download/v18.6.21/matryoshka-compat-eka2l1-d638070-debian13-x86_64.tar.gz 993aefbd0405d27fa714d1dc17ecb41d3ef7e3372f9c05507e7d81ab6c067f04
+inferno https://github.com/ivanivorontsov-sudo/matryoshka-os/releases/download/v18.6.21/matryoshka-compat-inferno-3b47510-debian13-x86_64.tar.gz 18def4b469b756d1e5c8fe54dd7372e868000ea0e5e0ca4c52a26f32847a08de
+darling-debs https://github.com/ivanivorontsov-sudo/matryoshka-os/releases/download/v18.6.21/matryoshka-compat-darling-debs-0.1.20260608-trixie-amd64.tar.gz df6123b9da9f8051f13af61eddffdaa305eb8d62397655f89514d98bbbeb81b0

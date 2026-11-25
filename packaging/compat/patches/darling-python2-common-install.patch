@@ -1,0 +1,4 @@
+--- a/debian/darling-cli-python2-common.install	1970-01-01 10:00:00.000000000 +1000
++++ b/debian/darling-cli-python2-common.install	2026-11-25 17:18:09.508505842 +1000
+@@ -0,0 +1 @@
++cli-python2-common/usr /

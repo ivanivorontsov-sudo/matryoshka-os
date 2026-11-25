@@ -18,6 +18,10 @@ git checkout 18.6.20-wip
 
 Автор коммитов в этой работе: `ivanivorontsov-sudo <ivanivorontsov-sudo@users.noreply.github.com>` (`git -c user.name=… -c user.email=…`).
 
+## Статус на 25 ноября 2026
+
+18.6.20 выпущен. Слои совместимости из плана ниже сделаны и выпущены в 18.6.21: код `usr/lib/matryoshka/compat.py`, служба `matryoshka-compat-setup`, рецепты, патчи Darling и список источников с SHA256 в `packaging/compat/`. Подробности, проверки и известные ограничения — в `docs/RELEASE-NOTES-18.6.21.md`. Открытая задача: окна Cocoa в Darling создаются, но остаются чёрными.
+
 ## Цель 18.6.20
 
 Выпуск Матрёшки 18.6.20 строится поверх 18.6.19 (коммит `7adb724`, ветка `cursor/desktop-av-boot-18-6-7-c1b8`, локально раньше называлась `zoomfix`).
