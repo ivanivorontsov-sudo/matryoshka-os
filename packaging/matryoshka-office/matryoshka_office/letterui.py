@@ -96,6 +96,7 @@ class LetterArea(QWidget):
         for text, tip, slot in (
             ("Таблица", "Вставить таблицу", self._table),
             ("Ширина таблицы", "Разовый автоподбор ширины столбцов; после него ширины жёсткие", self._table_width),
+            ("Правка таблицы ▾", "Строки, столбцы, объединение, разбиение, сортировка, формулы, оформление", self._table_menu),
             ("Рисунок", "Вставить рисунок", self._image),
             ("Формула", "Редактор формул", self._equation),
             ("Разрыв страницы", "Начать новую страницу", self._page_break),
@@ -334,6 +335,159 @@ class LetterArea(QWidget):
             wtables.fix_table(tbl, [avail / n] * n)
             self.doc.touch("word/document.xml")
         self.window.refresh()
+
+    # --- правка таблицы по сетке (wtabedit) ---------------------------------------
+    def _cell_at_caret(self):
+        from . import wtabedit
+        if self.canvas.caret is None:
+            return None
+        return wtabedit.locate(self.canvas.caret[0])
+
+    def _cell_range(self):
+        """Выделение по ячейкам одной таблицы: (tbl, r1, c1, r2, c2) или ячейка под курсором."""
+        from . import wtabedit
+        here = self._cell_at_caret()
+        if here is None:
+            return None
+        tbl, r, c = here
+        sel = self.canvas.selection()
+        if sel is not None:
+            spots = [wtabedit.locate(p) for p in self.canvas.selected_paragraphs(sel)]
+            spots = [x for x in spots if x is not None and x[0] is tbl]
+            if spots:
+                return (tbl, min(x[1] for x in spots), min(x[2] for x in spots),
+                        max(x[1] for x in spots), max(x[2] for x in spots))
+        return tbl, r, c, r, c
+
+    def _tab_do(self, fn, drop_caret=False):
+        try:
+            self.window.session.snapshot()
+            msg = fn()
+        except (ValueError, IndexError) as exc:
+            QMessageBox.warning(self, "Таблица", str(exc))
+            return
+        if drop_caret:
+            self.canvas.caret = None
+            self.canvas.anchor = None
+        self.window.refresh()
+        if msg and self.window.statusBar():
+            self.window.statusBar().showMessage(str(msg), 6000)
+
+    def _table_menu(self):
+        from PyQt6.QtGui import QCursor
+        from PyQt6.QtWidgets import QMenu
+        from . import wtabedit as T
+        doc = self.doc
+        rng = self._cell_range()
+        menu = QMenu(self)
+        if rng is None:
+            sel = self.canvas.selection()
+            paras = self.canvas.selected_paragraphs(sel) if sel is not None else []
+            body = self.doc.paragraphs()
+            idx = [body.index(p) for p in paras if p in body]
+            a = menu.addAction("Текст в таблицу (разделитель — табуляция или «;»)")
+            a.setEnabled(bool(idx))
+            a.triggered.connect(lambda: self._text_to_table(idx))
+            b = menu.addAction("Вставить таблицу из книги Excel…")
+            b.triggered.connect(self._table_from_excel)
+            menu.exec(QCursor.pos())
+            return
+        tbl, r1, c1, r2, c2 = rng
+        add = menu.addMenu("Вставить")
+        add.addAction("Строку выше", lambda: self._tab_do(lambda: T.insert_row(doc, tbl, r1, "above")))
+        add.addAction("Строку ниже", lambda: self._tab_do(lambda: T.insert_row(doc, tbl, r2, "below")))
+        add.addAction("Столбец слева", lambda: self._tab_do(lambda: T.insert_column(doc, tbl, c1, "left")))
+        add.addAction("Столбец справа", lambda: self._tab_do(lambda: T.insert_column(doc, tbl, c2, "right")))
+        rem = menu.addMenu("Удалить")
+        rem.addAction("Строки", lambda: self._tab_do(lambda: T.delete_row(doc, tbl, r1, r2 - r1 + 1), True))
+        rem.addAction("Столбцы", lambda: self._tab_do(lambda: T.delete_column(doc, tbl, c1, c2 - c1 + 1), True))
+        rem.addAction("Таблицу", lambda: self._tab_do(lambda: T.delete_table(doc, tbl), True))
+        menu.addSeparator()
+        m = menu.addAction("Объединить ячейки", lambda: self._tab_do(lambda: T.merge(doc, tbl, r1, c1, r2, c2)))
+        m.setEnabled((r1, c1) != (r2, c2))
+        menu.addAction("Разбить ячейку…", lambda: self._split_dialog(tbl, r1, c1))
+        menu.addAction("Снять объединение", lambda: self._tab_do(lambda: T.unmerge(doc, tbl, r1, c1)))
+        menu.addSeparator()
+        menu.addAction("Выровнять ширину столбцов", lambda: self._tab_do(
+            lambda: T.distribute_columns(doc, tbl, c1 if c2 > c1 else None, c2 if c2 > c1 else None)))
+        menu.addAction("Выровнять высоту строк", lambda: self._tab_do(lambda: T.distribute_rows(doc, tbl)))
+        va = menu.addMenu("Текст в ячейке")
+        for title, how in (("Сверху", "top"), ("По центру", "center"), ("Снизу", "bottom")):
+            va.addAction(title, lambda _=False, h=how: self._tab_do(lambda: T.set_cell_valign(doc, tbl, r1, c1, h, r2, c2)))
+        va.addSeparator()
+        for title, how in (("Влево", "left"), ("По центру строки", "center"), ("Вправо", "right")):
+            va.addAction(title, lambda _=False, h=how: self._tab_do(lambda: T.set_cell_align(doc, tbl, r1, c1, h, r2, c2)))
+        bd = menu.addMenu("Границы выделенного")
+        for title, edges in (("Внешние", "outer"), ("Внутренние", "inner"), ("Все", "all"), ("Нет", "none")):
+            bd.addAction(title, lambda _=False, e=edges: self._tab_do(lambda: T.set_cell_borders(doc, tbl, r1, c1, r2, c2, e)))
+        st = menu.addMenu("Оформление")
+        for name in T.PRESETS:
+            st.addAction(name.capitalize(), lambda _=False, n=name: self._tab_do(lambda: T.style_table(doc, tbl, n)))
+        menu.addSeparator()
+        menu.addAction("Сортировать по этому столбцу (А→Я, 0→9)", lambda: self._tab_do(lambda: T.sort_rows(doc, tbl, c1)))
+        menu.addAction("Сортировать по убыванию", lambda: self._tab_do(lambda: T.sort_rows(doc, tbl, c1, True)))
+        menu.addAction("Формула в ячейке…", lambda: self._formula_dialog(tbl, r1, c1))
+        menu.addAction("Пересчитать формулы", lambda: self._tab_do(lambda: "формул пересчитано: %d" % T.update_formulas(doc, tbl)))
+        menu.addSeparator()
+        menu.addAction("Таблицу в текст", lambda: self._tab_do(lambda: T.table_to_text(doc, tbl), True))
+        menu.addAction("Вставить таблицу из книги Excel…", self._table_from_excel)
+        menu.exec(QCursor.pos())
+
+    def _split_dialog(self, tbl, r, c):
+        from . import wtabedit as T
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Разбить ячейку")
+        form = QFormLayout(dlg)
+        rows, cols = QSpinBox(), QSpinBox()
+        rows.setRange(1, 50)
+        cols.setRange(1, 30)
+        cols.setValue(2)
+        form.addRow("Строк:", rows)
+        form.addRow("Столбцов:", cols)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._tab_do(lambda: T.split_cell(self.doc, tbl, r, c, rows.value(), cols.value()))
+
+    def _formula_dialog(self, tbl, r, c):
+        from . import wtabedit as T
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Формула")
+        form = QFormLayout(dlg)
+        fx = QLineEdit("=SUM(ABOVE)")
+        fx.setToolTip("=SUM(ABOVE), =AVERAGE(LEFT), =B2*C2, =СУММ(B2:B9), =ROUND(A1/3;2), =IF(B2>100;1;0)")
+        fmt = QComboBox()
+        fmt.setEditable(True)
+        fmt.addItems(["", "0", "0,00", "# ##0", "# ##0,00", "# ##0,00 ₽", "0%"])
+        form.addRow("Формула:", fx)
+        form.addRow("Формат числа:", fmt)
+        form.addRow(QLabel("Это поле Word: в Word оно тоже обновляется (F9)."))
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._tab_do(lambda: T.set_cell_formula(self.doc, tbl, r, c, fx.text(), fmt.currentText() or None))
+
+    def _text_to_table(self, idx):
+        from . import wtabedit as T
+        if not idx:
+            return
+        text = self.doc.paragraph_text(min(idx))
+        sep = "\t" if "\t" in text else (";" if ";" in text else ("|" if "|" in text else ","))
+        self._tab_do(lambda: T.text_to_table(self.doc, min(idx), max(idx), sep), True)
+
+    def _table_from_excel(self):
+        from . import wtabedit as T
+        path, _ = QFileDialog.getOpenFileName(self, "Книга Excel", "", "Таблицы (*.xlsx *.xlsm)")
+        if not path:
+            return
+        ref, ok = QInputDialog.getText(self, "Диапазон", "Диапазон (пусто — весь лист), например A1:D20:")
+        if not ok:
+            return
+        self._tab_do(lambda: T.table_from_sheet(self.doc, self._body_index(), path, ref=ref.strip() or None))
 
     def _image(self):
         path, _ = QFileDialog.getOpenFileName(self, "Рисунок", "", "Рисунки (*.png *.jpg *.jpeg *.gif)")

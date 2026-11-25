@@ -175,7 +175,35 @@ def _finish(letter, tbl, new_widths=None):
 
 
 def _tbl(letter, index):
+    """Номер таблицы верхнего уровня или сам элемент w:tbl (так адресуются и вложенные таблицы)."""
+    if isinstance(index, etree._Element):
+        return index
     return letter._tbl(int(index))
+
+
+def locate(node):
+    """Где стоит узел (абзац с курсором): (w:tbl, строка, столбец сетки) ближайшей таблицы или None."""
+    tc = node
+    while tc is not None and tc.tag != w("tc"):
+        tc = tc.getparent()
+    if tc is None:
+        return None
+    tbl = tc
+    while tbl is not None and tbl.tag != w("tbl"):
+        tbl = tbl.getparent()
+    if tbl is None:
+        return None
+    for line in grid(tbl):
+        for s in line:
+            if s.tc is tc:
+                o = s
+                while o.vm == "continue":
+                    up = origin(grid(tbl), o.row, o.start)
+                    if up is o:
+                        break
+                    o = up
+                return tbl, o.row, o.start
+    return None
 
 
 def blank_like(tc, keep_props=True):
@@ -474,6 +502,62 @@ def set_row_height(letter, table, row, height_mm, rule="atLeast", _touch=True):
 
 
 # ---------------------------------------------------------------- объединение и разбиение
+
+def merge(letter, table, r1, c1, r2, c2):
+    """Объединить прямоугольник: текст всех ячеек собирается в левую верхнюю (как в Word),
+    уже объединённые ячейки внутри поглощаются; если диапазон режет объединение — расширяем его."""
+    tbl = _tbl(letter, table)
+    r1, c1, r2, c2 = int(r1), int(c1), int(r2), int(c2)
+    if r2 < r1:
+        r1, r2 = r2, r1
+    if c2 < c1:
+        c1, c2 = c2, c1
+    g = grid(tbl)
+    # расширяем до границ задетых объединений
+    changed = True
+    while changed:
+        changed = False
+        for r in range(r1, r2 + 1):
+            for s in g[r]:
+                if s.end <= c1 or s.start > c2:
+                    continue
+                o = origin(g, r, s.start)
+                h = region(g, o) if o.vm == "restart" else 1
+                nr1, nc1, nr2, nc2 = min(r1, o.row), min(c1, o.start), max(r2, o.row + h - 1), max(c2, o.end - 1)
+                if (nr1, nc1, nr2, nc2) != (r1, c1, r2, c2):
+                    r1, c1, r2, c2 = nr1, nc1, nr2, nc2
+                    changed = True
+    first = None
+    for r in range(r1, r2 + 1):
+        inside = [s for s in g[r] if s.start >= c1 and s.end <= c2 + 1]
+        if not inside or inside[0].start != c1 or inside[-1].end != c2 + 1:
+            raise ValueError("строка %d не покрывает столбцы %d–%d целиком" % (r, c1, c2))
+        head = inside[0]
+        if first is None:
+            first = head
+        if head is not first:
+            _move_content(head.tc, first.tc)
+            for el in list(head.tc):
+                if el.tag != w("tcPr"):
+                    head.tc.remove(el)
+            head.tc.append(etree.Element(w("p")))
+        for s in inside[1:]:
+            _move_content(s.tc, first.tc)
+            s.tc.getparent().remove(s.tc)
+        set_span(head.tc, c2 - c1 + 1)
+        if r2 > r1:
+            set_vmerge(head.tc, "restart" if r == r1 else "continue")
+        else:
+            set_vmerge(head.tc, None)
+    # пустые абзацы-заглушки после переноса текста убираем
+    ps = first.tc.findall(w("p"))
+    if len(ps) > 1:
+        for p in ps:
+            if len(first.tc.findall(w("p"))) > 1 and not ooxml.plain_text(p).strip() and p.find(".//" + w("drawing")) is None:
+                first.tc.remove(p)
+    _finish(letter, tbl)
+    return "ячейки %d,%d–%d,%d объединены" % (r1, c1, r2, c2)
+
 
 def unmerge(letter, table, row, col):
     tbl = _tbl(letter, table)

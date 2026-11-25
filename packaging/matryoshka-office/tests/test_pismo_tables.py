@@ -103,6 +103,16 @@ class RowsColumns(unittest.TestCase):
         check_grid(self, L.tables()[0])
         roundtrip(self, L)
 
+    def test_merge_collects_text_and_expands(self):
+        L = new_table([["a", "b", "c"], ["d", "e", "f"], ["g", "h", "i"]])
+        T.merge(L, 0, 0, 1, 0, 2)          # b+c
+        T.merge(L, 0, 0, 0, 1, 1)          # задевает b+c → расширяется до 0,0–1,2
+        d = T.describe(L, 0)
+        self.assertIn([0, 0, 1, 2], d["merges"])
+        self.assertEqual(d["cells"][0][0], "a\nb\nc\nd\ne\nf")
+        check_grid(self, L.tables()[0])
+        roundtrip(self, L)
+
     def test_distribute_and_heights(self):
         L = new_table([["a", "b", "c"], ["1", "2", "3"]])
         L.set_column_widths(0, [10, 50, 100])
@@ -248,6 +258,60 @@ class Tools(unittest.TestCase):
             self.assertNotIn("ошибка", str(res).lower(), name)
         check_grid(self, L.tables()[0])
         roundtrip(self, L)
+
+
+class Ui(unittest.TestCase):
+    def test_table_menu_on_page(self):
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PyQt6.QtWidgets import QApplication, QMenu
+        from matryoshka_office.session import Session
+        from matryoshka_office.ui import MainWindow
+        app = QApplication.instance() or QApplication([])
+        L = new_table([["Имя", "Сумма"], ["Б", "20"], ["А", "10"]])
+        win = MainWindow(Session(L))
+        area = win.view
+        canvas = area.canvas
+        cell_p = T.grid(L.tables()[0])[1][1].tc.find(w("p"))
+        canvas.caret = (cell_p, "word/document.xml", 0)
+        captured = {}
+
+        def fake_exec(menu, *a):
+            captured["menu"] = menu
+            return None
+        old = QMenu.exec
+        QMenu.exec = fake_exec
+        try:
+            def run(*path):
+                area._table_menu()
+                menu = captured["menu"]
+                for title in path:
+                    act = next(a for a in menu.actions() if a.text() == title)
+                    if act.menu() is not None:
+                        menu = act.menu()
+                    else:
+                        act.trigger()
+            run("Вставить", "Строку ниже")
+            self.assertEqual(T.describe(L, 0)["rows"], 4)
+            canvas.caret = (T.grid(L.tables()[0])[0][1].tc.find(w("p")), "word/document.xml", 0)
+            run("Вставить", "Столбец справа")
+            self.assertEqual(T.describe(L, 0)["cols"], 3)
+            canvas.caret = (T.grid(L.tables()[0])[0][1].tc.find(w("p")), "word/document.xml", 0)
+            run("Сортировать по убыванию")
+            canvas.caret = (T.grid(L.tables()[0])[0][0].tc.find(w("p")), "word/document.xml", 0)
+            run("Оформление", "Матрёшка")
+            canvas.caret = (T.grid(L.tables()[0])[0][2].tc.find(w("p")), "word/document.xml", 0)
+            run("Удалить", "Столбцы")
+            self.assertEqual(T.describe(L, 0)["cols"], 2)
+            if canvas.caret is not None:  # курсор не остался в удалённом столбце
+                self.assertIs(canvas.caret[0].getroottree().getroot(), L.xml("word/document.xml"))
+            self.assertEqual([r[1] for r in T.describe(L, 0)["cells"]], ["Сумма", "20", "10", ""])
+            win.session.undo()
+            self.assertEqual(T.describe(win.session.doc if hasattr(win.session.doc, "tables") else L, 0)["cols"], 3)
+        finally:
+            QMenu.exec = old
+        check_grid(self, L.tables()[0])
+        win.close()
 
 
 class Fixes(unittest.TestCase):

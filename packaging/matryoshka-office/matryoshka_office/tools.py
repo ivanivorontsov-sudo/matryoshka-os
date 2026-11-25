@@ -713,6 +713,7 @@ _TABLE_TOOLS = {
     "table_insert_column": ("insert_column", None, "вставить столбцы: {table, col, where?, count?, width_mm?, keep_width?} — where right/left; ширина таблицы по умолчанию сохраняется"),
     "table_delete_column": ("delete_column", None, "удалить столбцы: {table, col, count?, keep_width?}"),
     "table_split_cell": ("split_cell", {"rows": "rows_n", "cols": "cols_n"}, "разбить ячейку: {table, row, col, rows?, cols?}"),
+    "table_merge": ("merge", None, "объединить прямоугольник ячеек с переносом текста: {table, r1, c1, r2, c2}"),
     "table_unmerge": ("unmerge", None, "снять объединение ячейки: {table, row, col}"),
     "table_distribute_columns": ("distribute_columns", None, "выровнять ширину столбцов: {table, first?, last?}"),
     "table_distribute_rows": ("distribute_rows", None, "выровнять высоту строк: {table, height_mm?}"),
