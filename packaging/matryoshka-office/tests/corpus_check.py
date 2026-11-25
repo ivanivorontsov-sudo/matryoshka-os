@@ -111,6 +111,15 @@ def check_pptx(raw, layout=False):
     if dup:
         D.duplicate_slide(0)
         D.move_slide(n + 1, 0)
+        from matryoshka_office import slideops
+        for i, slide in enumerate(D.prs.slides):
+            found = slideops.tables(slide)
+            if found:
+                D.table_rows(i, 1, 1, found[0])
+                D.table_cols(i, 1, 1, found[0])
+                D.table_rows(i, 0, 1, found[0], delete=True)
+                notes.append("таблица на слайде %d: строки/столбцы" % (i + 1))
+                break
     out = D.save_bytes()
     again = Deck.from_bytes(out)
     want = n + 1 + (1 if dup else 0)

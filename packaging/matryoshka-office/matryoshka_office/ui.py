@@ -10,7 +10,7 @@ from PyQt6.QtGui import QColor, QFont, QAction, QBrush, QPen, QTextCharFormat, Q
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QDockWidget, QFileDialog, QFormLayout, QFrame,
     QGraphicsRectItem, QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout,
-    QInputDialog, QLabel, QLineEdit, QListWidget, QMainWindow, QMessageBox, QPushButton, QScrollArea,
+    QInputDialog, QLabel, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPushButton, QScrollArea,
     QSplitter, QStatusBar, QTabWidget, QTableWidget, QTableWidgetItem, QTextBrowser,
     QTextEdit, QToolBar, QVBoxLayout, QWidget,
 )
@@ -347,7 +347,7 @@ class BookView(QWidget):
         try:
             self.window.session.snapshot()
             msg = fn()
-        except (ValueError, KeyError, IndexError) as exc:
+        except (ValueError, KeyError, IndexError, RuntimeError) as exc:
             QMessageBox.warning(self, "Таблицы", str(exc))
             return
         self.reload()
@@ -443,6 +443,8 @@ class DeckView(QWidget):
         layout.addWidget(split)
         self.list = QListWidget()
         self.list.currentRowChanged.connect(self._go)
+        self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list.customContextMenuRequested.connect(self._slide_menu)
         self.scene = QGraphicsScene()
         self.view = QGraphicsView(self.scene)
         self.view.setBackgroundBrush(QBrush(QColor("#1A0A0E")))
@@ -479,6 +481,48 @@ class DeckView(QWidget):
             self.list.setCurrentRow(0)
         self.loading = False
         self._paint()
+
+    def run(self, fn, index=None):
+        """Правка колоды из меню: шаг отмены, перерисовка, итог в строке состояния."""
+        try:
+            self.window.session.snapshot()
+            msg = fn()
+        except (ValueError, KeyError, IndexError, RuntimeError) as exc:
+            QMessageBox.warning(self, "Презентации", str(exc))
+            return
+        if index is not None:
+            self.index = index
+        self.reload()
+        if self.window.statusBar() and msg:
+            self.window.statusBar().showMessage(str(msg), 6000)
+
+    def _slide_menu(self, pos):
+        from . import slideops
+        doc = target(self.window.session.doc)
+        row = self.list.indexAt(pos).row()
+        if row < 0:
+            row = self.list.currentRow()
+        if row < 0:
+            return
+        self.index = row
+        last = len(doc.prs.slides) - 1
+        menu = QMenu(self)
+        menu.addAction("Дублировать слайд", lambda: self.run(lambda: doc.duplicate_slide(row), row + 1))
+        up = menu.addAction("Переместить выше", lambda: self.run(lambda: doc.move_slide(row, row - 1), row - 1))
+        up.setEnabled(row > 0)
+        down = menu.addAction("Переместить ниже", lambda: self.run(lambda: doc.move_slide(row, row + 1), row + 1))
+        down.setEnabled(row < last)
+        if slideops.tables(doc._slide(row)):
+            sub = menu.addMenu("Таблица на слайде")
+            for text, fn in (("Добавить строку в конец", lambda: doc.table_rows(row, 10 ** 6)),
+                             ("Удалить последнюю строку", lambda: doc.table_rows(row, 10 ** 6, delete=True)),
+                             ("Добавить столбец справа", lambda: doc.table_cols(row, 10 ** 6)),
+                             ("Удалить последний столбец", lambda: doc.table_cols(row, 10 ** 6, delete=True))):
+                sub.addAction(text, lambda f=fn: self.run(f, row))
+        menu.addSeparator()
+        menu.addAction("Удалить слайд", lambda: self.run(lambda: doc.delete_slide(row), max(0, row - 1)))
+        menu.exec(self.list.viewport().mapToGlobal(pos))
+        return menu
 
     def _go(self, row):
         if row < 0 or self.loading:

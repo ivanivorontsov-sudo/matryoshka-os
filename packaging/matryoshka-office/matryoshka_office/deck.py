@@ -87,7 +87,9 @@ class Deck:
 
     def add_slide(self, layout="заголовок и текст", title="", body=""):
         index = LAYOUTS.get(str(layout).lower(), layout if isinstance(layout, int) else 1)
-        slide = self.prs.slides.add_slide(self.prs.slide_layouts[int(index)])
+        layouts = self.prs.slide_layouts
+        # у чужих шаблонов макетов бывает меньше семи — берём ближайший существующий
+        slide = self.prs.slides.add_slide(layouts[min(int(index), len(layouts) - 1)])
         title_shape = slide.shapes.title
         if title and title_shape is not None:
             title_shape.text = title
@@ -237,6 +239,33 @@ class Deck:
         del self.prs.slides._sldIdLst[int(index)]
         self.dirty = True
         return "слайд удалён"
+
+    def duplicate_slide(self, index, to=None):
+        from . import slideops
+        self._slide(index)
+        pos = slideops.duplicate_slide(self.prs, index, to)
+        self.dirty = True
+        return "копия слайда %d — слайд %d" % (int(index) + 1, pos + 1)
+
+    def move_slide(self, old, new):
+        from . import slideops
+        pos = slideops.move_slide(self.prs, old, new)
+        self.dirty = True
+        return "слайд перенесён на место %d" % (pos + 1)
+
+    def table_rows(self, index, at, count=1, shape=None, delete=False):
+        from . import slideops
+        frame = slideops.find_table(self._slide(index), shape)
+        (slideops.delete_row if delete else slideops.insert_row)(frame, at, count)
+        self.dirty = True
+        return "строки таблицы %s" % ("удалены" if delete else "вставлены")
+
+    def table_cols(self, index, at, count=1, shape=None, delete=False):
+        from . import slideops
+        frame = slideops.find_table(self._slide(index), shape)
+        (slideops.delete_column if delete else slideops.insert_column)(frame, at, count)
+        self.dirty = True
+        return "столбцы таблицы %s" % ("удалены" if delete else "вставлены")
 
     def _slide(self, index):
         index = int(index)

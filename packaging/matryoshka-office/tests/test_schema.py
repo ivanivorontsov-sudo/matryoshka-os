@@ -99,6 +99,13 @@ class Schema(unittest.TestCase):
         D.add_table(0, 2, 2, [["a", "b"], ["1", "2"]])
         D.set_transition(0, "fade")
         D.add_animation(0, 0, "fade")
+        D.set_notes(0, "заметка")
+        D.duplicate_slide(0)
+        D.move_slide(1, 0)
+        D.table_rows(0, 1, 2)
+        D.table_cols(0, 0, 1)
+        D.table_rows(0, 0, 1, delete=True)
+        D.table_cols(0, 2, 1, delete=True)
         self.assertClean(D.save_bytes())
 
 

@@ -88,7 +88,13 @@ def new_errors(before, after):
     a, b = errors(before), errors(after)
     found = {}
     for part, errs in b.items():
-        extra = errs - a.get(part, set())
+        base = a.get(part)
+        if base is None:
+            # новая часть (например, копия слайда или диаграммы) — сравниваем с частями того же каталога:
+            # ошибки, унаследованные от оригинала, — не наши
+            folder = part.rsplit("/", 1)[0]
+            base = set().union(*[v for k, v in a.items() if k.rsplit("/", 1)[0] == folder])
+        extra = errs - base
         if extra:
             found[part] = sorted(extra)
     return found

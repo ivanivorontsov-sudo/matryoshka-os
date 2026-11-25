@@ -86,6 +86,10 @@ TOOLS = {
     "add_animation": "анимация появления фигуры: {index, shape?, effect?}",
     "set_theme": "тема презентации: {name} — матрёшка, море, бумага, ночь",
     "delete_slide": "удалить слайд: {index}",
+    "duplicate_slide": "копия слайда с картинками, диаграммами, анимацией и заметками: {index, to?}",
+    "move_slide": "переставить слайд: {index, to}",
+    "slide_table_rows": "строки таблицы на слайде: {index, at, count?, shape?, delete?} — объединения растягиваются/сжимаются",
+    "slide_table_cols": "столбцы таблицы на слайде: {index, at, count?, shape?, delete?} — ширина таблицы сохраняется",
     "set_macro": "записать макрос Матрёшка-скрипта: {name, source}",
     "run_macro": "выполнить макрос: {name}",
     "translate_vba": "перевести текст VBA в Матрёшка-скрипт и записать: {source, name?}",
@@ -450,6 +454,26 @@ def _del_slide(doc, a):
     return doc.delete_slide(a["index"])
 
 
+def _dup_slide(doc, a):
+    _need(doc, "deck")
+    return doc.duplicate_slide(a["index"], a.get("to"))
+
+
+def _move_slide(doc, a):
+    _need(doc, "deck")
+    return doc.move_slide(a["index"], a["to"])
+
+
+def _slide_rows(doc, a):
+    _need(doc, "deck")
+    return doc.table_rows(a["index"], a["at"], a.get("count", 1), a.get("shape"), bool(a.get("delete")))
+
+
+def _slide_cols(doc, a):
+    _need(doc, "deck")
+    return doc.table_cols(a["index"], a["at"], a.get("count", 1), a.get("shape"), bool(a.get("delete")))
+
+
 def _set_macro(doc, a):
     return macros.set_script(doc, a["name"], a.get("source", ""))
 
@@ -681,6 +705,10 @@ _DISPATCH = {
     "add_animation": _anim,
     "set_theme": _theme,
     "delete_slide": _del_slide,
+    "duplicate_slide": _dup_slide,
+    "move_slide": _move_slide,
+    "slide_table_rows": _slide_rows,
+    "slide_table_cols": _slide_cols,
     "set_macro": _set_macro,
     "run_macro": _run_macro,
     "translate_vba": _translate,
