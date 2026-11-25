@@ -84,6 +84,8 @@ def check_xlsx(raw, layout=False):
     notes = []
     B = Book.from_bytes(raw)
     notes.append("без правок: %s" % ("байт в байт" if B.save_bytes() == raw else "переписан"))
+    if hasattr(B, "pivots") and B.pivots():
+        notes.append(B.refresh_pivots())
     ws = B.sheet()
     B.set_cell("A1", "Матрёшка", ws.title)
     if hasattr(B, "insert_rows"):

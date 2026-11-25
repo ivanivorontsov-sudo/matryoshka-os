@@ -26,7 +26,7 @@ class Book:
         self.raw = raw
         self.dirty = False
         self.cache = {}
-        self.wb = load_workbook(io.BytesIO(raw), keep_vba=_has(raw, "xl/vbaProject.bin"))
+        self.wb = load_workbook(io.BytesIO(raw), keep_vba=_has(raw, "xl/vbaProject.bin"), rich_text=True)
         self.macros = _read_macros(raw)
 
     @classmethod
@@ -52,6 +52,8 @@ class Book:
     def save_bytes(self):
         if not self.dirty:
             return getattr(self, "source", self.raw)
+        from .sheetplus import prefix_workbook
+        prefix_workbook(self.wb)
         buf = io.BytesIO()
         self.wb.save(buf)
         data = merge_preserve(self.raw, buf.getvalue())
@@ -282,6 +284,42 @@ class Book:
         self.dirty = True
         self.cache.pop(name, None)
         return "сводная «%s»: %d ключей" % (name, len(keys))
+
+    def remove_duplicates(self, ref, columns=None, header=True, sheet=None, match_case=False):
+        from . import sheetplus
+        return sheetplus.remove_duplicates(self, ref, columns, header, sheet, match_case)
+
+    def audit(self, sheet=None):
+        from . import sheetplus
+        return sheetplus.audit(self, sheet)
+
+    def analyze(self, kind, refs, sheet=None, dest=None, **opts):
+        from . import sheetplus
+        kind = str(kind).casefold()
+        refs = [refs] if isinstance(refs, str) else list(refs)
+        if kind in ("описательная", "describe", "статистика"):
+            return sheetplus.describe(self, refs, sheet, dest)
+        if kind in ("корреляция", "correlation", "correl"):
+            return sheetplus.correlation(self, refs, sheet, dest)
+        if kind in ("t-тест", "ttest", "t-test", "т-тест"):
+            return sheetplus.ttest(self, refs[0], refs[1], sheet, dest, bool(opts.get("paired")), bool(opts.get("equal_var")))
+        if kind in ("anova", "дисперсионный"):
+            return sheetplus.anova(self, refs, sheet, dest)
+        if kind in ("регрессия", "regression"):
+            return sheetplus.regression(self, refs[0], refs[1:], sheet, dest)
+        raise ValueError("анализ «%s» не знаю: описательная, корреляция, t-тест, anova, регрессия" % kind)
+
+    def pivot_table(self, source, rows, values, cols=None, dest=None, sheet=None, agg="sum", at="A3"):
+        from . import pivot
+        return pivot.create(self, source, rows, values, cols, dest, sheet, agg, at)
+
+    def refresh_pivots(self, sheet=None):
+        from . import pivot
+        return pivot.refresh(self, sheet)
+
+    def pivots(self):
+        from . import pivot
+        return pivot.describe(self)
 
     def add_validation(self, ref, values, sheet=None):
         ws = self.sheet(sheet)

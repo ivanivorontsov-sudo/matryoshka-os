@@ -327,10 +327,14 @@ def delete_cols(book, at, count=1, sheet=None):
 
 # ---------------------------------------------------------------- сортировка
 
-def _sort_key(v, desc):
+def _sort_key(v, desc, order=None):
     """Порядок Excel: числа (и даты) < текст < логические < ошибки; пустые всегда в конце."""
     if v is None or v == "":
         return (1, 0, 0)
+    if order is not None:
+        pos = order.get(str(v).strip().casefold().replace("ё", "е").rstrip("."))
+        if pos is not None:
+            return (0, 0, -pos) if desc else (0, 0, pos)
     if isinstance(v, bool):
         group, val = 3, v
     elif isinstance(v, (int, float)):
@@ -373,7 +377,7 @@ def sort_range(book, ref, key, descending=False, header=True, sheet=None, keys=N
     if header:
         r1 += 1
     levels = keys or [(key, descending)]
-    levels = [(_col(k), bool(d)) for k, d in levels]
+    levels = [(_col(lv[0]), bool(lv[1]), custom_order(lv[2]) if len(lv) > 2 else None) for lv in levels]
     for m in ws.merged_cells.ranges:
         if m.min_row <= r2 and m.max_row >= r1 and m.min_col <= c2 and m.max_col >= c1:
             raise ValueError("в диапазоне есть объединённые ячейки %s — снимите объединение" % m.coord)
@@ -384,11 +388,11 @@ def sort_range(book, ref, key, descending=False, header=True, sheet=None, keys=N
             cell = ws.cell(r, c)
             cells.append((cell.value, cell._style, cell.hyperlink, cell.comment, cell.number_format))
         shown = {}
-        for col, _d in levels:
+        for col, _d, _o in levels:
             shown[col] = book.display(ws.cell(r, col).coordinate, ws.title)
         rows.append((r, cells, shown))
-    for col, desc in reversed(levels):
-        rows.sort(key=lambda item: _sort_key(item[2][col], desc))
+    for col, desc, order in reversed(levels):
+        rows.sort(key=lambda item: _sort_key(item[2][col], desc, order))
     for i, (src_row, cells, _shown) in enumerate(rows):
         dst_row = r1 + i
         for j, (value, style, link, comment, fmt) in enumerate(cells):
@@ -401,7 +405,7 @@ def sort_range(book, ref, key, descending=False, header=True, sheet=None, keys=N
             cell.comment = comment
     book.dirty = True
     book.cache.clear()
-    return "отсортировано %s по %s" % (ref, ", ".join("%s%s" % (get_column_letter(c), " ↓" if d else " ↑") for c, d in levels))
+    return "отсортировано %s по %s" % (ref, ", ".join("%s%s" % (get_column_letter(c), " ↓" if d else " ↑") for c, d, _o in levels))
 
 
 # ---------------------------------------------------------------- поиск, замена, ряды
@@ -483,6 +487,41 @@ MONTHS = ["Январь", "Февраль", "Март", "Апрель", "Май"
 DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 DAYS_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
+
+
+CUSTOM_LISTS = {
+    "месяцы": MONTHS + MONTHS_SHORT + ["January", "February", "March", "April", "May", "June", "July", "August",
+                                       "September", "October", "November", "December",
+                                       "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+                                       "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа",
+                                       "сентября", "октября", "ноября", "декабря"],
+    "дни": DAYS + DAYS_SHORT + ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+                                "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "кварталы": ["I квартал", "II квартал", "III квартал", "IV квартал", "Q1", "Q2", "Q3", "Q4", "1 кв", "2 кв", "3 кв", "4 кв"],
+    "приоритет": ["критический", "высокий", "средний", "низкий"],
+}
+_CYCLE = {"месяцы": 12, "дни": 7, "кварталы": 4}
+
+
+def custom_order(spec):
+    if spec is None:
+        return None
+    if isinstance(spec, str):
+        key = spec.strip().casefold()
+        aliases = {"months": "месяцы", "month": "месяцы", "месяц": "месяцы", "days": "дни", "дни недели": "дни",
+                   "quarters": "кварталы", "priority": "приоритет"}
+        key = aliases.get(key, key)
+        if key in CUSTOM_LISTS:
+            items, cycle = CUSTOM_LISTS[key], _CYCLE.get(key)
+        else:
+            items, cycle = [x.strip() for x in spec.split(",") if x.strip()], None
+    else:
+        items, cycle = list(spec), None
+    order = {}
+    for i, item in enumerate(items):
+        k = str(item).strip().casefold().replace("ё", "е").rstrip(".")
+        order.setdefault(k, i % cycle if cycle else i)
+    return order
 
 
 def _series(seed, step):

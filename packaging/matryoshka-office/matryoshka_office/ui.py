@@ -303,6 +303,9 @@ class BookView(QWidget):
             b.setToolTip(tip)
             b.clicked.connect(slot)
             bar.addWidget(b)
+        self.data_button = QPushButton("Данные ▾")
+        self.data_button.setMenu(self._data_menu())
+        bar.addWidget(self.data_button)
         layout.addLayout(bar)
         self.chart_host = QHBoxLayout()
         layout.addLayout(self.chart_host)
@@ -378,7 +381,8 @@ class BookView(QWidget):
         self.addr.setText(addr)
         cell = target(self.window.session.doc).wb[sheet]._cells.get((row + 1, col + 1))
         value = cell.value if cell is not None else None
-        self.formula.setText("" if value is None else str(value))
+        from .sheetplus import strip_prefixes
+        self.formula.setText("" if value is None else strip_prefixes(str(value)))
 
     def _current(self):
         grid = self.tabs.currentWidget()
@@ -394,6 +398,153 @@ class BookView(QWidget):
             return
         addr = "%s%d" % (_col(idx.column() + 1), idx.row() + 1)
         self.run(lambda: target(self.window.session.doc).set_cell(addr, self.formula.text(), sheet))
+
+    def _data_menu(self):
+        menu = QMenu(self)
+        menu.addAction("Сводная таблица…", self._pivot_dialog)
+        menu.addAction("Обновить сводные", lambda: self.run(lambda: target(self.window.session.doc).refresh_pivots()))
+        menu.addSeparator()
+        menu.addAction("Удалить дубликаты", self._dedupe)
+        sort = menu.addMenu("Сортировать по списку")
+        for name in ("месяцы", "дни", "кварталы", "приоритет"):
+            sort.addAction(name.capitalize(), lambda n=name: self._sort_custom(n))
+        menu.addSeparator()
+        menu.addAction("Проверка формул (аудит)", self._audit)
+        stats = menu.addMenu("Анализ данных")
+        for text, kind in (("Описательная статистика", "описательная"), ("Корреляция", "корреляция"),
+                           ("Регрессия (первый столбец — Y)", "регрессия"), ("t-тест (два столбца)", "t-тест"),
+                           ("Дисперсионный анализ (ANOVA)", "anova")):
+            stats.addAction(text, lambda k=kind: self._analysis(k))
+        menu.addSeparator()
+        hl = menu.addAction("Подсвечивать строку и столбец")
+        hl.setCheckable(True)
+        hl.setChecked(True)
+        hl.toggled.connect(self._highlight)
+        self.highlight_action = hl
+        return menu
+
+    def _highlight(self, on):
+        for grid in self.grids.values():
+            grid.highlight = on
+            grid.viewport().update()
+
+    def _selection(self):
+        grid, sheet = self._current()
+        if grid is None:
+            return None, None, None
+        idx = [i for i in grid.selectionModel().selectedIndexes() if i.isValid()]
+        if len(idx) > 1:
+            r1, r2 = min(i.row() for i in idx) + 1, max(i.row() for i in idx) + 1
+            c1, c2 = min(i.column() for i in idx) + 1, max(i.column() for i in idx) + 1
+            return sheet, (c1, r1, c2, r2), grid
+        ws = target(self.window.session.doc).wb[sheet]
+        cur = grid.currentIndex()
+        r, c = (cur.row() + 1, cur.column() + 1) if cur.isValid() else (1, 1)
+        return sheet, _region(ws, r, c), grid
+
+    def _ref(self, box):
+        c1, r1, c2, r2 = box
+        return "%s%d:%s%d" % (_col(c1), r1, _col(c2), r2)
+
+    def _dedupe(self):
+        sheet, box, _g = self._selection()
+        if box is None:
+            return
+        self.run(lambda: target(self.window.session.doc).remove_duplicates(self._ref(box), sheet=sheet))
+
+    def _sort_custom(self, name):
+        sheet, box, grid = self._selection()
+        if box is None:
+            return
+        col = grid.currentIndex().column() + 1 if grid.currentIndex().isValid() else box[0]
+        col = min(max(col, box[0]), box[2])
+        self.run(lambda: target(self.window.session.doc).sort_range(self._ref(box), col, sheet=sheet, keys=[(col, False, name)]))
+
+    def _analysis(self, kind):
+        sheet, box, _g = self._selection()
+        if box is None:
+            return
+        c1, r1, c2, r2 = box
+        refs = ["%s%d:%s%d" % (_col(c), r1, _col(c), r2) for c in range(c1, c2 + 1)]
+        self.run(lambda: target(self.window.session.doc).analyze(kind, refs, sheet))
+
+    def _audit(self):
+        doc = target(self.window.session.doc)
+        got = doc.audit()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Проверка формул")
+        box = QVBoxLayout(dlg)
+        issues = got["issues"]
+        box.addWidget(QLabel("Найдено замечаний: %d. Двойной щелчок — перейти к ячейке." % len(issues) if issues else "Замечаний нет."))
+        lst = QListWidget()
+        for it in issues:
+            lst.addItem("%s!%s — %s: %s" % (it["sheet"], it["cell"], it["kind"], it["text"]))
+        if got["heaviest"]:
+            lst.addItem("— самые тяжёлые формулы —")
+            for h in got["heaviest"]:
+                lst.addItem("%s — %d ячеек: %s" % (h["cell"], h["cells"], h["formula"]))
+        lst.itemDoubleClicked.connect(lambda item: (self._goto(item.text().split(" ")[0]), dlg.accept()))
+        box.addWidget(lst)
+        dlg.resize(720, 420)
+        self.audit_dialog = dlg
+        dlg.show()
+        return got
+
+    def _goto(self, ref):
+        if "!" not in ref:
+            return
+        from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
+        sheet, addr = ref.rsplit("!", 1)
+        try:
+            col, row = coordinate_from_string(addr)
+        except Exception:  # noqa: BLE001
+            return
+        for i in range(self.tabs.count()):
+            if self.tabs.tabText(i) == sheet:
+                self.tabs.setCurrentIndex(i)
+                grid = self.grids.get(sheet)
+                if grid is not None:
+                    grid.setCurrentIndex(grid.model().index(row - 1, column_index_from_string(col) - 1))
+
+    def _pivot_dialog(self, accept=None):
+        from . import pivot
+        sheet, box, _g = self._selection()
+        if box is None:
+            return None
+        doc = target(self.window.session.doc)
+        ref = self._ref(box)
+        try:
+            _ws, _ref, headers, _rows = pivot.read_source(doc, ref, sheet)
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Сводная таблица", str(exc))
+            return None
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Сводная таблица из %s!%s" % (sheet, ref))
+        form = QFormLayout(dlg)
+        rows, cols, vals, agg = QComboBox(), QComboBox(), QComboBox(), QComboBox()
+        rows.addItems(headers)
+        cols.addItems(["(нет)"] + headers)
+        vals.addItems(headers)
+        vals.setCurrentIndex(len(headers) - 1)
+        agg.addItems(["сумма", "количество", "среднее", "максимум", "минимум"])
+        form.addRow("Строки", rows)
+        form.addRow("Столбцы", cols)
+        form.addRow("Значения", vals)
+        form.addRow("Итог", agg)
+        ok = QPushButton("Создать")
+        ok.clicked.connect(dlg.accept)
+        form.addRow(ok)
+        self.pivot_form = (rows, cols, vals, agg)
+        if accept is not None:
+            accept(self.pivot_form)
+            result = QDialog.DialogCode.Accepted
+        else:
+            result = dlg.exec()
+        if result != QDialog.DialogCode.Accepted:
+            return None
+        col = None if cols.currentIndex() == 0 else cols.currentText()
+        self.run(lambda: doc.pivot_table(ref, rows.currentText(), [(vals.currentText(), agg.currentText())], col, sheet=sheet))
+        return True
 
     def _fill(self):
         grid, sheet = self._current()
@@ -431,6 +582,32 @@ class BookView(QWidget):
                 grid = self.grids.get(sheet)
                 if grid is not None:
                     grid.setCurrentIndex(grid.model().index(row - 1, column_index_from_string(col) - 1))
+
+
+def _region(ws, r, c):
+    def filled(rr, cc):
+        cell = ws._cells.get((rr, cc))
+        return cell is not None and cell.value not in (None, "")
+    if not filled(r, c):
+        return (1, 1, max(1, ws.max_column or 1), max(1, ws.max_row or 1))
+    r1 = r2 = r
+    c1 = c2 = c
+    changed = True
+    while changed:
+        changed = False
+        if r1 > 1 and any(filled(r1 - 1, x) for x in range(c1, c2 + 1)):
+            r1 -= 1
+            changed = True
+        if any(filled(r2 + 1, x) for x in range(c1, c2 + 1)):
+            r2 += 1
+            changed = True
+        if c1 > 1 and any(filled(y, c1 - 1) for y in range(r1, r2 + 1)):
+            c1 -= 1
+            changed = True
+        if any(filled(y, c2 + 1) for y in range(r1, r2 + 1)):
+            c2 += 1
+            changed = True
+    return (c1, r1, c2, r2)
 
 
 class DeckView(QWidget):
@@ -722,10 +899,7 @@ class MainWindow(QMainWindow):
         self.refresh()
 
     def _pivot(self):
-        self.session.snapshot()
-        doc = target(self.session.doc)
-        doc.create_pivot(doc.wb.active.title, 1, 2)
-        self.refresh()
+        self.view._pivot_dialog()
 
     def _calc(self):
         target(self.session.doc).evaluate()

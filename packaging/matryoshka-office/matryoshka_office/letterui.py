@@ -109,6 +109,8 @@ class LetterArea(QWidget):
             ("Примечание", "Примечание на полях", self._comment),
             ("Оглавление", "Собрать оглавление", self._toc),
             ("Рассылка", "Слияние с таблицей xlsx/csv", self._merge),
+            ("Статистика", "Слова, знаки, абзацы и страницы; для выделения — отдельно", self._stats),
+            ("Убрать пустые страницы", "Найти пустые страницы и убрать лишние абзацы и разрывы", self._blank_pages),
         ):
             b = QPushButton(text)
             b.setToolTip(tip)
@@ -162,9 +164,50 @@ class LetterArea(QWidget):
         self._status()
 
     def _status(self):
+        from . import wtools
         n = len(self.canvas.pages)
         ms = getattr(self.canvas, "layout_ms", 0)
-        self.window.statusBar().showMessage("Страниц: %d · вёрстка %.0f мс · Матрёшка Офис без телеметрии" % (n, ms)) if self.window.statusBar() else None
+        try:
+            self.word_stats = wtools.statistics(self.doc, None, notes=False)
+        except Exception:  # noqa: BLE001
+            self.word_stats = None
+        self._status_line(n, ms)
+
+    def _status_line(self, n=None, ms=None):
+        from . import wtools
+        n = len(self.canvas.pages) if n is None else n
+        ms = getattr(self.canvas, "layout_ms", 0) if ms is None else ms
+        words = ""
+        stats = getattr(self, "word_stats", None)
+        if stats is not None:
+            sel = self.canvas.selected_text() if self.canvas.selection() is not None else None
+            shown = dict(stats)
+            if sel:
+                shown["selection"] = wtools.count_text(sel)
+            words = " · " + wtools.summary(shown)
+        self.status_text = "Страниц: %d%s · вёрстка %.0f мс · Матрёшка Офис без телеметрии" % (n, words, ms)
+        if self.window.statusBar():
+            self.window.statusBar().showMessage(self.status_text)
+
+    def _stats(self):
+        sel = self.canvas.selected_text() if self.canvas.selection() is not None else None
+        st = self.doc.statistics(sel)
+        lines = ["Страниц: %d" % len(self.canvas.pages), "Слов: %d" % st["words"],
+                 "Знаков (без пробелов): %d" % st["chars_no_spaces"], "Знаков (с пробелами): %d" % st["chars"],
+                 "Абзацев: %d" % st["paragraphs"], "Слов со сносками: %d" % st.get("words_with_notes", st["words"])]
+        if sel:
+            s = st["selection"]
+            lines.append("")
+            lines.append("В выделении: слов %d, знаков %d (без пробелов %d)" % (s["words"], s["chars"], s["chars_no_spaces"]))
+        self.stats_text = "\n".join(lines)
+        box = QMessageBox(QMessageBox.Icon.Information, "Статистика", self.stats_text, parent=self)
+        box.setModal(False)
+        box.show()
+        self.stats_box = box
+        return st
+
+    def _blank_pages(self):
+        self._tab_do(lambda: self.doc.remove_blank_pages(), True)
 
     def _changed(self):
         self._status()
@@ -173,6 +216,7 @@ class LetterArea(QWidget):
         c = self.canvas.caret
         if c is None:
             return
+        self._status_line()
         info = wedit.run_props_at(c[0], max(0, c[2]))
         ppr = c[0].find(wedit.w("pPr"))
         sid = "Normal"

@@ -1144,6 +1144,14 @@ class Letter:
         self.touch("word/document.xml")
         return "перенос строки запрещён" if on else "перенос строки разрешён"
 
+    def statistics(self, selection=None):
+        from . import wtools
+        return wtools.statistics(self, selection)
+
+    def remove_blank_pages(self):
+        from . import wtools
+        return wtools.remove_blank_pages(self)
+
     def set_page_numbers(self, section=0, template="{PAGE}", align="center", where="footer", start=None, fmt=None):
         """Колонтитул с полями: {PAGE} — номер страницы, {NUMPAGES} — всего страниц."""
         self._set_hf(where, "", section)

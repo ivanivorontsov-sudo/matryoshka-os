@@ -188,7 +188,7 @@ class Ui(unittest.TestCase):
         from PyQt6.QtWidgets import QApplication, QMenu
         from matryoshka_office.session import Session
         from matryoshka_office.ui import MainWindow
-        QApplication.instance() or QApplication([])
+        self.app = QApplication.instance() or QApplication([])
         D = sample()
         D.add_table(1, 2, 2, [["а", "б"], ["в", "г"]])
         win = MainWindow(Session(D))

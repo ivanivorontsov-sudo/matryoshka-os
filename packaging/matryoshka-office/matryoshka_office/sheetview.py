@@ -8,9 +8,43 @@ import datetime as _dt
 
 from PyQt6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont
-from PyQt6.QtWidgets import QAbstractItemView, QHeaderView, QMenu, QTableView
+from PyQt6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView, QMenu, QStyle, QStyledItemDelegate,
+                             QStyleOptionViewItem, QTableView)
 
 from . import numfmt
+from .sheetplus import strip_prefixes
+
+RICH_ROLE = Qt.ItemDataRole.UserRole + 1
+
+
+def rich_html(value):
+    from html import escape
+    from openpyxl.cell.rich_text import CellRichText, TextBlock
+    if not isinstance(value, CellRichText):
+        return None
+    parts = []
+    for block in value:
+        if isinstance(block, TextBlock):
+            f = block.font
+            style = []
+            if f is not None:
+                if f.b:
+                    style.append("font-weight:bold")
+                if f.i:
+                    style.append("font-style:italic")
+                if f.u:
+                    style.append("text-decoration:underline")
+                if f.strike:
+                    style.append("text-decoration:line-through")
+                col = _rgb(f.color) if f.color is not None else None
+                if col:
+                    style.append("color:%s" % col)
+                if f.sz:
+                    style.append("font-size:%spt" % round(float(f.sz) * 0.9, 1))
+            parts.append('<span style="%s">%s</span>' % (";".join(style), escape(block.text or "").replace("\n", "<br>")))
+        else:
+            parts.append(escape(str(block)).replace("\n", "<br>"))
+    return "".join(parts)
 
 OPS = {
     "greaterThan": lambda v, a, b: v > a, "lessThan": lambda v, a, b: v < a,
@@ -73,7 +107,9 @@ class SheetModel(QAbstractTableModel):
             return "", None
         v = self.book.display(cell.coordinate, self.name)
         if isinstance(v, str) and v.startswith("="):
-            return v, None
+            return strip_prefixes(v), None
+        if type(v).__name__ == "CellRichText":
+            return str(v), None
         try:
             return numfmt.format_value(v, cell.number_format or "General")
         except Exception:  # noqa: BLE001
@@ -85,9 +121,11 @@ class SheetModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.DisplayRole:
             return self.shown(r, c)[0]
         if role == Qt.ItemDataRole.EditRole:
-            return "" if cell is None or cell.value is None else str(cell.value)
+            return "" if cell is None or cell.value is None else strip_prefixes(str(cell.value))
         if cell is None:
             return None
+        if role == RICH_ROLE:
+            return rich_html(cell.value)
         if role == Qt.ItemDataRole.FontRole:
             f = cell.font
             if f is not None and (f.b or f.i or f.u or f.strike or (f.sz and f.sz != 11)):
@@ -226,6 +264,36 @@ class SheetModel(QAbstractTableModel):
                 self._cf.setdefault(rc, {"fill": mix.name()})
 
 
+class CellDelegate(QStyledItemDelegate):
+    def __init__(self, grid):
+        super().__init__(grid)
+        self.grid = grid
+
+    def paint(self, painter, option, index):
+        html = index.data(RICH_ROLE)
+        if html:
+            opt = QStyleOptionViewItem(option)
+            self.initStyleOption(opt, index)
+            opt.text = ""
+            style = opt.widget.style() if opt.widget is not None else QApplication.style()
+            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
+            from PyQt6.QtGui import QTextDocument
+            doc = QTextDocument()
+            doc.setDocumentMargin(2)
+            doc.setHtml(html)
+            painter.save()
+            painter.translate(option.rect.left(), option.rect.top() + max(0, (option.rect.height() - doc.size().height()) / 2))
+            painter.setClipRect(0, 0, option.rect.width(), option.rect.height())
+            doc.drawContents(painter)
+            painter.restore()
+        else:
+            super().paint(painter, option, index)
+        cur = self.grid.currentIndex()
+        if self.grid.highlight and cur.isValid() and (index.row() == cur.row() or index.column() == cur.column()) \
+                and index != cur:
+            painter.fillRect(option.rect, QColor(255, 201, 74, 45))
+
+
 class SheetGrid(QTableView):
     """Таблица листа: объединения, размеры строк и столбцов из файла, меню заголовков."""
 
@@ -234,6 +302,9 @@ class SheetGrid(QTableView):
         self.view = view
         self.model_ = SheetModel(book, sheet_name, self)
         self.setModel(self.model_)
+        self.highlight = True
+        self.setItemDelegate(CellDelegate(self))
+        self.selectionModel().currentChanged.connect(lambda *_a: self.viewport().update())
         self.setAlternatingRowColors(False)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setStyleSheet("QTableView { background: white; color: #2A1418; gridline-color: #D9C6B8;"
