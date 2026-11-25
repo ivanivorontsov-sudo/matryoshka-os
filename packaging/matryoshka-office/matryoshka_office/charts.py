@@ -11,6 +11,7 @@ import math
 import re
 
 from lxml import etree
+from .ooxml import parse as ooxml_parse
 
 C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -224,7 +225,7 @@ def _data_source(ser, tag, resolver, numeric):
 
 def parse(xml, resolver=None):
     """chartSpace (bytes/str/элемент) → Chart."""
-    root = xml if isinstance(xml, etree._Element) else etree.fromstring(xml if isinstance(xml, bytes) else xml.encode("utf-8"))
+    root = xml if isinstance(xml, etree._Element) else ooxml_parse(xml if isinstance(xml, bytes) else xml.encode("utf-8"))
     chart_el = root.find(_c("chart")) if root.tag != _c("chart") else root
     ch = Chart()
     style = root.find(_c("style"))

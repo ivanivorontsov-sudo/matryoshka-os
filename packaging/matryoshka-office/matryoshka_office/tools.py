@@ -689,3 +689,50 @@ _DISPATCH = {
     "read_part": _read_part,
     "replace_in_part": _replace_part,
 }
+
+
+# ---------------------------------------------------------------- таблицы «Письма» по сетке (wtabedit)
+
+def _tab(fn_name, rename=None):
+    """Инструмент над wtabedit: аргументы по именам, rename переводит короткие имена нейросети."""
+    def run(doc, args):
+        from . import wtabedit
+        _need(doc, "letter")
+        a = dict(args)
+        for src, dst in (rename or {}).items():
+            if src in a:
+                a[dst] = a.pop(src)
+        out = getattr(wtabedit, fn_name)(doc, **a)
+        return json.dumps(out, ensure_ascii=False) if isinstance(out, (dict, list)) else out
+    return run
+
+
+_TABLE_TOOLS = {
+    "table_insert_row": ("insert_row", None, "вставить строки: {table, row, where?, count?} — where below/above, объединения продолжаются"),
+    "table_delete_row": ("delete_row", None, "удалить строки: {table, row, count?} — начало объединения переезжает вниз"),
+    "table_insert_column": ("insert_column", None, "вставить столбцы: {table, col, where?, count?, width_mm?, keep_width?} — where right/left; ширина таблицы по умолчанию сохраняется"),
+    "table_delete_column": ("delete_column", None, "удалить столбцы: {table, col, count?, keep_width?}"),
+    "table_split_cell": ("split_cell", {"rows": "rows_n", "cols": "cols_n"}, "разбить ячейку: {table, row, col, rows?, cols?}"),
+    "table_unmerge": ("unmerge", None, "снять объединение ячейки: {table, row, col}"),
+    "table_distribute_columns": ("distribute_columns", None, "выровнять ширину столбцов: {table, first?, last?}"),
+    "table_distribute_rows": ("distribute_rows", None, "выровнять высоту строк: {table, height_mm?}"),
+    "table_row_height": ("set_row_height", None, "высота строки: {table, row, height_mm, rule?} — rule atLeast/exact"),
+    "table_formula": ("set_cell_formula", None, "формула ячейки (поле Word, считается сразу): {table, row, col, formula, fmt?} — =SUM(ABOVE), =B2*C2, =AVERAGE(LEFT), =СУММ(B2:B9); fmt «# ##0,00», «0%»"),
+    "table_update_formulas": ("update_formulas", None, "пересчитать формулы таблиц: {table?}"),
+    "table_sort": ("sort_rows", None, "сортировать строки: {table, col, descending?, header?, kind?} — числа, даты и русский текст распознаются сами"),
+    "text_to_table": ("text_to_table", None, "абзацы в таблицу: {first, last, sep?} — sep «\\t», «;», «,», «|»"),
+    "table_to_text": ("table_to_text", None, "таблицу в текст: {table, sep?}"),
+    "table_from_sheet": ("table_from_sheet", None, "вставить диапазон книги Excel таблицей: {after, path, ref?, sheet?, keep_formatting?}"),
+    "table_cell_valign": ("set_cell_valign", None, "вертикальное выравнивание: {table, row, col, align, row2?, col2?} — top/center/bottom"),
+    "table_cell_align": ("set_cell_align", None, "выравнивание текста ячеек: {table, row, col, align, row2?, col2?}"),
+    "table_cell_borders": ("set_cell_borders", None, "границы ячеек: {table, r1, c1, r2?, c2?, edges?, style?, size?, color?} — edges outer/inner/all/none"),
+    "table_cell_margins": ("set_cell_margins", None, "поля ячеек в мм: {table, top_mm?, left_mm?, bottom_mm?, right_mm?}"),
+    "table_align": ("set_table_align", None, "положение таблицы: {table, align, indent_mm?}"),
+    "table_style": ("style_table", None, "оформление: {table, preset?, header_rows?, banded?, first_col?, total_row?} — матрёшка, строгий, море, лес, бумага, сетка"),
+    "table_delete": ("delete_table", None, "удалить таблицу: {table}"),
+    "table_info": ("describe", None, "сетка таблицы: {table} — строки, столбцы, ширины, объединения, формулы, текст"),
+}
+for _name, (_fn, _ren, _desc) in _TABLE_TOOLS.items():
+    TOOLS[_name] = _desc
+    _DISPATCH[_name] = _tab(_fn, _ren)
+CONFIRM |= {"table_delete"}

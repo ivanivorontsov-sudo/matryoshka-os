@@ -28,8 +28,26 @@ def w(tag):
     return "{%s}%s" % (W, tag)
 
 
+# Без внешних сущностей и сети: файл из чужих рук не может прочитать диск или сходить в интернет (XXE).
+PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=True, load_dtd=False)
+
+
 def parse(data):
-    return etree.fromstring(data)
+    root = etree.fromstring(data, PARSER)
+    # DTD в OOXML запрещён (ECMA-376, часть 2). Нераскрытые ссылки на сущности выбрасываем,
+    # иначе после сохранения без DOCTYPE файл не откроется ни у нас, ни в Word.
+    for ent in [e for e in root.iter() if isinstance(e, etree._Entity)]:
+        parent = ent.getparent()
+        if parent is None:
+            continue
+        tail = ent.tail or ""
+        prev = ent.getprevious()
+        if prev is not None:
+            prev.tail = (prev.tail or "") + tail
+        else:
+            parent.text = (parent.text or "") + tail
+        parent.remove(ent)
+    return root
 
 
 def dump(el):

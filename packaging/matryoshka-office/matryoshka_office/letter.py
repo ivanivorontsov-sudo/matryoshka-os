@@ -6,6 +6,7 @@
 """
 
 import io
+import re
 from datetime import datetime, timezone
 
 from lxml import etree
@@ -97,6 +98,8 @@ class Letter:
                 continue
             root = self.xml(name)
             if root is not None and root.find(".//" + ooxml.w("tbl")) is not None and wtables.fix_all(root):
+                self.touch(name)
+            if root is not None and root.find(".//" + LEGACY_MARK) is not None and strip_legacy_marks(root):
                 self.touch(name)
         for name in list(self.dirty_trees):
             self.opc.parts[name] = ooxml.dump(self.trees[name])
@@ -219,10 +222,9 @@ class Letter:
     def set_alignment(self, index, align):
         mapping = {"лево": "left", "left": "left", "центр": "center", "center": "center",
                    "право": "right", "right": "right", "ширина": "both", "justify": "both"}
+        from .wedit import ordered_child
         ppr = ooxml.ensure_child(self._p(index), "pPr", first=True)
-        jc = ppr.find(ooxml.w("jc"))
-        if jc is None:
-            jc = etree.SubElement(ppr, ooxml.w("jc"))
+        jc = ordered_child(ppr, "jc")
         jc.set(ooxml.w("val"), mapping.get(str(align).lower(), align))
         self.touch("word/document.xml")
         return "выравнивание изменено"
@@ -270,10 +272,10 @@ class Letter:
     def _make_table(self, rows, cols, data):
         tbl = etree.Element(ooxml.w("tbl"))
         tbl_pr = etree.SubElement(tbl, ooxml.w("tblPr"))
-        self._borders(tbl_pr, "tblBorders", "4A1520", "8")
         tw = etree.SubElement(tbl_pr, ooxml.w("tblW"))
         tw.set(ooxml.w("w"), "5000")
         tw.set(ooxml.w("type"), "pct")
+        self._borders(tbl_pr, "tblBorders", "4A1520", "8")
         layout = etree.SubElement(tbl_pr, ooxml.w("tblLayout"))
         layout.set(ooxml.w("type"), "fixed")
         grid = etree.SubElement(tbl, ooxml.w("tblGrid"))
@@ -301,8 +303,11 @@ class Letter:
         return tc
 
     def _borders(self, parent, tag, color, sz):
+        from . import wtables
         borders = parent.find(ooxml.w(tag))
-        if borders is None:
+        if borders is None and tag == "tblBorders":
+            borders = wtables._child(parent, tag, wtables.TBLPR_ORDER)  # порядок схемы: после tblW/jc/tblInd
+        elif borders is None:
             borders = etree.SubElement(parent, ooxml.w(tag))
         for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
             el = borders.find(ooxml.w(edge))
@@ -330,9 +335,8 @@ class Letter:
     def set_cell_shading(self, table, row, col, color):
         tc = self._cell(table, row, col)
         tc_pr = ooxml.ensure_child(tc, "tcPr", first=True)
-        shd = tc_pr.find(ooxml.w("shd"))
-        if shd is None:
-            shd = etree.SubElement(tc_pr, ooxml.w("shd"))
+        from . import wtables
+        shd = wtables._child(tc_pr, "shd", wtables.TCPR_ORDER)
         shd.set(ooxml.w("val"), "clear")
         shd.set(ooxml.w("color"), "auto")
         shd.set(ooxml.w("fill"), color.replace("#", "").upper())
@@ -403,15 +407,12 @@ class Letter:
             if origin is None:
                 raise IndexError("нельзя объединить: ячейка %d,%d уже закрыта" % (r, c1))
             tc_pr = ooxml.ensure_child(origin, "tcPr", first=True)
+            from . import wtables
             if span > 1:
-                gs = tc_pr.find(ooxml.w("gridSpan"))
-                if gs is None:
-                    gs = etree.SubElement(tc_pr, ooxml.w("gridSpan"))
+                gs = wtables._child(tc_pr, "gridSpan", wtables.TCPR_ORDER)
                 gs.set(ooxml.w("val"), str(span))
             if height > 1:
-                vm = tc_pr.find(ooxml.w("vMerge"))
-                if vm is None:
-                    vm = etree.SubElement(tc_pr, ooxml.w("vMerge"))
+                vm = wtables._child(tc_pr, "vMerge", wtables.TCPR_ORDER)
                 vm.set(ooxml.w("val"), "restart" if r == r1 else "continue")
             for col, sp, tc in cells:
                 if tc is origin:
@@ -613,10 +614,7 @@ class Letter:
                 break
             if _has_bookmark(node, "_toc_end"):
                 break
-            if node.tag == ooxml.w("p") and _instr(node).strip().startswith("TOC"):
-                node = nxt
-                continue
-            if node.tag == ooxml.w("p") and _marked(node, "toc-entry"):
+            if node.tag == ooxml.w("p") and _marked(node, "toc-entry"):  # поле TOC и пункты собираются заново
                 parent.remove(node)
             node = nxt
         anchor = start
@@ -630,7 +628,6 @@ class Letter:
         anchor = field
         for level, text, name in headings:
             p = etree.Element(ooxml.w("p"))
-            _mark(p, "toc-entry")
             ppr = etree.SubElement(p, ooxml.w("pPr"))
             ind = etree.SubElement(ppr, ooxml.w("ind"))
             ind.set(ooxml.w("left"), str((level - 1) * 240))
@@ -924,10 +921,9 @@ class Letter:
             return "список снят"
         num_id = _ensure_list_num(numbering, "bullet" if kind in ("bullet", "маркер", "маркированный") else "decimal")
         self.touch("word/numbering.xml")
+        from .wedit import ordered_child
         ppr = ooxml.ensure_child(self._p(int(paragraph)), "pPr", first=True)
-        num = ppr.find(ooxml.w("numPr"))
-        if num is None:
-            num = etree.SubElement(ppr, ooxml.w("numPr"))
+        num = ordered_child(ppr, "numPr")
         ilvl = num.find(ooxml.w("ilvl"))
         if ilvl is None:
             ilvl = etree.SubElement(num, ooxml.w("ilvl"))
@@ -1379,23 +1375,33 @@ def _instr(p):
     return "".join(el.text or "" for el in p.iter(ooxml.w("instrText")))
 
 
+LEGACY_MARK = "{%s}matryoshka" % ooxml.W  # старые версии писали этот элемент в pPr: Word его не знает
+
+
 def _mark(p, value):
-    ppr = ooxml.ensure_child(p, "pPr", first=True)
-    mark = etree.SubElement(ppr, ooxml.w("pStyle"))
-    # pStyle может уже быть. Метка хранится отдельно, чтобы не портить стиль.
-    ppr.remove(mark)
-    tag = etree.SubElement(ppr, "{%s}matryoshka" % ooxml.W)
-    tag.set(ooxml.w("val"), value)
+    """Пункты оглавления узнаются по своему полю (TOC / HYPERLINK \\l _h…), отдельная метка не пишется:
+    чужой элемент в пространстве имён w Word считает повреждением файла."""
+    return None
 
 
 def _marked(p, value):
     ppr = p.find(ooxml.w("pPr"))
-    if ppr is None:
-        return False
-    for el in ppr:
-        if el.tag == "{%s}matryoshka" % ooxml.W and el.get(ooxml.w("val")) == value:
-            return True
+    if ppr is not None:
+        for el in ppr:
+            if el.tag == LEGACY_MARK and el.get(ooxml.w("val")) == value:
+                return True
+    if value == "toc-entry":
+        instr = _instr(p).strip()
+        return instr.startswith("TOC") or bool(re.match(r"HYPERLINK\s+\\l\s+_h\d+_\d+", instr))
     return False
+
+
+def strip_legacy_marks(root):
+    gone = 0
+    for el in list(root.iter(LEGACY_MARK)):
+        el.getparent().remove(el)
+        gone += 1
+    return gone
 
 
 def _has_bookmark(p, name):

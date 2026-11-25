@@ -269,7 +269,7 @@ def _apply_theme(data, colors):
     name = "ppt/theme/theme1.xml"
     if name not in src.namelist():
         return data
-    root = etree.fromstring(src.read(name))
+    root = ooxml.parse(src.read(name))
     for key, value in colors.items():
         node = root.find(".//{%s}%s" % (ANS, key))
         if node is None:
@@ -294,7 +294,7 @@ def _theme_name(data):
     blob = part_bytes(data, "ppt/theme/theme1.xml")
     if not blob:
         return None
-    root = etree.fromstring(blob)
+    root = ooxml.parse(blob)
     found = {}
     for key in ("accent1", "accent2"):
         node = root.find(".//{%s}%s/{%s}srgbClr" % (ANS, key, ANS))
@@ -312,8 +312,8 @@ def _slide_name(data, index):
     # python-pptx нумерует slide1.xml по порядку создания, не обязательно по индексу.
     names = sorted(n for n in z.namelist() if n.startswith("ppt/slides/slide") and n.endswith(".xml"))
     # порядок показа — в presentation.xml
-    pres = etree.fromstring(z.read("ppt/presentation.xml"))
-    rels = etree.fromstring(z.read("ppt/slides/_rels/slide1.xml.rels")) if False else etree.fromstring(z.read("ppt/_rels/presentation.xml.rels"))
+    pres = ooxml.parse(z.read("ppt/presentation.xml"))
+    rels = ooxml.parse(z.read("ppt/_rels/presentation.xml.rels"))
     rid_to_target = {el.get("Id"): el.get("Target") for el in rels}
     ids = pres.find("{%s}sldIdLst" % PNS)
     if ids is None:
@@ -335,7 +335,7 @@ def _slide_transition(data, index):
     blob = part_bytes(data, name) if name else None
     if not blob:
         return None
-    root = etree.fromstring(blob)
+    root = ooxml.parse(blob)
     node = root.find("{%s}transition" % PNS)
     if node is None:
         return None
@@ -349,7 +349,7 @@ def _slide_has_timing(data, index):
     blob = part_bytes(data, name) if name else None
     if not blob:
         return False
-    root = etree.fromstring(blob)
+    root = ooxml.parse(blob)
     return root.find("{%s}timing" % PNS) is not None
 
 
