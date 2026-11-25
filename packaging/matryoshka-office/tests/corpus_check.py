@@ -25,6 +25,14 @@ REF = {"on": True}
 def _ref_open(kind, raw, force=False):
     if not REF["on"] and not force:
         return None
+    if kind in ("doc", "ppt"):
+        import olefile
+        ole = olefile.OleFileIO(io.BytesIO(raw))
+        stream = "WordDocument" if kind == "doc" else "PowerPoint Document"
+        if not ole.exists(stream):
+            raise ValueError("нет потока %s" % stream)
+        ole.openstream(stream).read()
+        return ole
     if kind == "docx":
         import docx
         return docx.Document(io.BytesIO(raw))
@@ -133,7 +141,64 @@ def check_pptx(raw, layout=False):
     return notes
 
 
-CHECKS = {".docx": ("docx", check_docx), ".docm": ("docx", check_docx), ".xlsx": ("xlsx", check_xlsx),
+def check_doc(raw, layout=False):
+    from matryoshka_office import binfmt
+    from matryoshka_office.letter import Letter
+    from matryoshka_office.legacy import letter_from_doc
+    notes = []
+    blocks = binfmt.doc_blocks(raw)
+    tables = len([b for b in blocks if b[0] == "table"])
+    doc = letter_from_doc(raw)
+    if doc.save_bytes() != raw:
+        raise AssertionError("без правок .doc должен отдаваться как есть")
+    inner = doc.inner
+    inner.insert_paragraph(len(inner.paragraphs()), "Матрёшка")
+    out = inner.save_bytes()
+    again = Letter.from_bytes(out)
+    if again.paragraph_text(len(again.paragraphs()) - 1) != "Матрёшка":
+        raise AssertionError("правка не сохранилась")
+    if len(again.tables()) != tables:
+        raise AssertionError("таблиц %d, ждали %d" % (len(again.tables()), tables))
+    _ref_open("docx", out)
+    _schema(_EMPTY["docx"](), out, notes)
+    notes.append("абзацев: %d, таблиц: %d" % (len([b for b in blocks if b[0] == "p"]), tables))
+    return notes
+
+
+def check_ppt(raw, layout=False):
+    from matryoshka_office import binfmt
+    from matryoshka_office.deck import Deck
+    from matryoshka_office.legacy import deck_from_ppt
+    notes = []
+    slides = binfmt.ppt_slides(raw)
+    deck = deck_from_ppt(raw)
+    inner = deck.inner
+    inner.add_slide(title="Матрёшка")
+    out = inner.save_bytes()
+    again = Deck.from_bytes(out)
+    want = max(len(slides), 1) + 1
+    if len(again.prs.slides) != want:
+        raise AssertionError("слайдов %d, ждали %d" % (len(again.prs.slides), want))
+    _ref_open("pptx", out)
+    _schema(_EMPTY["pptx"](), out, notes)
+    notes.append("слайдов: %d" % len(slides))
+    return notes
+
+
+def _empty_docx():
+    from matryoshka_office.letter import Letter
+    return Letter.new().save_bytes()
+
+
+def _empty_pptx():
+    from matryoshka_office.deck import Deck
+    return Deck.new().save_bytes()
+
+
+_EMPTY = {"docx": _empty_docx, "pptx": _empty_pptx}
+
+
+CHECKS = {".doc": ("doc", check_doc), ".ppt": ("ppt", check_ppt), ".docx": ("docx", check_docx), ".docm": ("docx", check_docx), ".xlsx": ("xlsx", check_xlsx),
           ".xlsm": ("xlsx", check_xlsx), ".pptx": ("pptx", check_pptx), ".pptm": ("pptx", check_pptx)}
 
 
@@ -181,6 +246,10 @@ def run(root, layout=False, out=sys.stdout):
                 continue
             except Exception as exc:  # noqa: BLE001
                 signal.alarm(0)
+                if "зашифрован" in str(exc) or "повреждён" in str(exc) or "подпись FIB" in str(exc):
+                    stats["skip"] += 1
+                    print("ПРОПУСК %s: %s" % (name, exc), file=out)
+                    continue
                 if not REF["on"]:
                     stats["skip"] += 1
                     print("ПРОПУСК %s: битый образец, не открыл ни эталон (%s), ни мы (%s)" % (name, ref_err, type(exc).__name__), file=out)

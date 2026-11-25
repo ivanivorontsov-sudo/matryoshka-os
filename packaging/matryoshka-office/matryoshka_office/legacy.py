@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Иван Воронцов. SPDX-License-Identifier: GPL-3.0-only
 """Старые форматы OLE. Без правок файл не переписывается.
 
-.doc и .ppt не имеют открытого редактора уровня Word без LibreOffice.
-Текст из них снимается библиотекой olefile, правка продолжается уже в OOXML.
+.doc и .ppt читает свой разборщик binfmt (абзацы, заголовки, таблицы, разрывы страниц; слайды
+с заголовками и текстом), правка продолжается в OOXML и сохраняется как .docx/.pptx.
 .xls читает xlrd и записывает в книгу openpyxl.
 """
 
@@ -44,6 +44,19 @@ class LegacyFile:
 
 
 def letter_from_doc(raw):
+    from . import binfmt
+    try:
+        letter = binfmt.doc_to_letter(raw)
+    except binfmt.BinaryError as exc:
+        if "зашифрован" in str(exc):
+            raise
+        letter = _letter_from_strings(raw)
+    wrapped = LegacyFile(raw, letter, "letter")
+    letter.opc.dirty.clear()
+    return wrapped
+
+
+def _letter_from_strings(raw):
     text = ole_text(raw) or "Двоичный документ .doc. Текст не распознан, файл при сохранении без правок не изменится."
     letter = Letter.new()
     chunks = [p.strip() for p in text.split("\n") if p.strip()]
@@ -52,10 +65,7 @@ def letter_from_doc(raw):
     letter.set_paragraph_text(0, chunks[0][:5000])
     for chunk in chunks[1:40]:
         letter.insert_paragraph(len(letter.paragraphs()), chunk[:5000])
-    wrapped = LegacyFile(raw, letter, "letter")
-    # Конвертация уже изменила внутренний документ, но наружу без явной правки отдаём исходный .doc.
-    letter.opc.dirty.clear()
-    return wrapped
+    return letter
 
 
 def book_from_xls(raw):
@@ -86,12 +96,20 @@ def book_from_xls(raw):
 
 
 def deck_from_ppt(raw):
-    text = ole_text(raw)
-    deck = Deck.new()
-    slides = [p.strip() for p in text.split("\n\n") if p.strip()] or ["Двоичная презентация .ppt"]
-    for chunk in slides[:30]:
-        lines = chunk.split("\n")
-        deck.add_slide("заголовок и текст", lines[0][:120], "\n".join(lines[1:])[:2000])
+    from . import binfmt
+    try:
+        deck, _n = binfmt.ppt_to_deck(raw)
+    except binfmt.BinaryError as exc:
+        if "зашифрован" in str(exc):
+            raise
+        deck = Deck.new()
+        text = ole_text(raw)
+        slides = [p.strip() for p in text.split("\n\n") if p.strip()] or ["Двоичная презентация .ppt"]
+        for chunk in slides[:30]:
+            lines = chunk.split("\n")
+            deck.add_slide("заголовок и текст", lines[0][:120], "\n".join(lines[1:])[:2000])
+    if not deck.prs.slides:
+        deck.add_slide("заголовок", "Пустая презентация .ppt", "")
     wrapped = LegacyFile(raw, deck, "deck")
     deck.dirty = False
     return wrapped
