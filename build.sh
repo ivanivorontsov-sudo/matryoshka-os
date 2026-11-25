@@ -18,6 +18,7 @@ rm -rf /tmp/arhiv
 if git clone --depth 1 https://github.com/ivanivorontsov-sudo/arhiv-perepiski /tmp/arhiv; then rm -rf /tmp/arhiv/.git /tmp/arhiv/tests /tmp/arhiv/installer && rm -rf $I/opt/ivan/arhiv-perepiski && mv /tmp/arhiv $I/opt/ivan/arhiv-perepiski; else echo "Архив переписки не включён: репозиторий недоступен"; fi
 rm -rf /tmp/ivankod && git clone --depth 1 https://github.com/ivanivorontsov-sudo/ivankod /tmp/ivankod && (cd /tmp/ivankod && npm install && npx electron-builder --linux dir --x64 -c.linux.target=dir -c.linux.executableName=ivankod)
 rm -rf $I/opt/ivankod && cp -r /tmp/ivankod/dist/linux-unpacked $I/opt/ivankod && cp /tmp/ivankod/build/iconsrc/icon-256.png $I/opt/ivankod/icon.png
+sh packaging/compat/stage.sh $I/opt/matryoshka/compat || echo "Слои совместимости не скачаны, в образ не входят"
 V=$I/opt/matryoshka-voice
 sp=$(echo /opt/matryoshka-voice/venv/lib/python3.*/site-packages)
 miss=0

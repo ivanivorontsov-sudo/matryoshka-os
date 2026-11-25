@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Среда iOS (Inferno, нужна ваша прошивка)
+Comment=Эмулятор iPhone 11, экспериментально
+Exec=matryoshka-compat inferno
+Icon=phone
+Categories=X-Matryoshka;Emulator;Game;
+NoDisplay=false

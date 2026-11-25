@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+MimeType=inode/directory;application/x-ios-app;application/x-apple-diskimage;application/java-archive;text/vnd.sun.j2me.app-descriptor;application/vnd.symbian.install;x-epoc/x-sisx-app;application/vnd.ms-cab-compressed;application/x-ms-dos-executable;application/x-msdownload;
+Actions=compatopen;
+X-KDE-Priority=TopLevel
+
+[Desktop Action compatopen]
+Name=Запустить как программу другой платформы (macOS, iPhone, Symbian, Java-телефон, КПК)
+Icon=preferences-desktop-emoticons
+Exec=matryoshka-compat open %f

@@ -9,6 +9,7 @@ if [ "$1" != drivers ] && [ -s /var/lib/matryoshka/pending-packages ] && ! grep 
   for p in $(cat /var/lib/matryoshka/pending-packages); do dpkg -s "$p" >/dev/null 2>&1 || echo "$p"; done > /var/lib/matryoshka/pending-packages.new
   mv -f /var/lib/matryoshka/pending-packages.new /var/lib/matryoshka/pending-packages; [ -s /var/lib/matryoshka/pending-packages ] || rm -f /var/lib/matryoshka/pending-packages
 fi
+[ "$1" = drivers ] || [ ! -e /var/lib/matryoshka/compat/pending ] || /usr/lib/matryoshka/compat-setup.sh
 timeout 120 isenkram-lookup > /var/lib/matryoshka/drivers.txt 2>/dev/null
 for p in $(cat /var/lib/matryoshka/drivers.txt); do dpkg -s "$p" >/dev/null 2>&1 || echo "$p"; done > /var/lib/matryoshka/drivers-missing.txt
 chmod 644 /var/lib/matryoshka/*.txt

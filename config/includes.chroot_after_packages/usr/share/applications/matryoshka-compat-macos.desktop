@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Программы macOS (Darling)
+Comment=Командная строка и простые программы macOS
+Exec=matryoshka-compat macos
+Icon=utilities-terminal
+Categories=X-Matryoshka;Emulator;Game;
+NoDisplay=false

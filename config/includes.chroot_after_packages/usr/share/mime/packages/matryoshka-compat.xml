@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-ios-app"><comment>Приложение iPhone (IPA)</comment><sub-class-of type="application/zip"/><glob pattern="*.ipa" weight="80"/></mime-type>
+  <mime-type type="application/x-windows-phone-xap"><comment>Приложение Windows Phone (XAP)</comment><sub-class-of type="application/zip"/><glob pattern="*.xap" weight="80"/></mime-type>
+  <mime-type type="application/x-ngage-game"><comment>Игра N-Gage</comment><glob pattern="*.n-gage" weight="80"/></mime-type>
+</mime-info>

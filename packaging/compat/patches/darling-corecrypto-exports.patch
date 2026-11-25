@@ -1,0 +1,24 @@
+--- a/src/external/corecrypto/scripts/exported-symbols.exp	2026-11-25 17:15:08.961739048 +1000
++++ b/src/external/corecrypto/scripts/exported-symbols.exp	2026-11-25 17:15:08.961739048 +1000
+@@ -591,3 +591,21 @@
+ 
+ # not in standard corecrypto, for some reason?
+ _ccn_shift_left
++_ccchacha20
++_ccchacha20poly1305_decrypt_oneshot
++_ccchacha20poly1305_encrypt_oneshot
++_ccchacha20poly1305_info
++_cccmac_cbc
++_ccdh_ccn_size
++_ccdh_gp_g
++_ccdh_gp_n
++_ccdh_gp_prime
++_ccec_blind
++_ccec_generate_blinding_keys
++_ccec_unblind
++_cch2c
++_cchkdf_expand
++_cchkdf_extract
++_ccrsa_ctx_private_zp
++_cczp_n
++_cczp_prime

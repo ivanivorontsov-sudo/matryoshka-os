@@ -1,0 +1,13 @@
+[Unit]
+Description=Слои программ других платформ Матрёшки (Darling и библиотеки эмуляторов)
+Wants=network-online.target
+After=network-online.target matryoshka-netup.service
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/usr/lib/matryoshka/compat-setup.sh
+
+[Install]
+WantedBy=multi-user.target
