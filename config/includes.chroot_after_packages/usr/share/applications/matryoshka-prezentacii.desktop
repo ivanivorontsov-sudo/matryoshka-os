@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Презентации
+Comment=Слайды, темы, переходы, режим докладчика
+Exec=matryoshka-prezentacii %U
+Icon=matryoshka-prezentacii
+Categories=Office;Presentation;
+StartupWMClass=matryoshka-prezentacii
+MimeType=application/vnd.openxmlformats-officedocument.presentationml.presentation;application/vnd.ms-powerpoint;application/vnd.oasis.opendocument.presentation;

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Таблицы
+Comment=Листы, формулы Excel, диаграммы, сводные
+Exec=matryoshka-tablitsy %U
+Icon=matryoshka-tablitsy
+Categories=Office;Spreadsheet;
+StartupWMClass=matryoshka-tablitsy
+MimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.ms-excel;application/vnd.oasis.opendocument.spreadsheet;text/csv;

@@ -15,6 +15,7 @@
 | matryoshka-face | 1.0.7 | Howdy 2.6.1 только из PPA boltgolt, dlib 19.24.6 |
 | matryoshka-gxfp | 0.1.12 | драйвер Goodix GXFP5130, по желанию |
 | matryoshka-fixes | 1.1.6 | Wine, Electron, шрифты. libndk_translation не входит |
+| matryoshka-office | 1.0.0 | Письмо, Таблицы, Презентации. `packaging/matryoshka-office/build-deb.sh` кладёт deb в `config/packages.chroot`, оттуда его берёт ISO и архив обновления |
 
 Ключ выпуска с 18.6.3: Ed25519 `F2DE4F9355F9383D` (отпечаток `2E5A 892C 35E1 9C67 AE66  0FB5 F2DE 4F93 55F9 383D`), «Matryoshka OS Release 2026-11», без срока действия. Создан 14.11.2026 с согласия автора: закрытый ключ прежнего `45A2D53B7751F4A8` утерян. Рабочая копия: `/home/box/.matryoshka-signing` (GNUPGHOME), резервная копия (закрытый ключ armored и сертификат отзыва): `/home/box/.matryoshka-signing-backup/`. Обе на сборочной машине; нужна ещё копия вне её. Открытые ключи обоих в `/usr/share/matryoshka/update-keys/` (`matryoshka-release-2026-11.gpg` и прежний `matryoshka-release.gpg`), проверка принимает любой из них, старые подписи остаются проверяемыми. Ключ не создаётся заново без согласия автора.
 

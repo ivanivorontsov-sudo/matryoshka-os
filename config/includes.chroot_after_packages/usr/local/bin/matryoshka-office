@@ -1,2 +1,7 @@
 #!/bin/sh
+# Точка входа меню. Новый офис ставится пакетом matryoshka-office.
+# Если пакета ещё нет, остаётся прежний LibreOffice — только как запасной запуск, не как основа.
+if [ -x /usr/bin/matryoshka-office ]; then
+  exec /usr/bin/matryoshka-office "$@"
+fi
 exec libreoffice "$@"
